@@ -20,9 +20,9 @@ import {
   LogOut,
   Settings,
   User,
-  Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 
 interface AppHeaderProps {
   onSearchChange?: (query: string) => void;
@@ -140,10 +140,7 @@ export function AppHeader({
             </button>
 
             {/* 通知 */}
-            <button className="relative p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-all duration-300 hover:scale-105 active:scale-95">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500"></span>
-            </button>
+            <NotificationBell />
 
             {/* 用户菜单 */}
             <div className="relative">

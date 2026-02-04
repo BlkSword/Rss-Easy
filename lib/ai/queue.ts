@@ -6,6 +6,7 @@
 import { db } from '../db';
 import { AIService, type AIConfig } from './client';
 import { sleep } from '../utils';
+import { getNotificationService } from '../notifications/service';
 import type { Entry, Feed, User } from '@prisma/client';
 import type { AIAnalysisQueue as AIAnalysisQueueModel } from '@prisma/client';
 
@@ -171,6 +172,14 @@ export class AIAnalysisQueue {
           cost: result.cost,
         },
       });
+
+      // 发送AI分析完成通知
+      const notificationService = getNotificationService();
+      await notificationService.notifyAIComplete(
+        task.entry.feed.userId,
+        task.entry.id,
+        task.entry.title
+      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const retryCount = task.retryCount + 1;

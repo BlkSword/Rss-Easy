@@ -8,17 +8,6 @@ import { getSearchService } from '@/lib/search/service';
 
 export const searchRouter = router({
   /**
-   * 简单搜索查询（用于搜索页面）
-   */
-  use: protectedProcedure
-    .input(z.object({ query: z.string().min(1) }))
-    .query(async ({ input, ctx }) => {
-      const searchService = getSearchService();
-      const suggestions = await searchService.getSuggestions(input.query, 5);
-      return suggestions;
-    }),
-
-  /**
    * 全文搜索
    */
   search: protectedProcedure

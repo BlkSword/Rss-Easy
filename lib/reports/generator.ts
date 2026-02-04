@@ -5,6 +5,7 @@
 
 import { db } from '../db';
 import { AIService } from '../ai/client';
+import { getNotificationService } from '../notifications/service';
 import type { Report, Entry } from '@prisma/client';
 
 export interface ReportEntry {
@@ -119,6 +120,15 @@ export class ReportGenerator {
     // 关联文章
     await this.linkEntriesToReport(report.id, entries);
 
+    // 发送报告就绪通知
+    const notificationService = getNotificationService();
+    await notificationService.notifyReportReady(
+      userId,
+      report.id,
+      'daily',
+      report.title
+    );
+
     return report;
   }
 
@@ -197,6 +207,15 @@ export class ReportGenerator {
 
     // 关联文章
     await this.linkEntriesToReport(report.id, entries);
+
+    // 发送报告就绪通知
+    const notificationService = getNotificationService();
+    await notificationService.notifyReportReady(
+      userId,
+      report.id,
+      'weekly',
+      report.title
+    );
 
     return report;
   }

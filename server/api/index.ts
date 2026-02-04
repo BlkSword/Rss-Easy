@@ -10,6 +10,9 @@ import { entriesRouter } from './entries';
 import { categoriesRouter } from './categories';
 import { searchRouter } from './search';
 import { reportsRouter } from './reports';
+import { settingsRouter } from './settings';
+import { rulesRouter } from './rules';
+import { notificationsRouter } from './notifications';
 
 export const appRouter = router({
   auth: authRouter,
@@ -18,6 +21,9 @@ export const appRouter = router({
   categories: categoriesRouter,
   search: searchRouter,
   reports: reportsRouter,
+  settings: settingsRouter,
+  rules: rulesRouter,
+  notifications: notificationsRouter,
 });
 
 export type AppRouter = typeof appRouter;

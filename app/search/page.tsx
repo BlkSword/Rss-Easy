@@ -4,14 +4,14 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, Filter, X, Clock, TrendingUp } from 'lucide-react';
 import { trpc } from '@/lib/trpc/client';
 import { EntryList } from '@/components/entries/entry-list';
 import { cn } from '@/lib/utils';
 
-export default function SearchPage() {
+function SearchPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
@@ -306,5 +306,13 @@ export default function SearchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="container py-6">加载中...</div>}>
+      <SearchPageContent />
+    </Suspense>
   );
 }
