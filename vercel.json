@@ -1,0 +1,26 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "prisma generate && next build",
+  "devCommand": "next dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["hkg1"],
+  "crons": [
+    {
+      "path": "/api/jobs/fetch-feeds",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/jobs/process-ai",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/jobs/generate-daily-reports",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/jobs/generate-weekly-reports",
+      "schedule": "0 2 * * 1"
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>全栈开发与编程高质量RSS源 (2026年2月版)</title>
+    <dateCreated>Tue, 01 Feb 2026 00:00:00 GMT</dateCreated>
+    <ownerName>Expert Researcher</ownerName>
+  </head>
+  <body>
+    <outline text="综合技术新闻与前沿趋势" title="综合技术新闻与前沿趋势">
+      <outline type="rss" text="Hacker News" title="Hacker News" xmlUrl="https://news.ycombinator.com/rss" htmlUrl="https://news.ycombinator.com/"/>
+      <outline type="rss" text="TechCrunch" title="TechCrunch" xmlUrl="http://feeds.feedburner.com/TechCrunch/" htmlUrl="https://techcrunch.com/"/>
+      <outline type="rss" text="Ars Technica" title="Ars Technica" xmlUrl="http://feeds.arstechnica.com/arstechnica/index" htmlUrl="https://arstechnica.com/"/>
+      <outline type="rss" text="InfoQ" title="InfoQ" xmlUrl="https://feed.infoq.com/" htmlUrl="https://www.infoq.com/"/>
+      <outline type="rss" text="InfoQ China" title="InfoQ China" xmlUrl="https://www.infoq.cn/feed.xml" htmlUrl="https://www.infoq.cn/"/>
+      <outline type="rss" text="Lobsters" title="Lobsters" xmlUrl="https://lobste.rs/rss" htmlUrl="https://lobste.rs/"/>
+      <outline type="rss" text="Reddit Programming" title="Reddit Programming" xmlUrl="https://www.reddit.com/r/programming/.rss" htmlUrl="https://www.reddit.com/r/programming/"/>
+      <outline type="rss" text="Reddit Technology" title="Reddit Technology" xmlUrl="https://www.reddit.com/r/technology/.rss" htmlUrl="https://www.reddit.com/r/technology/"/>
+      <outline type="rss" text="The Verge" title="The Verge" xmlUrl="https://www.theverge.com/rss/index.xml" htmlUrl="https://www.theverge.com/"/>
+      <outline type="rss" text="WIRED" title="WIRED" xmlUrl="https://www.wired.com/feed/rss" htmlUrl="https://www.wired.com/"/>
+      <outline type="rss" text="阮一峰的网络日志" title="阮一峰的网络日志" xmlUrl="http://www.ruanyifeng.com/blog/atom.xml" htmlUrl="http://www.ruanyifeng.com/blog/"/>
+      <outline type="rss" text="酷壳(CoolShell)" title="酷壳(CoolShell)" xmlUrl="https://coolshell.cn/feed" htmlUrl="https://coolshell.cn/"/>
+      <outline type="rss" text="月光博客" title="月光博客" xmlUrl="https://www.williamlong.info/rss.xml" htmlUrl="https://www.williamlong.info/"/>
+      <outline type="rss" text="OSCHINA - 首页" title="OSCHINA - 首页" xmlUrl="https://www.oschina.net/news/rss" htmlUrl="https://www.oschina.net/"/>
+      <outline type="rss" text="DEV Community" title="DEV Community" xmlUrl="https://dev.to/feed" htmlUrl="https://dev.to/"/>
+    </outline>
+    <outline text="前端开发 (Frontend)" title="前端开发 (Frontend)">
+      <outline type="rss" text="Smashing Magazine" title="Smashing Magazine" xmlUrl="https://www.smashingmagazine.com/feed/" htmlUrl="https://www.smashingmagazine.com/"/>
+      <outline type="rss" text="CSS-Tricks" title="CSS-Tricks" xmlUrl="https://css-tricks.com/feed/" htmlUrl="https://css-tricks.com/"/>
+      <outline type="rss" text="JavaScript Weekly" title="JavaScript Weekly" xmlUrl="https://javascriptweekly.com/rss/" htmlUrl="https://javascriptweekly.com/"/>
+      <outline type="rss" text="A List Apart" title="A List Apart" xmlUrl="https://alistapart.com/main/feed/" htmlUrl="https://alistapart.com/"/>
+      <outline type="rss" text="web.dev by Google" title="web.dev by Google" xmlUrl="https://web.dev/feed.xml" htmlUrl="https://web.dev/"/>
+      <outline type="rss" text="Frontend Focus" title="Frontend Focus" xmlUrl="https://frontendfoc.us/rss" htmlUrl="https://frontendfoc.us/"/>
+      <outline type="rss" text="Vue.js Official Blog" title="Vue.js Official Blog" xmlUrl="https://blog.vuejs.org/feed.xml" htmlUrl="https://blog.vuejs.org/"/>
+      <outline type="rss" text="React Official Blog" title="React Official Blog" xmlUrl="https://react.dev/blog/rss.xml" htmlUrl="https://react.dev/blog"/>
+      <outline type="rss" text="Angular Blog" title="Angular Blog" xmlUrl="https://blog.angular.io/feed" htmlUrl="https://blog.angular.io/"/>
+      <outline type="rss" text="Svelte Blog" title="Svelte Blog" xmlUrl="https://svelte.dev/blog/rss.xml" htmlUrl="https://svelte.dev/blog"/>
+      <outline type="rss" text="SurviveJS" title="SurviveJS" xmlUrl="https://survivejs.com/atom.xml" htmlUrl="https://survivejs.com/"/>
+      <outline type="rss" text="Codrops" title="Codrops" xmlUrl="http://feeds2.feedburner.com/codrops" htmlUrl="https://tympanus.net/codrops/"/>
+      <outline type="rss" text="SitePoint" title="SitePoint" xmlUrl="https://www.sitepoint.com/feed" htmlUrl="https://www.sitepoint.com/"/>
+      <outline type="rss" text="David Walsh Blog" title="David Walsh Blog" xmlUrl="https://davidwalsh.name/feed" htmlUrl="https://davidwalsh.name/"/>
+      <outline type="rss" text="凹凸实验室" title="凹凸实验室" xmlUrl="https://aotu.io/atom.xml" htmlUrl="https://aotu.io/"/>
+      <outline type="rss" text="张鑫旭-鑫空间-鑫生活" title="张鑫旭-鑫空间-鑫生活" xmlUrl="https://www.zhangxinxu.com/wordpress/feed/" htmlUrl="https://www.zhangxinxu.com/wordpress/"/>
+      <outline type="rss" text="Node.js Blog" title="Node.js Blog" xmlUrl="https://nodejs.org/en/feed/blog.xml" htmlUrl="https://nodejs.org/en/blog/"/>
+    </outline>
+    <outline text="后端开发 (Backend)" title="后端开发 (Backend)">
+      <outline type="rss" text="Martin Fowler" title="Martin Fowler" xmlUrl="https://martinfowler.com/feed.atom" htmlUrl="https://martinfowler.com/"/>
+      <outline type="rss" text="The Pragmatic Bookshelf" title="The Pragmatic Bookshelf" xmlUrl="https://pragprog.com/news.rss" htmlUrl="https://pragprog.com/"/>
+      <outline type="rss" text="High Scalability" title="High Scalability" xmlUrl="http://feeds.feedburner.com/HighScalability" htmlUrl="http://highscalability.com/"/>
+      <outline type="rss" text="Go Blog" title="Go Blog" xmlUrl="https://blog.golang.org/feed.atom" htmlUrl="https://blog.golang.org/"/>
+      <outline type="rss" text="The Rust Programming Language Blog" title="The Rust Programming Language Blog" xmlUrl="https://blog.rust-lang.org/feed.xml" htmlUrl="https://blog.rust-lang.org/"/>
+      <outline type="rss" text="Python Software Foundation Blog" title="Python Software Foundation Blog" xmlUrl="https://pyfound.blogspot.com/feeds/posts/default" htmlUrl="https://pyfound.blogspot.com/"/>
+      <outline type="rss" text="Planet Python" title="Planet Python" xmlUrl="https://planetpython.org/rss20.xml" htmlUrl="https://planetpython.org/"/>
+      <outline type="rss" text="Spring Blog" title="Spring Blog" xmlUrl="https://spring.io/blog.atom" htmlUrl="https://spring.io/blog"/>
+      <outline type="rss" text="Baeldung" title="Baeldung" xmlUrl="https://www.baeldung.com/feed/" htmlUrl="https://www.baeldung.com/"/>
+      <outline type="rss" text="Vlad Mihalcea" title="Vlad Mihalcea" xmlUrl="https://vladmihalcea.com/feed/" htmlUrl="https://vladmihalcea.com/"/>
+      <outline type="rss" text="Ruby on Rails Blog" title="Ruby on Rails Blog" xmlUrl="https://weblog.rubyonrails.org/feed/atom.xml" htmlUrl="https://weblog.rubyonrails.org/"/>
+      <outline type="rss" text="Elixir Lang Blog" title="Elixir Lang Blog" xmlUrl="https://elixir-lang.org/blog/feed.xml" htmlUrl="https://elixir-lang.org/blog"/>
+      <outline type="rss" text="美团技术团队" title="美团技术团队" xmlUrl="https://tech.meituan.com/feed/" htmlUrl="https://tech.meituan.com/"/>
+      <outline type="rss" text="阿里技术" title="阿里技术" xmlUrl="http://www.infoq.com/cn/alibaba/feed" htmlUrl="https://www.alibabatech.com/"/>
+      <outline type="rss" text="ThoughtWorks洞见" title="ThoughtWorks洞见" xmlUrl="https://insights.thoughtworks.cn/feed/" htmlUrl="https://insights.thoughtworks.cn/"/>
+    </outline>
+    <outline text="大型公司技术博客 (Big Tech Blogs)" title="大型公司技术博客 (Big Tech Blogs)">
+      <outline type="rss" text="Netflix Technology Blog" title="Netflix Technology Blog" xmlUrl="https://netflixtechblog.com/feed" htmlUrl="https://netflixtechblog.com/"/>
+      <outline type="rss" text="Uber Engineering Blog" title="Uber Engineering Blog" xmlUrl="https://www.uber.com/en-DE/blog/engineering/feed/" htmlUrl="https://www.uber.com/blog/engineering"/>
+      <outline type="rss" text="Meta Engineering" title="Meta Engineering" xmlUrl="https://engineering.fb.com/feed/" htmlUrl="https://engineering.fb.com/"/>
+      <outline type="rss" text="Google Developers Blog" title="Google Developers Blog" xmlUrl="http://feeds.feedburner.com/GDBcode" htmlUrl="https://developers.googleblog.com/"/>
+      <outline type="rss" text="Microsoft Engineering Blog" title="Microsoft Engineering Blog" xmlUrl="https://devblogs.microsoft.com/engineering/feed/" htmlUrl="https://devblogs.microsoft.com/engineering/"/>
+      <outline type="rss" text="Apple Developer News" title="Apple Developer News" xmlUrl="https://developer.apple.com/news/rss/news.rss" htmlUrl="https://developer.apple.com/news/"/>
+      <outline type="rss" text="The GitHub Blog" title="The GitHub Blog" xmlUrl="https://github.blog/feed/" htmlUrl="https://github.blog/"/>
+      <outline type="rss" text="Dropbox Tech Blog" title="Dropbox Tech Blog" xmlUrl="https://dropbox.tech/feed" htmlUrl="https://dropbox.tech/"/>
+      <outline type="rss" text="Stripe Engineering Blog" title="Stripe Engineering Blog" xmlUrl="https://stripe.com/blog/engineering/feed.xml" htmlUrl="https://stripe.com/blog/engineering"/>
+      <outline type="rss" text="Shopify Engineering" title="Shopify Engineering" xmlUrl="https://shopify.engineering/feed.xml" htmlUrl="https://shopify.engineering/"/>
+      <outline type="rss" text="Slack Engineering" title="Slack Engineering" xmlUrl="https://slack.engineering/feed" htmlUrl="https://slack.engineering/"/>
+      <outline type="rss" text="LinkedIn Engineering" title="LinkedIn Engineering" xmlUrl="https://engineering.linkedin.com/blog.rss.html" htmlUrl="https://engineering.linkedin.com/blog"/>
+      <outline type="rss" text="Twitter Engineering" title="Twitter Engineering" xmlUrl="https://blog.twitter.com/engineering/en_us/blog.rss" htmlUrl="https://blog.twitter.com/engineering/en_us"/>
+    </outline>
+    <outline text="数据库与数据科学 (Databases &amp; Data Science)" title="数据库与数据科学 (Databases &amp; Data Science)">
+      <outline type="rss" text="PostgreSQL News" title="PostgreSQL News" xmlUrl="https://www.postgresql.org/about/news.rss" htmlUrl="https://www.postgresql.org/about/news/"/>
+      <outline type="rss" text="Planet MySQL" title="Planet MySQL" xmlUrl="https://planet.mysql.com/rss20.xml" htmlUrl="https://planet.mysql.com/"/>
+      <outline type="rss" text="Redis Blog" title="Redis Blog" xmlUrl="https://redis.com/blog/feed/" htmlUrl="https://redis.com/blog/"/>
+      <outline type="rss" text="MongoDB Blog" title="MongoDB Blog" xmlUrl="https://www.mongodb.com/blog/rss" htmlUrl="https://www.mongodb.com/blog"/>
+      <outline type="rss" text="Data Engineering Weekly" title="Data Engineering Weekly" xmlUrl="https://www.dataengineeringweekly.com/feed" htmlUrl="https://www.dataengineeringweekly.com/"/>
+      <outline type="rss" text="Towards Data Science" title="Towards Data Science" xmlUrl="https://towardsdatascience.com/feed" htmlUrl="https://towardsdatascience.com/"/>
+      <outline type="rss" text="Google AI Blog" title="Google AI Blog" xmlUrl="https://ai.googleblog.com/feeds/posts/default" htmlUrl="https://ai.googleblog.com/"/>
+      <outline type="rss" text="OpenAI Blog" title="OpenAI Blog" xmlUrl="https://openai.com/blog/rss/" htmlUrl="https://openai.com/blog"/>
+      <outline type="rss" text="Distill.pub" title="Distill.pub" xmlUrl="https://distill.pub/rss.xml" htmlUrl="https://distill.pub/"/>
+      <outline type="rss" text="The Gradient" title="The Gradient" xmlUrl="https://thegradient.pub/rss/" htmlUrl="https://thegradient.pub/"/>
+      <outline type="rss" text="KDnuggets" title="KDnuggets" xmlUrl="https://www.kdnuggets.com/feed" htmlUrl="https://www.kdnuggets.com/"/>
+      <outline type="rss" text="Databricks Blog" title="Databricks Blog" xmlUrl="https://www.databricks.com/feed" htmlUrl="https://www.databricks.com/blog"/>
+      <outline type="rss" text="ClickHouse Blog" title="ClickHouse Blog" xmlUrl="https://clickhouse.com/blog/rss.xml" htmlUrl="https://clickhouse.com/blog"/>
+    </outline>
+    <outline text="DevOps、云计算与基础设施" title="DevOps、云计算与基础设施">
+      <outline type="rss" text="Docker Blog" title="Docker Blog" xmlUrl="https://www.docker.com/blog/feed/" htmlUrl="https://www.docker.com/blog/"/>
+      <outline type="rss" text="Kubernetes Blog" title="Kubernetes Blog" xmlUrl="https://kubernetes.io/feed.xml" htmlUrl="https://kubernetes.io/blog/"/>
+      <outline type="rss" text="AWS Architecture Blog" title="AWS Architecture Blog" xmlUrl="https://aws.amazon.com/blogs/architecture/feed/" htmlUrl="https://aws.amazon.com/blogs/architecture/"/>
+      <outline type="rss" text="AWS News Blog" title="AWS News Blog" xmlUrl="https://aws.amazon.com/blogs/aws/feed/" htmlUrl="https://aws.amazon.com/blogs/aws/"/>
+      <outline type="rss" text="Google Cloud Blog" title="Google Cloud Blog" xmlUrl="https://cloud.google.com/blog/rss" htmlUrl="https://cloud.google.com/blog/"/>
+      <outline type="rss" text="Microsoft Azure Blog" title="Microsoft Azure Blog" xmlUrl="https://azure.microsoft.com/en-us/blog/feed/" htmlUrl="https://azure.microsoft.com/en-us/blog/"/>
+      <outline type="rss" text="HashiCorp Blog" title="HashiCorp Blog" xmlUrl="https://www.hashicorp.com/blog/feed.xml" htmlUrl="https://www.hashicorp.com/blog"/>
+      <outline type="rss" text="The New Stack" title="The New Stack" xmlUrl="https://thenewstack.io/feed/" htmlUrl="https://thenewstack.io/"/>
+      <outline type="rss" text="DevOps.com" title="DevOps.com" xmlUrl="https://devops.com/feed/" htmlUrl="https://devops.com/"/>
+      <outline type="rss" text="Brendan Gregg's Blog" title="Brendan Gregg's Blog" xmlUrl="http://www.brendangregg.com/blog/rss.xml" htmlUrl="http://www.brendangregg.com/blog"/>
+      <outline type="rss" text="Cloudflare Blog" title="Cloudflare Blog" xmlUrl="https://blog.cloudflare.com/rss/" htmlUrl="https://blog.cloudflare.com/"/>
+      <outline type="rss" text="Grafana Labs Blog" title="Grafana Labs Blog" xmlUrl="https://grafana.com/blog/index.xml" htmlUrl="https://grafana.com/blog/"/>
+      <outline type="rss" text="SRE Weekly" title="SRE Weekly" xmlUrl="https://sreweekly.com/feed.xml" htmlUrl="https://sreweekly.com/"/>
+    </outline>
+    <outline text="移动开发 (Mobile)" title="移动开发 (Mobile)">
+      <outline type="rss" text="Android Developers Blog" title="Android Developers Blog" xmlUrl="https://android-developers.googleblog.com/feeds/posts/default" htmlUrl="https://android-developers.googleblog.com/"/>
+      <outline type="rss" text="iOS Dev Weekly" title="iOS Dev Weekly" xmlUrl="https://iosdevweekly.com/issues.rss" htmlUrl="https://iosdevweekly.com/"/>
+      <outline type="rss" text="Swift.org Blog" title="Swift.org Blog" xmlUrl="https://www.swift.org/atom.xml" htmlUrl="https://www.swift.org/blog/"/>
+      <outline type="rss" text="Ray Wenderlich" title="Ray Wenderlich" xmlUrl="https://www.raywenderlich.com/feed" htmlUrl="https://www.raywenderlich.com/"/>
+      <outline type="rss" text="NSHipster" title="NSHipster" xmlUrl="https://nshipster.com/feed.xml" htmlUrl="https://nshipster.com/"/>
+      <outline type="rss" text="Swift by Sundell" title="Swift by Sundell" xmlUrl="https://www.swiftbysundell.com/feed.rss" htmlUrl="https://www.swiftbysundell.com/"/>
+      <outline type="rss" text="Flutter Official Blog" title="Flutter Official Blog" xmlUrl="https://medium.com/feed/flutter" htmlUrl="https://medium.com/flutter"/>
+      <outline type="rss" text="React Native Official Blog" title="React Native Official Blog" xmlUrl="https://reactnative.dev/blog/rss.xml" htmlUrl="https://reactnative.dev/blog"/>
+      <outline type="rss" text="ProAndroidDev" title="ProAndroidDev" xmlUrl="https://proandroiddev.com/feed" htmlUrl="https://proandroiddev.com/"/>
+      <outline type="rss" text="Kotlin Blog" title="Kotlin Blog" xmlUrl="https://blog.jetbrains.com/kotlin/feed/" htmlUrl="https://blog.jetbrains.com/kotlin/"/>
+    </outline>
+    <outline text="软件工程与通用编程" title="软件工程与通用编程">
+      <outline type="rss" text="Joel on Software" title="Joel on Software" xmlUrl="https://www.joelonsoftware.com/feed/" htmlUrl="https://www.joelonsoftware.com/"/>
+      <outline type="rss" text="Coding Horror" title="Coding Horror" xmlUrl="https://blog.codinghorror.com/rss/" htmlUrl="https://blog.codinghorror.com/"/>
+      <outline type="rss" text="Aphyr.com (Jepsen)" title="Aphyr.com (Jepsen)" xmlUrl="https://aphyr.com/posts.atom" htmlUrl="https://aphyr.com/"/>
+      <outline type="rss" text="Signal v. Noise" title="Signal v. Noise" xmlUrl="https://m.signalvnoise.com/feed/" htmlUrl="https://signalvnoise.com/"/>
+      <outline type="rss" text="Gergely Orosz - The Pragmatic Engineer" title="Gergely Orosz - The Pragmatic Engineer" xmlUrl="https://blog.pragmaticengineer.com/rss/" htmlUrl="https://blog.pragmaticengineer.com/"/>
+      <outline type="rss" text="Dan Luu" title="Dan Luu" xmlUrl="https://danluu.com/atom.xml" htmlUrl="https://danluu.com/"/>
+      <outline type="rss" text="Better Programming" title="Better Programming" xmlUrl="https://betterprogramming.pub/feed" htmlUrl="https://betterprogramming.pub/"/>
+      <outline type="rss" text="Overreacted.io by Dan Abramov" title="Overreacted.io by Dan Abramov" xmlUrl="https://overreacted.io/rss.xml" htmlUrl="https://overreacted.io/"/>
+      <outline type="rss" text="Paul Graham's Essays" title="Paul Graham's Essays" xmlUrl="http://www.aaronsw.com/2002/feeds/pgessays.rss" htmlUrl="http://www.paulgraham.com/articles.html"/>
+      <outline type="rss" text="Kent C. Dodds' Blog" title="Kent C. Dodds' Blog" xmlUrl="https://kentcdodds.com/blog/rss.xml" htmlUrl="https://kentcdodds.com/blog"/>
+      <outline type="rss" text="Uncle Bob Martin" title="Uncle Bob Martin" xmlUrl="http://blog.cleancoder.com/atom.xml" htmlUrl="http://blog.cleancoder.com/"/>
+      <outline type="rss" text="Scott Hanselman's Blog" title="Scott Hanselman's Blog" xmlUrl="https://www.hanselman.com/blog/feed/rss" htmlUrl="https://www.hanselman.com/blog"/>
+      <outline type="rss" text="The Daily WTF" title="The Daily WTF" xmlUrl="http://syndication.thedailywtf.com/TheDailyWtf" htmlUrl="https://thedailywtf.com/"/>
+      <outline type="rss" text="HackerNoon" title="HackerNoon" xmlUrl="https://hackernoon.com/feed" htmlUrl="https://hackernoon.com/"/>
+    </outline>
+  </body>
+</opml>
+

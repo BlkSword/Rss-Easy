@@ -1,0 +1,547 @@
+/**
+ * AI服务客户端
+ * 支持OpenAI、Anthropic、DeepSeek等多个提供商
+ */
+
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
+
+export interface AIConfig {
+  provider: 'openai' | 'anthropic' | 'deepseek' | 'ollama' | 'custom';
+  model: string;
+  apiKey?: string;
+  baseURL?: string;
+  maxTokens?: number;
+  temperature?: number;
+}
+
+export interface AIAnalysisResult {
+  summary?: string;
+  keywords?: string[];
+  category?: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  importanceScore?: number;
+  tokensUsed?: number;
+  cost?: number;
+}
+
+export interface EmbeddingResult {
+  embedding: number[];
+  tokensUsed: number;
+}
+
+/**
+ * AI服务基类
+ */
+abstract class AIProvider {
+  protected config: AIConfig;
+
+  constructor(config: AIConfig) {
+    this.config = config;
+  }
+
+  abstract generateSummary(content: string): Promise<string>;
+  abstract extractKeywords(content: string): Promise<string[]>;
+  abstract categorize(content: string): Promise<string>;
+  abstract analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'>;
+  abstract calculateImportance(content: string): Promise<number>;
+  abstract generateEmbedding(text: string): Promise<EmbeddingResult>;
+}
+
+/**
+ * OpenAI提供商
+ */
+class OpenAIProvider extends AIProvider {
+  private client: OpenAI;
+
+  constructor(config: AIConfig) {
+    super(config);
+    this.client = new OpenAI({
+      apiKey: config.apiKey || process.env.OPENAI_API_KEY,
+      baseURL: config.baseURL,
+    });
+  }
+
+  async generateSummary(content: string): Promise<string> {
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，要求：
+1. 3-5句话概括文章核心内容
+2. 突出文章的关键信息和观点
+3. 语言简洁明了，避免冗余
+4. 如果文章是技术类，突出技术要点`,
+        },
+        {
+          role: 'user',
+          content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
+        },
+      ],
+      max_tokens: this.config.maxTokens || 500,
+      temperature: this.config.temperature || 0.7,
+    });
+
+    return response.choices[0].message.content || '';
+  }
+
+  async extractKeywords(content: string): Promise<string[]> {
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: '请从文章中提取5-10个最重要的关键词，用逗号分隔。',
+        },
+        {
+          role: 'user',
+          content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
+        },
+      ],
+      max_tokens: 200,
+      temperature: 0.3,
+    });
+
+    const text = response.choices[0].message.content || '';
+    return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+  }
+
+  async categorize(content: string): Promise<string> {
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: `请将文章分类到以下类别之一：
+AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
+数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业,
+行业新闻, 技术趋势, 工具/资源, 教程/指南
+
+只返回类别名称。文章内容：\n\n${content.slice(0, 2000)}`,
+        },
+      ],
+      max_tokens: 50,
+      temperature: 0.3,
+    });
+
+    return (response.choices[0].message.content || '').trim();
+  }
+
+  async analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'> {
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
+        },
+      ],
+      max_tokens: 20,
+      temperature: 0.1,
+    });
+
+    const sentiment = (response.choices[0].message.content || '').trim().toLowerCase();
+    if (sentiment.includes('positive')) return 'positive';
+    if (sentiment.includes('negative')) return 'negative';
+    return 'neutral';
+  }
+
+  async calculateImportance(content: string): Promise<number> {
+    const factors = {
+      length: Math.min(content.length / 5000, 1),
+      hasNumbers: /\d+/.test(content) ? 0.2 : 0,
+      hasCode: /```|<code>/.test(content) ? 0.3 : 0,
+      hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.2 : 0,
+    };
+
+    let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
+    return Math.min(Math.max(score, 0), 1);
+  }
+
+  async generateEmbedding(text: string): Promise<EmbeddingResult> {
+    const response = await this.client.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text.slice(0, 8191),
+    });
+
+    return {
+      embedding: response.data[0].embedding,
+      tokensUsed: response.usage.total_tokens,
+    };
+  }
+}
+
+/**
+ * Anthropic提供商
+ */
+class AnthropicProvider extends AIProvider {
+  private client: Anthropic;
+
+  constructor(config: AIConfig) {
+    super(config);
+    this.client = new Anthropic({
+      apiKey: config.apiKey || process.env.ANTHROPIC_API_KEY,
+      baseURL: config.baseURL,
+    });
+  }
+
+  async generateSummary(content: string): Promise<string> {
+    const response = await this.client.messages.create({
+      model: this.config.model || 'claude-3-5-sonnet-20241022',
+      max_tokens: this.config.maxTokens || 500,
+      temperature: this.config.temperature || 0.7,
+      system: `你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，要求：
+1. 3-5句话概括文章核心内容
+2. 突出文章的关键信息和观点
+3. 语言简洁明了，避免冗余
+4. 如果文章是技术类，突出技术要点`,
+      messages: [
+        {
+          role: 'user',
+          content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
+        },
+      ],
+    });
+
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  }
+
+  async extractKeywords(content: string): Promise<string[]> {
+    const response = await this.client.messages.create({
+      model: this.config.model || 'claude-3-5-sonnet-20241022',
+      max_tokens: 200,
+      temperature: 0.3,
+      system: `请从文章中提取5-10个最重要的关键词，用逗号分隔。`,
+      messages: [
+        {
+          role: 'user',
+          content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
+        },
+      ],
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+  }
+
+  async categorize(content: string): Promise<string> {
+    const categories = `AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
+数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业,
+行业新闻, 技术趋势, 工具/资源, 教程/指南`;
+
+    const response = await this.client.messages.create({
+      model: this.config.model || 'claude-3-5-sonnet-20241022',
+      max_tokens: 50,
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'user',
+          content: `请将文章分类到以下类别之一：\n${categories}\n\n文章内容：\n${content.slice(0, 2000)}\n\n只返回类别名称。`,
+        },
+      ],
+    });
+
+    return response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+  }
+
+  async analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'> {
+    const response = await this.client.messages.create({
+      model: this.config.model || 'claude-3-5-sonnet-20241022',
+      max_tokens: 20,
+      temperature: 0.1,
+      messages: [
+        {
+          role: 'user',
+          content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
+        },
+      ],
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text.trim().toLowerCase() : '';
+    if (text.includes('positive')) return 'positive';
+    if (text.includes('negative')) return 'negative';
+    return 'neutral';
+  }
+
+  async calculateImportance(content: string): Promise<number> {
+    const factors = {
+      length: Math.min(content.length / 5000, 1),
+      hasNumbers: /\d+/.test(content) ? 0.2 : 0,
+      hasCode: /```|<code>/.test(content) ? 0.3 : 0,
+      hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.2 : 0,
+    };
+
+    let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
+    return Math.min(Math.max(score, 0), 1);
+  }
+
+  async generateEmbedding(text: string): Promise<EmbeddingResult> {
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text.slice(0, 8191),
+    });
+
+    return {
+      embedding: response.data[0].embedding,
+      tokensUsed: response.usage.total_tokens,
+    };
+  }
+}
+
+/**
+ * DeepSeek提供商
+ */
+class DeepSeekProvider extends AIProvider {
+  private client: OpenAI;
+
+  constructor(config: AIConfig) {
+    super(config);
+    this.client = new OpenAI({
+      apiKey: config.apiKey || process.env.DEEPSEEK_API_KEY,
+      baseURL: config.baseURL || 'https://api.deepseek.com',
+    });
+  }
+
+  async generateSummary(content: string): Promise<string> {
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，3-5句话概括核心内容。',
+        },
+        {
+          role: 'user',
+          content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
+        },
+      ],
+      max_tokens: this.config.maxTokens || 500,
+      temperature: this.config.temperature || 0.7,
+    });
+
+    return response.choices[0].message.content || '';
+  }
+
+  async extractKeywords(content: string): Promise<string[]> {
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: '请从文章中提取5-10个最重要的关键词，用逗号分隔。',
+        },
+        {
+          role: 'user',
+          content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
+        },
+      ],
+      max_tokens: 200,
+      temperature: 0.3,
+    });
+
+    const text = response.choices[0].message.content || '';
+    return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+  }
+
+  async categorize(content: string): Promise<string> {
+    const categories = `AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps, 数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业, 行业新闻, 技术趋势, 工具/资源, 教程/指南`;
+
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'deepseek-chat',
+      messages: [
+        {
+          role: 'user',
+          content: `请将文章分类到以下类别之一：${categories}\n\n文章内容：\n${content.slice(0, 2000)}`,
+        },
+      ],
+      max_tokens: 50,
+      temperature: 0.3,
+    });
+
+    return (response.choices[0].message.content || '').trim();
+  }
+
+  async analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'> {
+    const response = await this.client.chat.completions.create({
+      model: this.config.model || 'deepseek-chat',
+      messages: [
+        {
+          role: 'user',
+          content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
+        },
+      ],
+      max_tokens: 20,
+      temperature: 0.1,
+    });
+
+    const sentiment = (response.choices[0].message.content || '').trim().toLowerCase();
+    if (sentiment.includes('positive')) return 'positive';
+    if (sentiment.includes('negative')) return 'negative';
+    return 'neutral';
+  }
+
+  async calculateImportance(content: string): Promise<number> {
+    const factors = {
+      length: Math.min(content.length / 5000, 1),
+      hasNumbers: /\d+/.test(content) ? 0.2 : 0,
+      hasCode: /```|<code>/.test(content) ? 0.3 : 0,
+      hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.2 : 0,
+    };
+
+    let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
+    return Math.min(Math.max(score, 0), 1);
+  }
+
+  async generateEmbedding(text: string): Promise<EmbeddingResult> {
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text.slice(0, 8191),
+    });
+
+    return {
+      embedding: response.data[0].embedding,
+      tokensUsed: response.usage.total_tokens,
+    };
+  }
+}
+
+/**
+ * AI服务工厂
+ */
+export function createAIProvider(config: AIConfig): AIProvider {
+  switch (config.provider) {
+    case 'openai':
+      return new OpenAIProvider(config);
+    case 'anthropic':
+      return new AnthropicProvider(config);
+    case 'deepseek':
+      return new DeepSeekProvider(config);
+    case 'ollama':
+      return new OpenAIProvider({
+        ...config,
+        baseURL: config.baseURL || 'http://localhost:11434/v1',
+        apiKey: 'ollama',
+      });
+    case 'custom':
+      // 自定义 API（OpenAI 兼容格式）
+      return new OpenAIProvider({
+        ...config,
+        baseURL: config.baseURL,
+        apiKey: config.apiKey || 'custom',
+      });
+    default:
+      throw new Error(`Unsupported AI provider: ${config.provider}`);
+  }
+}
+
+/**
+ * AI服务便捷类
+ */
+export class AIService {
+  private provider: AIProvider;
+
+  constructor(config: AIConfig) {
+    this.provider = createAIProvider(config);
+  }
+
+  async analyzeArticle(content: string, options: {
+    summary?: boolean;
+    keywords?: boolean;
+    category?: boolean;
+    sentiment?: boolean;
+    importance?: boolean;
+  } = {}): Promise<AIAnalysisResult> {
+    const {
+      summary = true,
+      keywords = true,
+      category = true,
+      sentiment = false,
+      importance = true,
+    } = options;
+
+    const result: AIAnalysisResult = {};
+
+    try {
+      if (summary) {
+        result.summary = await this.provider.generateSummary(content);
+      }
+    } catch {}
+
+    try {
+      if (keywords) {
+        result.keywords = await this.provider.extractKeywords(content);
+      }
+    } catch {}
+
+    try {
+      if (category) {
+        result.category = await this.provider.categorize(content);
+      }
+    } catch {}
+
+    try {
+      if (sentiment) {
+        result.sentiment = await this.provider.analyzeSentiment(content);
+      }
+    } catch {}
+
+    try {
+      if (importance) {
+        result.importanceScore = await this.provider.calculateImportance(content);
+      }
+    } catch {}
+
+    return result;
+  }
+
+  async generateEmbedding(text: string): Promise<EmbeddingResult> {
+    return this.provider.generateEmbedding(text);
+  }
+}
+
+/**
+ * 默认AI服务实例
+ */
+export function getDefaultAIService(): AIService {
+  const provider = (process.env.AI_PROVIDER || 'openai') as AIConfig['provider'];
+
+  // 根据提供商获取默认模型
+  const defaultModel = process.env.AI_MODEL || (
+    provider === 'openai' ? 'gpt-4o' :
+    provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
+    provider === 'deepseek' ? 'deepseek-chat' :
+    provider === 'ollama' ? 'llama3' :
+    provider === 'custom' ? process.env.CUSTOM_API_MODEL || 'gpt-3.5-turbo' :
+    'gpt-4o'
+  );
+
+  // 自定义 API 配置
+  if (provider === 'custom') {
+    return new AIService({
+      provider: 'custom',
+      model: process.env.CUSTOM_API_MODEL || defaultModel,
+      apiKey: process.env.CUSTOM_API_KEY,
+      baseURL: process.env.CUSTOM_API_BASE_URL,
+      maxTokens: 2000,
+      temperature: 0.7,
+    });
+  }
+
+  return new AIService({
+    provider,
+    model: defaultModel,
+    maxTokens: 2000,
+    temperature: 0.7,
+  });
+}
+
+export * from './client';

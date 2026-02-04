@@ -1,0 +1,100 @@
+# =====================================================
+# Rss-Easy Docker Compose 配置
+# 一键启动所有服务
+# =====================================================
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: rss-easy-db
+    environment:
+      POSTGRES_USER: rss_easy
+      POSTGRES_PASSWORD: rss_easy_password
+      POSTGRES_DB: rss_easy
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rss_easy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存和队列
+  redis:
+    image: redis:7-alpine
+    container_name: rss-easy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 数据库初始化服务（自动运行迁移和种子数据）
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rss-easy-init
+    user: root
+    environment:
+      DATABASE_URL: postgresql://rss_easy:rss_easy_password@postgres:5432/rss_easy
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Running Prisma generate...' &&
+        npx prisma@6.19.2 generate &&
+        echo 'Running database migrations...' &&
+        npx prisma@6.19.2 db push --accept-data-loss &&
+        echo 'Seeding initial data...' &&
+        npx tsx prisma/seed.ts &&
+        echo 'Initialization complete!'
+      "
+    volumes:
+      - ./prisma:/app/prisma
+
+  # 应用服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rss-easy-app
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://rss_easy:rss_easy_password@postgres:5432/rss_easy
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-secret-change-in-production}
+      NEXTAUTH_URL: http://localhost:3000
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_MODEL: ${AI_MODEL:-gpt-4o}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      CUSTOM_API_BASE_URL: ${CUSTOM_API_BASE_URL}
+      CUSTOM_API_KEY: ${CUSTOM_API_KEY}
+      CUSTOM_API_MODEL: ${CUSTOM_API_MODEL}
+      NODE_ENV: ${NODE_ENV:-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
