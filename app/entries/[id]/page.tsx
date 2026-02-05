@@ -1,5 +1,5 @@
 /**
- * 文章详情页面
+ * 文章详情页面 - 全屏布局
  */
 
 'use client';
@@ -11,32 +11,45 @@ import { zhCN } from 'date-fns/locale';
 import {
   ArrowLeft,
   Star,
-  StarOff,
-  Archive,
   ExternalLink,
   Sparkles,
-  Copy,
+  Bookmark,
+  Clock,
+  Calendar,
+  User,
 } from 'lucide-react';
+import { Button, Card, Spin, Empty, Tag, Space, Tooltip, message, Divider, Typography } from 'antd';
+import { AppHeader } from '@/components/layout/app-header';
+import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
+import { handleApiSuccess, handleApiError } from '@/lib/feedback';
+import { cn } from '@/lib/utils';
+
+const { Title, Text, Paragraph } = Typography;
 
 export default function EntryPage() {
   const params = useParams();
   const router = useRouter();
   const entryId = params.id as string;
 
-  const { data: entry, isLoading } = trpc.entries.byId.useQuery({ id: entryId });
+  const { data: entry, isLoading, refetch } = trpc.entries.byId.useQuery({ id: entryId });
   const analyzeMutation = trpc.entries.analyze.useMutation();
-  const markAsStarred = trpc.entries.markAsStarred.useMutation();
+  const toggleStar = trpc.entries.toggleStar.useMutation();
+  const toggleRead = trpc.entries.toggleRead.useMutation();
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   if (isLoading) {
     return (
-      <div className="container py-6 max-w-4xl">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-3/4" />
-          <div className="h-4 bg-muted rounded w-1/4" />
-          <div className="h-64 bg-muted rounded" />
+      <div className="h-screen flex flex-col overflow-hidden">
+        <AppHeader />
+        <div className="flex-1 flex overflow-hidden">
+          <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 hidden lg:block">
+            <AppSidebar />
+          </aside>
+          <main className="flex-1 flex items-center justify-center">
+            <Spin size="large" />
+          </main>
         </div>
       </div>
     );
@@ -44,8 +57,16 @@ export default function EntryPage() {
 
   if (!entry) {
     return (
-      <div className="container py-6 text-center text-muted-foreground">
-        文章不存在
+      <div className="h-screen flex flex-col overflow-hidden">
+        <AppHeader />
+        <div className="flex-1 flex overflow-hidden">
+          <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 hidden lg:block">
+            <AppSidebar />
+          </aside>
+          <main className="flex-1 flex items-center justify-center">
+            <Empty description="文章不存在" />
+          </main>
+        </div>
       </div>
     );
   }
@@ -57,157 +78,202 @@ export default function EntryPage() {
         entryId: entry.id,
         analysisType: type,
       });
-      // 刷新页面数据
-      router.refresh();
+      handleApiSuccess('AI 分析完成');
+      refetch();
+    } catch (error) {
+      handleApiError(error, 'AI 分析失败');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const toggleStar = async () => {
-    await markAsStarred.mutateAsync({
-      entryIds: [entry.id],
-      starred: !entry.isStarred,
-    });
-    router.refresh();
+  const handleToggleStar = async () => {
+    try {
+      await toggleStar.mutateAsync({ entryId: entry.id });
+      refetch();
+    } catch (error) {
+      handleApiError(error, '操作失败');
+    }
+  };
+
+  const handleToggleRead = async () => {
+    try {
+      await toggleRead.mutateAsync({ entryId: entry.id });
+      refetch();
+    } catch (error) {
+      handleApiError(error, '操作失败');
+    }
+  };
+
+  const formatReadingTime = (seconds?: number | null) => {
+    if (!seconds) return '';
+    const minutes = Math.ceil(seconds / 60);
+    return minutes > 0 ? `${minutes} 分钟阅读` : '';
   };
 
   return (
-    <div className="container py-6 max-w-4xl">
-      {/* 返回按钮 */}
-      <button
-        onClick={() => router.back()}
-        className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        返回
-      </button>
+    <div className="h-screen flex flex-col overflow-hidden">
+      <AppHeader />
 
-      {/* 文章头部 */}
-      <article className="bg-card border rounded-lg overflow-hidden">
-        {/* 操作栏 */}
-        <div className="flex items-center justify-between p-4 border-b bg-muted/30">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              {entry.feed.iconUrl && (
-                <img src={entry.feed.iconUrl} alt="" className="w-4 h-4 rounded" />
-              )}
-              {entry.feed.title}
-            </span>
-            <span className="text-muted-foreground">·</span>
-            <span className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(entry.publishedAt || entry.createdAt), {
-                addSuffix: true,
-                locale: zhCN,
-              })}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleStar}
-              className="p-2 hover:bg-secondary rounded-md transition-colors"
-              title={entry.isStarred ? '取消星标' : '添加星标'}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 侧边栏 */}
+        <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 hidden lg:block">
+          <AppSidebar />
+        </aside>
+
+        {/* 主内容区 */}
+        <main className="flex-1 overflow-y-auto bg-background/30">
+          <div className="max-w-4xl mx-auto px-6 py-8">
+            {/* 返回按钮 */}
+            <Button
+              type="text"
+              icon={<ArrowLeft className="h-4 w-4" />}
+              onClick={() => router.back()}
+              className="mb-4 hover:bg-muted/30"
             >
-              {entry.isStarred ? (
-                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-              ) : (
-                <StarOff className="h-4 w-4 text-muted-foreground" />
-              )}
-            </button>
-            <a
-              href={entry.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 hover:bg-secondary rounded-md transition-colors"
-              title="在新窗口打开"
-            >
-              <ExternalLink className="h-4 w-4 text-muted-foreground" />
-            </a>
-          </div>
-        </div>
+              返回
+            </Button>
 
-        {/* 标题 */}
-        <h1 className="px-6 pt-6 pb-4 text-2xl font-bold">{entry.title}</h1>
-
-        {/* AI 摘要 */}
-        {entry.aiSummary && (
-          <div className="px-6 pb-4">
-            <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400 font-medium mb-2">
-                <Sparkles className="h-4 w-4" />
-                AI 摘要
-              </div>
-              <p className="text-sm">{entry.aiSummary}</p>
-            </div>
-          </div>
-        )}
-
-        {/* 如果没有 AI 摘要，显示分析按钮 */}
-        {!entry.aiSummary && (
-          <div className="px-6 pb-4">
-            <button
-              onClick={() => handleAnalyze('summary')}
-              disabled={isAnalyzing}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-lg transition-colors disabled:opacity-50"
-            >
-              <Sparkles className="h-4 w-4" />
-              {isAnalyzing ? '生成中...' : '生成 AI 摘要'}
-            </button>
-          </div>
-        )}
-
-        {/* 正文内容 */}
-        <div className="px-6 pb-6">
-          {entry.summary && !entry.content && (
-            <p className="text-muted-foreground leading-relaxed">{entry.summary}</p>
-          )}
-          {entry.content && (
-            <div
-              className="prose dark:prose-invert max-w-none"
-              dangerouslySetInnerHTML={{ __html: entry.content }}
-            />
-          )}
-        </div>
-
-        {/* AI 分析信息 */}
-        {(entry.aiKeywords?.length || entry.aiCategory || entry.aiSentiment) && (
-          <div className="px-6 py-4 border-t bg-muted/30">
-            <h3 className="text-sm font-medium mb-3">AI 分析</h3>
-            <div className="flex flex-wrap gap-2">
-              {entry.aiCategory && (
-                <span className="px-3 py-1 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-full text-sm">
-                  分类: {entry.aiCategory}
-                </span>
-              )}
-              {entry.aiSentiment && (
-                <span className="px-3 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full text-sm">
-                  情感: {entry.aiSentiment}
-                </span>
-              )}
-              {entry.aiImportanceScore && entry.aiImportanceScore > 0.7 && (
-                <span className="px-3 py-1 bg-red-500/10 text-red-600 dark:text-red-400 rounded-full text-sm">
-                  重要性: {(entry.aiImportanceScore * 100).toFixed(0)}%
-                </span>
-              )}
-              {entry.aiKeywords?.map((keyword) => (
-                <span
-                  key={keyword}
-                  className="px-3 py-1 bg-green-500/10 text-green-600 dark:text-green-400 rounded-full text-sm"
+            {/* 文章头部 */}
+            <Card className="mb-6 border-border/60">
+              {/* 订阅源信息 */}
+              <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border/60">
+                {entry.feed.iconUrl && (
+                  <img src={entry.feed.iconUrl} alt="" className="w-6 h-6 rounded-md" />
+                )}
+                <span className="text-sm text-muted-foreground">{entry.feed.title}</span>
+                <a
+                  href={entry.feed.siteUrl || entry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto"
                 >
-                  {keyword}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </article>
+                  <Button type="link" size="small" icon={<ExternalLink className="h-4 w-4" />}>
+                    访问网站
+                  </Button>
+                </a>
+              </div>
 
-      {/* 相关文章 */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-4">相关文章</h2>
-        <div className="text-center text-muted-foreground py-8">
-          相关文章推荐功能开发中...
-        </div>
+              {/* 标题 */}
+              <Title level={2} className="mb-4">
+                <a
+                  href={entry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-primary transition-colors"
+                >
+                  {entry.title}
+                </a>
+              </Title>
+
+              {/* 元信息 */}
+              <Space size="large" wrap className="text-sm text-muted-foreground mb-6">
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-4 w-4" />
+                  {entry.publishedAt && formatDistanceToNow(new Date(entry.publishedAt), {
+                    addSuffix: true,
+                    locale: zhCN,
+                  })}
+                </span>
+                {entry.readingTime && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-4 w-4" />
+                    {formatReadingTime(entry.readingTime)}
+                  </span>
+                )}
+                <span className="flex items-center gap-1">
+                  <User className="h-4 w-4" />
+                  {entry.author || '未知作者'}
+                </span>
+              </Space>
+
+              {/* AI 标签 */}
+              {entry.aiCategory && (
+                <div className="mb-4">
+                  <Tag
+                    icon={<Sparkles className="h-3 w-3" />}
+                    className="rounded-full border-primary/30 bg-primary/5 text-primary/80"
+                  >
+                    {entry.aiCategory}
+                  </Tag>
+                </div>
+              )}
+
+              {/* 操作按钮 */}
+              <Space>
+                <Tooltip title={entry.isRead ? '标记为未读' : '标记为已读'}>
+                  <Button
+                    type={entry.isRead ? 'default' : 'primary'}
+                    size="small"
+                    icon={<Bookmark className={cn('h-4 w-4', entry.isRead && 'fill-current')} />}
+                    onClick={handleToggleRead}
+                  >
+                    {entry.isRead ? '未读' : '已读'}
+                  </Button>
+                </Tooltip>
+                <Tooltip title={entry.isStarred ? '取消星标' : '添加星标'}>
+                  <Button
+                    type={entry.isStarred ? 'primary' : 'default'}
+                    size="small"
+                    icon={<Star className={cn('h-4 w-4', entry.isStarred && 'fill-current text-yellow-500')} />}
+                    onClick={handleToggleStar}
+                  >
+                    {entry.isStarred ? '已星标' : '星标'}
+                  </Button>
+                </Tooltip>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<Sparkles className="h-4 w-4" />}
+                  onClick={() => handleAnalyze('summary')}
+                  loading={isAnalyzing}
+                >
+                  AI 摘要
+                </Button>
+                <Button
+                  type="default"
+                  size="small"
+                  icon={<ExternalLink className="h-4 w-4" />}
+                  href={entry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  原文
+                </Button>
+              </Space>
+            </Card>
+
+            {/* AI 摘要 */}
+            {entry.aiSummary && (
+              <Card className="mb-6 bg-gradient-to-br from-primary/5 to-purple-500/5 border-primary/10" title={
+                <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                  <Sparkles className="h-4 w-4" />
+                  AI 摘要
+                </div>
+              }>
+                <Paragraph className="text-foreground/80 mb-0">
+                  {entry.aiSummary}
+                </Paragraph>
+              </Card>
+            )}
+
+            {/* 文章内容 */}
+            <Card title="文章内容" className="border-border/60">
+              {entry.content ? (
+                <div
+                  className="prose prose-sm max-w-none dark:prose-invert"
+                  dangerouslySetInnerHTML={{ __html: entry.content }}
+                />
+              ) : entry.summary ? (
+                <Paragraph className="text-muted-foreground mb-0">
+                  {entry.summary}
+                </Paragraph>
+              ) : (
+                <Empty description="暂无内容" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
+            </Card>
+          </div>
+        </main>
       </div>
     </div>
   );

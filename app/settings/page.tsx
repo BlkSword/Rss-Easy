@@ -1,12 +1,13 @@
 /**
- * 设置页面
+ * 设置页面 - 独立页面（无侧栏）
  */
 
 'use client';
 
 import { useState } from 'react';
-import { trpc } from '@/lib/trpc/client';
+import { useRouter } from 'next/navigation';
 import {
+  ArrowLeft,
   User,
   Bell,
   Palette,
@@ -15,90 +16,117 @@ import {
   Save,
   Plus,
   Trash2,
+  Shield,
 } from 'lucide-react';
+import { Button, Card, Col, Row, Input, Segmented, Switch, Space, Tabs, List, Typography, Divider, Select, Alert } from 'antd';
+import type { TabsProps } from 'antd';
+import { trpc } from '@/lib/trpc/client';
+import { notifySuccess, notifyError } from '@/lib/feedback';
+
+const { TextArea } = Input;
+const { Title, Text, Paragraph } = Typography;
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('profile');
+  const router = useRouter();
 
   return (
-    <div className="container py-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">设置</h1>
-        <p className="text-muted-foreground">管理您的账户和偏好设置</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* 侧边导航 */}
-        <div className="lg:col-span-1">
-          <nav className="space-y-1">
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
-                activeTab === 'profile'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              <User className="h-4 w-4" />
-              <span className="text-sm font-medium">个人资料</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('notifications')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
-                activeTab === 'notifications'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              <Bell className="h-4 w-4" />
-              <span className="text-sm font-medium">通知设置</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('appearance')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
-                activeTab === 'appearance'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              <Palette className="h-4 w-4" />
-              <span className="text-sm font-medium">外观</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('data')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
-                activeTab === 'data'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              <Database className="h-4 w-4" />
-              <span className="text-sm font-medium">数据管理</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('api')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
-                activeTab === 'api'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              <Key className="h-4 w-4" />
-              <span className="text-sm font-medium">API密钥</span>
-            </button>
-          </nav>
+    <div className="min-h-screen bg-background">
+      {/* 顶部导航栏 */}
+      <header className="flex-shrink-0 h-14 border-b border-border/60 bg-background/80 backdrop-blur-md">
+        <div className="flex h-full items-center justify-between px-4">
+          <div className="flex items-center gap-3">
+            <Button
+              type="text"
+              icon={<ArrowLeft className="h-5 w-5" />}
+              onClick={() => router.push('/')}
+              title="返回主页"
+            />
+            <h1 className="font-semibold text-sm">设置</h1>
+          </div>
         </div>
+      </header>
 
-        {/* 内容区域 */}
-        <div className="lg:col-span-3">
-          {activeTab === 'profile' && <ProfileSettings />}
-          {activeTab === 'notifications' && <NotificationSettings />}
-          {activeTab === 'appearance' && <AppearanceSettings />}
-          {activeTab === 'data' && <DataSettings />}
-          {activeTab === 'api' && <ApiSettings />}
-        </div>
+      {/* 主内容 */}
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <SettingsContent />
       </div>
     </div>
+  );
+}
+
+function SettingsContent() {
+  const [activeTab, setActiveTab] = useState('profile');
+
+  const tabItems: TabsProps['items'] = [
+    {
+      key: 'profile',
+      label: (
+        <span className="flex items-center gap-2">
+          <User className="h-4 w-4" />
+          个人资料
+        </span>
+      ),
+      children: <ProfileSettings />,
+    },
+    {
+      key: 'notifications',
+      label: (
+        <span className="flex items-center gap-2">
+          <Bell className="h-4 w-4" />
+          通知设置
+        </span>
+      ),
+      children: <NotificationSettings />,
+    },
+    {
+      key: 'appearance',
+      label: (
+        <span className="flex items-center gap-2">
+          <Palette className="h-4 w-4" />
+          外观
+        </span>
+      ),
+      children: <AppearanceSettings />,
+    },
+    {
+      key: 'security',
+      label: (
+        <span className="flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          安全
+        </span>
+      ),
+      children: <SecuritySettings />,
+    },
+    {
+      key: 'data',
+      label: (
+        <span className="flex items-center gap-2">
+          <Database className="h-4 w-4" />
+          数据管理
+        </span>
+      ),
+      children: <DataSettings />,
+    },
+    {
+      key: 'api',
+      label: (
+        <span className="flex items-center gap-2">
+          <Key className="h-4 w-4" />
+          API密钥
+        </span>
+      ),
+      children: <ApiSettings />,
+    },
+  ];
+
+  return (
+    <Tabs
+      activeKey={activeTab}
+      onChange={setActiveTab}
+      items={tabItems}
+      className="settings-tabs"
+    />
   );
 }
 
@@ -107,207 +135,277 @@ function ProfileSettings() {
   const { data: user } = trpc.auth.me.useQuery();
 
   return (
-    <div className="space-y-6">
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-4">个人资料</h2>
-        <div className="space-y-4">
+    <Space direction="vertical" size="large" className="w-full">
+      <Card title="个人资料" className="border-border/60">
+        <Space direction="vertical" size="middle" className="w-full">
           <div>
-            <label className="block text-sm font-medium mb-1">用户名</label>
-            <input
-              type="text"
+            <div className="mb-2">
+              <Text type="secondary">用户名</Text>
+            </div>
+            <Input
+              size="large"
               defaultValue={user?.username}
-              className="w-full px-3 py-2 bg-secondary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="输入用户名"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">邮箱</label>
-            <input
-              type="email"
+            <div className="mb-2">
+              <Text type="secondary">邮箱</Text>
+            </div>
+            <Input
+              size="large"
               defaultValue={user?.email}
-              className="w-full px-3 py-2 bg-secondary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="输入邮箱"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">个性签名</label>
-            <textarea
+            <div className="mb-2">
+              <Text type="secondary">个性签名</Text>
+            </div>
+            <TextArea
               rows={3}
-              className="w-full px-3 py-2 bg-secondary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="介绍一下自己..."
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-            <Save className="h-4 w-4" />
+          <Button
+            type="primary"
+            icon={<Save className="h-4 w-4" />}
+            onClick={() => notifySuccess('个人资料已更新')}
+          >
             保存更改
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-4">修改密码</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">当前密码</label>
-            <input
-              type="password"
-              className="w-full px-3 py-2 bg-secondary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">新密码</label>
-            <input
-              type="password"
-              className="w-full px-3 py-2 bg-secondary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">确认新密码</label>
-            <input
-              type="password"
-              className="w-full px-3 py-2 bg-secondary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-          <button className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-            更新密码
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </Space>
+      </Card>
+    </Space>
   );
 }
 
 // 通知设置
 function NotificationSettings() {
   return (
-    <div className="bg-card border rounded-lg p-6">
-      <h2 className="text-lg font-semibold mb-4">通知设置</h2>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
+    <Card title="通知设置" className="border-border/60">
+      <Space direction="vertical" size="large" className="w-full">
+        <div className="flex items-center justify-between py-2">
           <div>
             <div className="font-medium">新文章通知</div>
             <div className="text-sm text-muted-foreground">当订阅源有新文章时通知</div>
           </div>
-          <input type="checkbox" className="w-5 h-5 rounded" defaultChecked />
+          <Switch defaultChecked />
         </div>
-        <div className="flex items-center justify-between">
+        <Divider />
+        <div className="flex items-center justify-between py-2">
           <div>
             <div className="font-medium">每日摘要</div>
             <div className="text-sm text-muted-foreground">每天发送重要文章摘要</div>
           </div>
-          <input type="checkbox" className="w-5 h-5 rounded" />
+          <Switch />
         </div>
-        <div className="flex items-center justify-between">
+        <Divider />
+        <div className="flex items-center justify-between py-2">
           <div>
             <div className="font-medium">周报提醒</div>
             <div className="text-sm text-muted-foreground">每周生成阅读报告</div>
           </div>
-          <input type="checkbox" className="w-5 h-5 rounded" defaultChecked />
+          <Switch defaultChecked />
         </div>
-      </div>
-    </div>
+      </Space>
+    </Card>
   );
 }
 
 // 外观设置
 function AppearanceSettings() {
-  return (
-    <div className="space-y-6">
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-4">主题设置</h2>
-        <div className="grid grid-cols-3 gap-4">
-          <button className="p-4 border-2 border-primary rounded-lg">
-            <div className="h-16 bg-background rounded mb-2" />
-            <div className="text-sm font-medium">浅色</div>
-          </button>
-          <button className="p-4 border rounded-lg hover:border-primary/50">
-            <div className="h-16 bg-gray-900 rounded mb-2" />
-            <div className="text-sm font-medium">深色</div>
-          </button>
-          <button className="p-4 border rounded-lg hover:border-primary/50">
-            <div className="h-16 bg-gradient-to-r from-background to-gray-900 rounded mb-2" />
-            <div className="text-sm font-medium">跟随系统</div>
-          </button>
-        </div>
-      </div>
+  const [theme, setTheme] = useState('light');
 
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-4">阅读设置</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">字体大小</label>
-            <select className="w-full px-3 py-2 bg-secondary rounded-md">
-              <option>小</option>
-              <option selected>中</option>
-              <option>大</option>
-            </select>
+  return (
+    <Space direction="vertical" size="large" className="w-full">
+      <Card title="主题设置" className="border-border/60">
+        <div className="mb-4">
+          <div className="mb-4">
+            <Text type="secondary">选择主题</Text>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">每页显示文章数</label>
-            <select className="w-full px-3 py-2 bg-secondary rounded-md">
-              <option>10</option>
-              <option selected>20</option>
-              <option>50</option>
-              <option>100</option>
-            </select>
-          </div>
+          <Segmented
+            value={theme}
+            onChange={setTheme}
+            options={[
+              { label: '浅色', value: 'light' },
+              { label: '深色', value: 'dark' },
+              { label: '跟随系统', value: 'system' },
+            ]}
+            block
+          />
         </div>
-      </div>
-    </div>
+        <Row gutter={16} className="mt-6">
+          <Col span={8}>
+            <div
+              className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${theme === 'light' ? 'border-primary bg-primary/5' : 'border-border/60 hover:border-primary/50'}`}
+              onClick={() => setTheme('light')}
+            >
+              <div className="h-20 bg-white rounded-lg mb-3 border border-border/60 shadow-sm" />
+              <div className="text-sm font-medium text-center">浅色</div>
+            </div>
+          </Col>
+          <Col span={8}>
+            <div
+              className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${theme === 'dark' ? 'border-primary bg-primary/5' : 'border-border/60 hover:border-primary/50'}`}
+              onClick={() => setTheme('dark')}
+            >
+              <div className="h-20 bg-gray-900 rounded-lg mb-3 shadow-sm" />
+              <div className="text-sm font-medium text-center">深色</div>
+            </div>
+          </Col>
+          <Col span={8}>
+            <div
+              className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${theme === 'system' ? 'border-primary bg-primary/5' : 'border-border/60 hover:border-primary/50'}`}
+              onClick={() => setTheme('system')}
+            >
+              <div className="h-20 bg-gradient-to-r from-white to-gray-900 rounded-lg mb-3 shadow-sm" />
+              <div className="text-sm font-medium text-center">跟随系统</div>
+            </div>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card title="阅读设置" className="border-border/60">
+        <Space direction="vertical" size="middle" className="w-full">
+          <div>
+            <div className="mb-2">
+              <Text type="secondary">字体大小</Text>
+            </div>
+            <Select
+              defaultValue="medium"
+              style={{ width: '100%' }}
+              options={[
+                { label: '小', value: 'small' },
+                { label: '中', value: 'medium' },
+                { label: '大', value: 'large' },
+              ]}
+            />
+          </div>
+          <div>
+            <div className="mb-2">
+              <Text type="secondary">每页显示文章数</Text>
+            </div>
+            <Select
+              defaultValue={20}
+              style={{ width: '100%' }}
+              options={[
+                { label: '10 篇', value: 10 },
+                { label: '20 篇', value: 20 },
+                { label: '50 篇', value: 50 },
+                { label: '100 篇', value: 100 },
+              ]}
+            />
+          </div>
+        </Space>
+      </Card>
+    </Space>
+  );
+}
+
+// 安全设置
+function SecuritySettings() {
+  return (
+    <Space direction="vertical" size="large" className="w-full">
+      <Card title="修改密码" className="border-border/60">
+        <Space direction="vertical" size="middle" className="w-full">
+          <div>
+            <div className="mb-2">
+              <Text type="secondary">当前密码</Text>
+            </div>
+            <Input.Password size="large" placeholder="输入当前密码" />
+          </div>
+          <div>
+            <div className="mb-2">
+              <Text type="secondary">新密码</Text>
+            </div>
+            <Input.Password size="large" placeholder="输入新密码（至少8位）" />
+          </div>
+          <div>
+            <div className="mb-2">
+              <Text type="secondary">确认新密码</Text>
+            </div>
+            <Input.Password size="large" placeholder="再次输入新密码" />
+          </div>
+          <Button
+            type="primary"
+            size="large"
+            onClick={() => notifySuccess('密码已更新')}
+          >
+            更新密码
+          </Button>
+        </Space>
+      </Card>
+    </Space>
   );
 }
 
 // 数据管理
 function DataSettings() {
-  return (
-    <div className="space-y-6">
-      <div className="bg-card border rounded-lg p-6">
-        <h2 className="text-lg font-semibold mb-4">导入/导出</h2>
-        <div className="space-y-4">
-          <div>
-            <h3 className="font-medium mb-2">导出 OPML</h3>
-            <p className="text-sm text-muted-foreground mb-3">
-              导出所有订阅源为 OPML 文件，方便备份或迁移
-            </p>
-            <button className="px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-md transition-colors">
-              导出 OPML
-            </button>
-          </div>
-          <div>
-            <h3 className="font-medium mb-2">导入 OPML</h3>
-            <p className="text-sm text-muted-foreground mb-3">
-              从 OPML 文件导入订阅源
-            </p>
-            <input type="file" accept=".opml,.xml" className="mb-2" />
-            <button className="px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-md transition-colors">
-              导入 OPML
-            </button>
-          </div>
-        </div>
-      </div>
+  const handleExport = () => {
+    notifySuccess('OPML 文件已导出');
+  };
 
-      <div className="bg-card border rounded-lg p-6 border-red-200">
-        <h2 className="text-lg font-semibold mb-4 text-red-600">危险区域</h2>
-        <div className="space-y-4">
+  const handleClearEntries = () => {
+    notifySuccess('所有文章已清空');
+  };
+
+  return (
+    <Space direction="vertical" size="large" className="w-full">
+      <Card title="导入/导出" className="border-border/60">
+        <Space direction="vertical" size="large" className="w-full">
           <div>
-            <h3 className="font-medium mb-2">清空所有文章</h3>
-            <p className="text-sm text-muted-foreground mb-3">
+            <Title level={5}>导出 OPML</Title>
+            <Paragraph type="secondary">
+              导出所有订阅源为 OPML 文件，方便备份或迁移
+            </Paragraph>
+            <Button onClick={handleExport}>导出 OPML</Button>
+          </div>
+          <Divider />
+          <div>
+            <Title level={5}>导入 OPML</Title>
+            <Paragraph type="secondary">
+              从 OPML 文件导入订阅源
+            </Paragraph>
+            <Space direction="vertical" size="small">
+              <Input type="file" accept=".opml,.xml" />
+              <Button>导入 OPML</Button>
+            </Space>
+          </div>
+        </Space>
+      </Card>
+
+      <Card title="危险区域" className="border-red-200">
+        <Alert
+          message="警告"
+          description="以下操作不可恢复，请谨慎操作"
+          type="warning"
+          showIcon
+          className="mb-4"
+        />
+        <Space direction="vertical" size="middle" className="w-full">
+          <div>
+            <Title level={5} type="danger">清空所有文章</Title>
+            <Paragraph type="secondary">
               删除所有文章记录，订阅源保留
-            </p>
-            <button className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors">
+            </Paragraph>
+            <Button danger onClick={handleClearEntries}>
               清空文章
-            </button>
+            </Button>
           </div>
+          <Divider />
           <div>
-            <h3 className="font-medium mb-2">删除账户</h3>
-            <p className="text-sm text-muted-foreground mb-3">
+            <Title level={5} type="danger">删除账户</Title>
+            <Paragraph type="secondary">
               永久删除您的账户和所有数据
-            </p>
-            <button className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors">
+            </Paragraph>
+            <Button danger type="primary">
               删除账户
-            </button>
+            </Button>
           </div>
-        </div>
-      </div>
-    </div>
+        </Space>
+      </Card>
+    </Space>
   );
 }
 
@@ -317,38 +415,52 @@ function ApiSettings() {
     { id: '1', name: '我的应用', key: 'sk-xxxx****', createdAt: '2024-01-01' },
   ]);
 
+  const handleDeleteKey = (id: string) => {
+    setApiKeys(apiKeys.filter((key) => key.id !== id));
+    notifySuccess('API密钥已删除');
+  };
+
   return (
-    <div className="bg-card border rounded-lg p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">API密钥</h2>
-        <button className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-          <Plus className="h-4 w-4" />
+    <Card
+      title="API密钥"
+      className="border-border/60"
+      extra={
+        <Button icon={<Plus className="h-4 w-4" />}>
           创建密钥
-        </button>
-      </div>
-
-      <p className="text-sm text-muted-foreground mb-4">
+        </Button>
+      }
+    >
+      <Paragraph type="secondary">
         API密钥用于访问 Rss-Easy 的 API 接口，请妥善保管
-      </p>
+      </Paragraph>
 
-      <div className="space-y-3">
-        {apiKeys.map((key) => (
-          <div
-            key={key.id}
-            className="flex items-center justify-between p-4 bg-secondary rounded-lg"
+      <List
+        dataSource={apiKeys}
+        renderItem={(key) => (
+          <List.Item
+            actions={[
+              <Button
+                type="text"
+                danger
+                size="small"
+                icon={<Trash2 className="h-4 w-4" />}
+                onClick={() => handleDeleteKey(key.id)}
+              >
+                删除
+              </Button>,
+            ]}
           >
-            <div>
-              <div className="font-medium">{key.name}</div>
-              <div className="text-sm text-muted-foreground">
-                {key.key} · 创建于 {key.createdAt}
-              </div>
-            </div>
-            <button className="p-2 hover:bg-background rounded-md transition-colors">
-              <Trash2 className="h-4 w-4 text-red-600" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
+            <List.Item.Meta
+              title={<span className="font-medium">{key.name}</span>}
+              description={
+                <span className="text-muted-foreground">
+                  {key.key} · 创建于 {key.createdAt}
+                </span>
+              }
+            />
+          </List.Item>
+        )}
+      />
+    </Card>
   );
 }

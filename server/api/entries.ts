@@ -204,6 +204,81 @@ export const entriesRouter = router({
     }),
 
   /**
+   * 切换星标状态
+   */
+  toggleStar: protectedProcedure
+    .input(z.object({ entryId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const entry = await ctx.db.entry.findFirst({
+        where: {
+          id: input.entryId,
+          feed: { userId: ctx.userId },
+        },
+        select: { isStarred: true },
+      });
+
+      if (!entry) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '文章不存在' });
+      }
+
+      await ctx.db.entry.update({
+        where: { id: input.entryId },
+        data: { isStarred: !entry.isStarred },
+      });
+
+      return { isStarred: !entry.isStarred };
+    }),
+
+  /**
+   * 切换已读状态
+   */
+  toggleRead: protectedProcedure
+    .input(z.object({ entryId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const entry = await ctx.db.entry.findFirst({
+        where: {
+          id: input.entryId,
+          feed: { userId: ctx.userId },
+        },
+        select: {
+          isRead: true,
+          feedId: true,
+        },
+      });
+
+      if (!entry) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '文章不存在' });
+      }
+
+      const newReadState = !entry.isRead;
+
+      await ctx.db.entry.update({
+        where: { id: input.entryId },
+        data: {
+          isRead: newReadState,
+          readAt: newReadState ? new Date() : null,
+        },
+      });
+
+      // 更新feed的未读计数
+      if (!newReadState) {
+        // 标记为未读，增加计数
+        await ctx.db.feed.update({
+          where: { id: entry.feedId },
+          data: { unreadCount: { increment: 1 } },
+        });
+      } else {
+        // 标记为已读，减少计数
+        await ctx.db.feed.update({
+          where: { id: entry.feedId },
+          data: { unreadCount: { decrement: 1 } },
+        });
+      }
+
+      return { isRead: newReadState };
+    }),
+
+  /**
    * 批量操作
    */
   bulkAction: protectedProcedure

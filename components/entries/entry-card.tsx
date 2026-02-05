@@ -81,22 +81,22 @@ export function EntryCard({
   return (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-2xl border bg-card/50 backdrop-blur-sm transition-all duration-500 ease-out',
-        'hover:shadow-2xl hover:shadow-primary/5',
+        'group relative overflow-hidden rounded-2xl border border-border/60 bg-card/70 backdrop-blur-sm transition-all duration-500 ease-out',
+        'hover:shadow-xl hover:shadow-primary/10 hover:border-primary/20',
         isRead
-          ? 'border-border/50 opacity-70'
-          : 'border-border hover:border-primary/30',
-        isHovered && 'scale-[1.02]'
+          ? 'border-border/40 opacity-65'
+          : 'border-border/60 hover:bg-card/90',
+        isHovered && 'scale-[1.01] -translate-y-0.5'
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onClick}
     >
       {/* 背景装饰 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.03] via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
 
       {/* 顶部装饰条 */}
-      <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-primary/50 via-primary to-primary/50 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+      <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-primary/40 via-primary/60 to-primary/40 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
 
       <div className="relative p-6">
         {/* 头部：feed图标和时间 */}

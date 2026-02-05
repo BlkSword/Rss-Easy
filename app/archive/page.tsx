@@ -1,22 +1,115 @@
 /**
- * 归档文章页面
+ * 归档文章页面 - 三栏布局
  */
 
-import { EntryList } from '@/components/entries/entry-list';
+'use client';
 
-export const metadata = {
-  title: '归档文章 - Rss-Easy',
-  description: '查看归档的文章',
-};
+import { useState, useCallback } from 'react';
+import { Archive } from 'lucide-react';
+import { trpc } from '@/lib/trpc/client';
+import { AppHeader } from '@/components/layout/app-header';
+import { AppSidebar } from '@/components/layout/app-sidebar';
+import { CompactEntryList, CompactEntryItem, CompactEntryEmpty } from '@/components/entries/compact-entry-list';
+import { ArticlePreviewPanel } from '@/components/entries/article-preview-panel';
+import { useSidebar } from '@/components/providers/sidebar-provider';
+import { cn } from '@/lib/utils';
 
 export default function ArchivePage() {
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const { isCollapsed, toggleSidebar } = useSidebar();
+
+  const { data: entriesData, isLoading } = trpc.entries.list.useQuery({
+    page: 1,
+    limit: 50,
+    archivedOnly: true,
+  });
+
+  const displayEntries = entriesData?.items || [];
+  const selectedIndex = displayEntries.findIndex((e) => e.id === selectedEntryId);
+
+  const handleSelectEntry = useCallback((entryId: string) => {
+    setSelectedEntryId(entryId);
+  }, []);
+
+  const handlePrevious = useCallback(() => {
+    if (selectedIndex > 0) {
+      setSelectedEntryId(displayEntries[selectedIndex - 1].id);
+    }
+  }, [selectedIndex, displayEntries]);
+
+  const handleNext = useCallback(() => {
+    if (selectedIndex < displayEntries.length - 1) {
+      setSelectedEntryId(displayEntries[selectedIndex + 1].id);
+    }
+  }, [selectedIndex, displayEntries]);
+
   return (
-    <div className="container py-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">归档文章</h1>
-        <p className="text-muted-foreground">已归档的历史文章</p>
+    <div className="h-screen flex flex-col overflow-hidden">
+      <AppHeader onToggleSidebar={toggleSidebar} isSidebarCollapsed={isCollapsed} />
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* 左侧栏 */}
+        <aside className={cn(
+          'w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 transition-all duration-300',
+          isCollapsed ? 'hidden lg:hidden' : 'block'
+        )}>
+          <AppSidebar />
+        </aside>
+
+        {/* 中间栏 - 文章列表 */}
+        <section className="flex-1 min-w-0 max-w-lg xl:max-w-xl border-r border-border/60 flex flex-col bg-background/30">
+          <div className="flex-shrink-0 px-4 py-3 border-b border-border/60 bg-background/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Archive className="h-4 w-4 text-muted-foreground" />
+                <h2 className="font-semibold">归档文章</h2>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {displayEntries.length} 篇
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center text-sm text-muted-foreground">加载中...</div>
+              </div>
+            ) : displayEntries.length === 0 ? (
+              <CompactEntryEmpty message="暂无归档文章" />
+            ) : (
+              <CompactEntryList>
+                {displayEntries.map((entry) => (
+                  <CompactEntryItem
+                    key={entry.id}
+                    id={entry.id}
+                    title={entry.title}
+                    url={entry.url}
+                    feedTitle={entry.feed.title}
+                    feedIconUrl={entry.feed.iconUrl}
+                    publishedAt={entry.publishedAt}
+                    isRead={entry.isRead}
+                    isStarred={entry.isStarred}
+                    isActive={selectedEntryId === entry.id}
+                    onClick={() => handleSelectEntry(entry.id)}
+                  />
+                ))}
+              </CompactEntryList>
+            )}
+          </div>
+        </section>
+
+        {/* 右侧栏 - 文章预览 */}
+        <aside className="flex-1 min-w-0 bg-background/10 hidden md:block">
+          <ArticlePreviewPanel
+            entryId={selectedEntryId}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            hasPrevious={selectedIndex > 0}
+            hasNext={selectedIndex < displayEntries.length - 1}
+          />
+        </aside>
       </div>
-      <EntryList filters={{ archivedOnly: true }} />
     </div>
   );
 }

@@ -1,193 +1,271 @@
-/**
- * 应用头部组件
- */
-
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Search,
-  Sparkles,
   RefreshCw,
-  Sun,
-  Moon,
-  Plus,
   Menu,
-  X,
   BookOpen,
   LogOut,
   Settings,
-  User,
+  Bell,
+  Clock,
+  Star,
+  Rss,
 } from 'lucide-react';
+import { Button, Input, Dropdown, Space, Badge, Card, Empty, Spin, Typography } from 'antd';
+import type { MenuProps } from 'antd';
 import { cn } from '@/lib/utils';
-import { NotificationBell } from '@/components/notifications/notification-bell';
+import { notifySuccess, notifyError } from '@/lib/feedback';
+import { trpc } from '@/lib/trpc/client';
+
+const { Text } = Typography;
 
 interface AppHeaderProps {
   onSearchChange?: (query: string) => void;
-  onAddFeed?: () => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onToggleSidebar?: () => void;
+  isSidebarCollapsed?: boolean;
+}
+
+function SearchDropdown({
+  searchQuery,
+  visible,
+  onClose,
+  onSelect,
+}: {
+  searchQuery: string;
+  visible: boolean;
+  onClose: () => void;
+  onSelect: () => void;
+}) {
+  const { data: searchResults, isLoading } = trpc.entries.list.useQuery({
+    search: searchQuery || undefined,
+    limit: 5,
+  }, {
+    enabled: visible && searchQuery.length >= 2,
+  });
+
+  if (!visible || searchQuery.length < 2) {
+    return null;
+  }
+
+  const results = searchResults?.items || [];
+
+  return (
+    <div className="absolute top-full left-0 right-0 mt-2 z-50">
+      <Card className="shadow-lg border-border/60" styles={{ body: { padding: 0 } }}>
+        {isLoading ? (
+          <div className="py-8 flex justify-center">
+            <Spin size="small" />
+          </div>
+        ) : results.length === 0 ? (
+          <div className="py-8">
+            <Empty description="没有找到相关文章" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          </div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto">
+            {results.map((entry) => (
+              <Link
+                key={entry.id}
+                href={`/entries/${entry.id}`}
+                onClick={() => {
+                  onClose();
+                  onSelect();
+                }}
+                className="block"
+              >
+                <div className="p-4 hover:bg-muted/30 transition-colors border-b border-border/40 last:border-0">
+                  <div className="flex items-start gap-3">
+                    {entry.feed.iconUrl ? (
+                      <img src={entry.feed.iconUrl} alt="" className="w-5 h-5 rounded-sm flex-shrink-0 mt-0.5" />
+                    ) : (
+                      <Rss className="h-5 w-5 flex-shrink-0 mt-0.5 text-primary/50" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Text className="text-sm font-medium truncate" ellipsis>
+                          {entry.title}
+                        </Text>
+                        {entry.isStarred && (
+                          <Star className="h-3.5 w-3.5 fill-yellow-500 text-yellow-500 flex-shrink-0" />
+                        )}
+                      </div>
+                      <Text className="text-xs text-muted-foreground" type="secondary">
+                        {entry.feed.title}
+                      </Text>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {!entry.isRead && (
+                        <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                      )}
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {new Date(entry.publishedAt || '').toLocaleDateString('zh-CN')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+        {results.length > 0 && (
+          <div className="p-2 border-t border-border/40 bg-muted/30">
+            <Link
+              href={`/search?q=${encodeURIComponent(searchQuery)}`}
+              onClick={() => {
+                onClose();
+                onSelect();
+              }}
+              className="block"
+            >
+              <Text className="text-xs text-center block text-muted-foreground hover:text-primary transition-colors">
+                查看所有结果
+              </Text>
+            </Link>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 export function AppHeader({
   onSearchChange,
-  onAddFeed,
   onRefresh,
   isRefreshing = false,
+  onToggleSidebar,
+  isSidebarCollapsed = false,
 }: AppHeaderProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDark, setIsDark] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
-
-  const toggleDarkMode = () => {
-    setIsDark(!isDark);
-    document.documentElement.classList.toggle('dark');
-  };
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     onSearchChange?.(value);
   };
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setSearchFocused(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      notifySuccess('已登出');
+      router.push('/login');
+    } catch (error) {
+      notifyError('登出失败');
+    }
   };
 
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'logout',
+      icon: <LogOut className="h-4 w-4" />,
+      label: '登出',
+      danger: true,
+      onClick: handleLogout,
+    },
+  ];
+
   return (
-    <header className="sticky top-0 z-50 glass border-b">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="md:hidden p-2 rounded-lg hover:bg-muted transition-colors"
-            >
-              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
-            <Link href="/" className="flex items-center gap-3">
-              <div className="relative">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-lg shadow-primary/25">
-                  <BookOpen className="h-5 w-5" />
-                </div>
-              </div>
-              <div className="hidden sm:block">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-                  Rss-Easy
-                </h1>
-                <p className="text-xs text-muted-foreground">智能资讯聚合</p>
-              </div>
-            </Link>
-          </div>
+    <header className="flex-shrink-0 h-14 border-b border-border/60 bg-background/80 backdrop-blur-md relative z-40">
+      <div className="flex h-full items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <Button
+            type="text"
+            icon={<Menu className="h-5 w-5" />}
+            onClick={onToggleSidebar}
+            className={cn(
+              'transition-all duration-300',
+              isSidebarCollapsed && '-rotate-180'
+            )}
+            title={isSidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          />
 
-          {/* 搜索栏 */}
-          <div className="flex-1 max-w-md mx-4 hidden sm:block">
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-              <input
-                type="text"
-                placeholder="搜索文章..."
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className={cn(
-                  'w-full h-10 pl-10 pr-4 rounded-xl border bg-background/50',
-                  'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary',
-                  'transition-all duration-300',
-                  'placeholder:text-muted-foreground'
-                )}
-              />
+          <Link href="/" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-primary-foreground">
+              <BookOpen className="h-4 w-4" />
             </div>
-          </div>
+            <span className="font-semibold text-sm hidden sm:block">Rss-Easy</span>
+          </Link>
+        </div>
 
-          {/* 右侧操作区 */}
-          <div className="flex items-center gap-2">
-            {/* 刷新按钮 */}
-            <button
-              onClick={onRefresh}
-              disabled={isRefreshing}
-              className={cn(
-                'p-2.5 rounded-xl bg-primary/10 text-primary hover:bg-primary/20',
-                'transition-all duration-300 hover:scale-105 active:scale-95',
-                'disabled:opacity-50'
-              )}
-              title="刷新订阅源"
-            >
-              <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
-            </button>
-
-            {/* 添加订阅源 */}
-            <button
-              onClick={onAddFeed}
-              className="hidden sm:flex p-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-300 hover:scale-105 active:scale-95 items-center gap-2"
-              title="添加订阅源"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="text-sm font-medium">添加</span>
-            </button>
-
-            {/* 深色模式切换 */}
-            <button
-              onClick={toggleDarkMode}
-              className="p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-all duration-300 hover:scale-105 active:scale-95"
-              title={isDark ? '浅色模式' : '深色模式'}
-            >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-
-            {/* 通知 */}
-            <NotificationBell />
-
-            {/* 用户菜单 */}
-            <div className="relative">
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-2 p-1.5 rounded-xl bg-muted/50 hover:bg-muted transition-all duration-300"
-              >
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground text-sm font-medium">
-                  U
-                </div>
-              </button>
-
-              {showUserMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowUserMenu(false)}
-                  />
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-card border rounded-xl shadow-xl z-50 py-2">
-                    <Link
-                      href="/profile"
-                      className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors"
-                    >
-                      <User className="h-4 w-4" />
-                      <span>个人资料</span>
-                    </Link>
-                    <Link
-                      href="/settings"
-                      className="flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors"
-                    >
-                      <Settings className="h-4 w-4" />
-                      <span>设置</span>
-                    </Link>
-                    <hr className="my-2" />
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-destructive"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span>登出</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+        <div className="flex-1 max-w-md mx-4 hidden md:block">
+          <div ref={searchContainerRef} className="relative">
+            <Input
+              placeholder="搜索文章..."
+              prefix={<Search className="h-4 w-4 text-muted-foreground" />}
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              allowClear
+              className="h-9 rounded-lg"
+            />
+            <SearchDropdown
+              searchQuery={searchQuery}
+              visible={searchFocused}
+              onClose={() => setSearchFocused(false)}
+              onSelect={() => setSearchQuery('')}
+            />
           </div>
         </div>
+
+        <Space className="flex items-center gap-1.5">
+          <Button
+            type="text"
+            icon={<RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />}
+            onClick={onRefresh}
+            loading={isRefreshing}
+            className="h-9 w-9 p-0"
+            title="刷新订阅源"
+          />
+
+          <Button
+            type="text"
+            icon={<Settings className="h-4 w-4" />}
+            onClick={() => router.push('/settings')}
+            className="h-9 w-9 p-0"
+            title="设置"
+          />
+
+          <Badge count={0} showZero={false}>
+            <Button
+              type="text"
+              icon={<Bell className="h-4 w-4" />}
+              onClick={() => router.push('/notifications')}
+              className="h-9 w-9 p-0"
+              title="通知"
+            />
+          </Badge>
+
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
+            <Button
+              type="text"
+              className="flex items-center gap-2 h-9 px-2"
+            >
+              <div className="h-7 w-7 rounded-md bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground text-xs font-medium">
+                U
+              </div>
+            </Button>
+          </Dropdown>
+        </Space>
       </div>
     </header>
   );

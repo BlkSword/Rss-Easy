@@ -1,11 +1,10 @@
 /**
- * AI 助手页面
+ * AI 助手页面 - 全屏布局
  */
 
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { trpc } from '@/lib/trpc/client';
 import {
   Sparkles,
   Send,
@@ -16,6 +15,14 @@ import {
   FileText,
   TrendingUp,
 } from 'lucide-react';
+import { Button, Card, Input, Space, message, Avatar, Typography, Tooltip } from 'antd';
+import { AppHeader } from '@/components/layout/app-header';
+import { AppSidebar } from '@/components/layout/app-sidebar';
+import { trpc } from '@/lib/trpc/client';
+import { useSidebar } from '@/components/providers/sidebar-provider';
+import { cn } from '@/lib/utils';
+
+const { TextArea } = Input;
 
 type Message = {
   id: string;
@@ -53,6 +60,7 @@ export default function AIPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { isCollapsed, toggleSidebar } = useSidebar();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -81,7 +89,7 @@ export default function AIPage() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `这是对"${input}"的模拟响应。在实际部署中，这里会连接到 AI 服务来生成真实的响应。\n\n您可以询问：\n- 今天的文章摘要\n- 分析某个主题的趋势\n- 推荐值得阅读的文章\n- 整理特定分类的内容`,
+        content: `这是对"${userMessage.content}"的模拟响应。在实际部署中，这里会连接到 AI 服务来生成真实的响应。\n\n您可以询问：\n- 今天的文章摘要\n- 分析某个主题的趋势\n- 推荐值得阅读的文章\n- 整理特定分类的内容`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -94,141 +102,183 @@ export default function AIPage() {
   };
 
   const copyMessage = (content: string) => {
-    navigator.clipboard.writeText(content);
+    navigator.clipboard.writeText(content).then(() => {
+      message.success('已复制到剪贴板');
+    }).catch(() => {
+      message.error('复制失败');
+    });
+  };
+
+  const clearMessages = () => {
+    setMessages([]);
+    message.success('对话已清空');
   };
 
   return (
-    <div className="container py-6 max-w-4xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Sparkles className="h-6 w-6 text-purple-500" />
-          AI 助手
-        </h1>
-        <p className="text-muted-foreground">
-          智能分析您的文章，提供摘要、趋势分析和个性化推荐
-        </p>
-      </div>
+    <div className="h-screen flex flex-col overflow-hidden">
+      <AppHeader onToggleSidebar={toggleSidebar} isSidebarCollapsed={isCollapsed} />
 
-      {/* 消息列表 */}
-      <div className="bg-card border rounded-lg min-h-[400px] max-h-[600px] overflow-y-auto p-4 mb-4 space-y-4">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <div className="h-16 w-16 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-4">
-              <Sparkles className="h-8 w-8 text-purple-500" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">欢迎使用 AI 助手</h3>
-            <p className="text-sm text-muted-foreground mb-6 max-w-md">
-              我可以帮助您分析文章、生成摘要、发现趋势。请选择下方建议或输入您的问题。
-            </p>
+      <div className="flex-1 flex overflow-hidden">
+        {/* 侧边栏 */}
+        <aside className={cn(
+          'w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 transition-all duration-300',
+          isCollapsed ? 'hidden lg:hidden' : 'block'
+        )}>
+          <AppSidebar />
+        </aside>
 
-            {/* 建议 */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
-              {suggestions.map((suggestion) => (
-                <button
-                  key={suggestion.title}
-                  onClick={() => handleSuggestion(suggestion.prompt)}
-                  className="flex flex-col items-center gap-2 p-4 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors text-left"
-                >
-                  <div className="text-primary">{suggestion.icon}</div>
-                  <div className="text-sm font-medium">{suggestion.title}</div>
-                </button>
-              ))}
+        {/* 主内容区 */}
+        <main className="flex-1 overflow-y-auto bg-background/30">
+          <div className="max-w-4xl mx-auto px-6 py-8 h-full flex flex-col">
+            {/* 头部 */}
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Sparkles className="h-6 w-6 text-purple-500" />
+                AI 助手
+              </h1>
+              <p className="text-muted-foreground">
+                智能分析您的文章，提供摘要、趋势分析和个性化推荐
+              </p>
             </div>
-          </div>
-        ) : (
-          <>
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
+
+            {/* 消息列表 */}
+            <Card className="flex-1 flex flex-col min-h-0 mb-4 border-border/60">
+              <div className="flex-1 overflow-y-auto">
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                    <div className="h-16 w-16 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-4">
+                      <Sparkles className="h-8 w-8 text-purple-500" />
+                    </div>
+                    <Typography.Title level={3} className="mb-2">欢迎使用 AI 助手</Typography.Title>
+                    <Typography.Text className="text-muted-foreground mb-6 block">
+                      我可以帮助您分析文章、生成摘要、发现趋势。请选择下方建议或输入您的问题。
+                    </Typography.Text>
+
+                    {/* 建议 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
+                      {suggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion.title}
+                          onClick={() => handleSuggestion(suggestion.prompt)}
+                          className="flex flex-col items-center gap-2 p-4 h-auto"
+                        >
+                          <div className="text-primary">{suggestion.icon}</div>
+                          <div className="text-sm font-medium">{suggestion.title}</div>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Space direction="vertical" size="middle" className="w-full">
+                      {messages.map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={`flex gap-3 ${
+                            msg.role === 'user' ? 'justify-end' : 'justify-start'
+                          }`}
+                        >
+                          {msg.role === 'assistant' && (
+                            <Avatar
+                              icon={<Sparkles className="h-4 w-4" />}
+                              className="bg-gradient-to-br from-purple-500 to-pink-500"
+                            />
+                          )}
+                          <div
+                            className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                              msg.role === 'user'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-secondary'
+                            }`}
+                          >
+                            <Typography.Text
+                              className={`whitespace-pre-wrap text-sm ${
+                                msg.role === 'user' ? 'text-primary-foreground' : ''
+                              }`}
+                            >
+                              {msg.content}
+                            </Typography.Text>
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-xs opacity-60">
+                                {msg.timestamp.toLocaleTimeString()}
+                              </span>
+                              {msg.role === 'assistant' && (
+                                <Tooltip title="复制">
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<Copy className="h-3 w-3" />}
+                                    onClick={() => copyMessage(msg.content)}
+                                    className="h-auto p-1"
+                                  />
+                                </Tooltip>
+                              )}
+                            </div>
+                          </div>
+                          {msg.role === 'user' && (
+                            <Avatar className="bg-primary">
+                              <span className="text-xs text-primary-foreground font-medium">我</span>
+                            </Avatar>
+                          )}
+                        </div>
+                      ))}
+                      {isLoading && (
+                        <div className="flex gap-3 justify-start">
+                          <Avatar
+                            icon={<Sparkles className="h-4 w-4" />}
+                            className="bg-gradient-to-br from-purple-500 to-pink-500"
+                          />
+                          <div className="bg-secondary rounded-lg px-4 py-3">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>
+                        </div>
+                      )}
+                    </Space>
+                    <div ref={messagesEndRef} />
+                  </>
+                )}
+              </div>
+            </Card>
+
+            {/* 输入框 */}
+            <Space.Compact className="w-full">
+              <TextArea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onPressEnter={(e) => {
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="输入您的问题... (Shift+Enter 换行)"
+                autoSize={{ minRows: 1, maxRows: 4 }}
+                disabled={isLoading}
+              />
+              <Button
+                type="primary"
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading}
+                icon={isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
               >
-                {message.role === 'assistant' && (
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="h-4 w-4 text-white" />
-                  </div>
-                )}
-                <div
-                  className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary'
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap text-sm">{message.content}</div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs opacity-60">
-                      {message.timestamp.toLocaleTimeString()}
-                    </span>
-                    {message.role === 'assistant' && (
-                      <button
-                        onClick={() => copyMessage(message.content)}
-                        className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {message.role === 'user' && (
-                  <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs text-primary-foreground font-medium">我</span>
-                  </div>
-                )}
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
-                  <Sparkles className="h-4 w-4 text-white" />
-                </div>
-                <div className="bg-secondary rounded-lg px-4 py-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
+                发送
+              </Button>
+              <Tooltip title="清空对话">
+                <Button
+                  onClick={clearMessages}
+                  icon={<RefreshCw className="h-5 w-5" />}
+                />
+              </Tooltip>
+            </Space.Compact>
 
-      {/* 输入框 */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="输入您的问题..."
-          className="flex-1 px-4 py-3 bg-card border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-          disabled={isLoading}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || isLoading}
-          className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-        >
-          {isLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Send className="h-5 w-5" />
-          )}
-        </button>
-        <button
-          onClick={() => setMessages([])}
-          className="px-4 py-3 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
-          title="清空对话"
-        >
-          <RefreshCw className="h-5 w-5" />
-        </button>
-      </div>
-
-      {/* 提示信息 */}
-      <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-        <p className="text-sm text-purple-700 dark:text-purple-300">
-          💡 <strong>提示：</strong>AI 助手可以帮助您分析文章、生成摘要、发现趋势。回答基于您订阅的文章内容。
-        </p>
+            {/* 提示信息 */}
+            <Card className="mt-4 bg-purple-500/10 border-purple-500/20" size="small">
+              <Typography.Text className="text-purple-700 dark:text-purple-300 text-sm">
+                💡 <strong>提示：</strong>AI 助手可以帮助您分析文章、生成摘要、发现趋势。回答基于您订阅的文章内容。
+              </Typography.Text>
+            </Card>
+          </div>
+        </main>
       </div>
     </div>
   );

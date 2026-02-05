@@ -1,31 +1,27 @@
 /**
- * 通知页面
+ * 通知页面 - 全屏布局
  */
 
 'use client';
 
 import { useState } from 'react';
 import { Bell, Check, CheckCheck, Trash2, Filter, Mail, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react';
+import { Button, Card, Badge, Space, Empty, Spin, Tooltip } from 'antd';
+import { AppHeader } from '@/components/layout/app-header';
+import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { handleApiSuccess, handleApiError } from '@/lib/feedback';
+import { useSidebar } from '@/components/providers/sidebar-provider';
 
 type NotificationData = {
   link?: string;
 };
 
-type Notification = {
-  id: string;
-  type: string;
-  title: string;
-  content: string | null;
-  data: { link?: string } | null;
-  isRead: boolean;
-  createdAt: Date;
-};
-
 export default function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const { isCollapsed, toggleSidebar } = useSidebar();
 
   const { data: notifications, refetch } = trpc.notifications.list.useQuery({
     limit: 100,
@@ -40,23 +36,41 @@ export default function NotificationsPage() {
   const clearReadMutation = trpc.notifications.clearRead.useMutation();
 
   const handleMarkAsRead = async (id: string) => {
-    await markAsReadMutation.mutateAsync({ id });
-    refetch();
+    try {
+      await markAsReadMutation.mutateAsync({ id });
+      refetch();
+    } catch (error) {
+      handleApiError(error, '操作失败');
+    }
   };
 
   const handleMarkAllAsRead = async () => {
-    await markAllAsReadMutation.mutateAsync();
-    refetch();
+    try {
+      await markAllAsReadMutation.mutateAsync();
+      handleApiSuccess('已全部标记为已读');
+      refetch();
+    } catch (error) {
+      handleApiError(error, '操作失败');
+    }
   };
 
   const handleDelete = async (id: string) => {
-    await deleteMutation.mutateAsync({ id });
-    refetch();
+    try {
+      await deleteMutation.mutateAsync({ id });
+      refetch();
+    } catch (error) {
+      handleApiError(error, '操作失败');
+    }
   };
 
   const handleClearRead = async () => {
-    await clearReadMutation.mutateAsync();
-    refetch();
+    try {
+      await clearReadMutation.mutateAsync();
+      handleApiSuccess('已清空已读通知');
+      refetch();
+    } catch (error) {
+      handleApiError(error, '操作失败');
+    }
   };
 
   const getNotificationIcon = (type: string) => {
@@ -90,158 +104,160 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="container py-6 max-w-4xl">
-      {/* 头部 */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">通知</h1>
-          <p className="text-muted-foreground">
-            {unreadCount && unreadCount > 0
-              ? `有 ${unreadCount} 条未读通知`
-              : '没有未读通知'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {unreadCount && unreadCount > 0 && (
-            <button
-              onClick={handleMarkAllAsRead}
-              className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
-            >
-              <CheckCheck className="h-4 w-4" />
-              全部已读
-            </button>
-          )}
-          <button
-            onClick={handleClearRead}
-            className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            清空已读
-          </button>
-        </div>
-      </div>
+    <div className="h-screen flex flex-col overflow-hidden">
+      <AppHeader onToggleSidebar={toggleSidebar} isSidebarCollapsed={isCollapsed} />
 
-      {/* 过滤器 */}
-      <div className="flex items-center gap-2 mb-6">
-        <button
-          onClick={() => setFilter('all')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
-            filter === 'all'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-secondary hover:bg-secondary/80'
-          )}
-        >
-          <Filter className="h-4 w-4" />
-          全部
-        </button>
-        <button
-          onClick={() => setFilter('unread')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors',
-            filter === 'unread'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-secondary hover:bg-secondary/80'
-          )}
-        >
-          <Bell className="h-4 w-4" />
-          未读
-          {unreadCount && unreadCount > 0 && (
-            <span className="px-2 py-0.5 bg-primary-foreground/20 rounded-full text-xs">
-              {unreadCount}
-            </span>
-          )}
-        </button>
-      </div>
+      <div className="flex-1 flex overflow-hidden">
+        {/* 侧边栏 */}
+        <aside className={cn(
+          'w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 transition-all duration-300',
+          isCollapsed ? 'hidden lg:hidden' : 'block'
+        )}>
+          <AppSidebar />
+        </aside>
 
-      {/* 通知列表 */}
-      <div className="space-y-3">
-        {!notifications || notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <Bell className="h-16 w-16 mb-4 opacity-20" />
-            <h3 className="text-lg font-medium mb-2">暂无通知</h3>
-            <p className="text-sm">
-              {filter === 'unread' ? '没有未读通知' : '还没有任何通知'}
-            </p>
-          </div>
-        ) : (
-          notifications.map((notification) => (
-            <div
-              key={notification.id}
-              className={cn(
-                'bg-card border rounded-lg p-4 transition-colors',
-                !notification.isRead && 'bg-primary/5 border-primary/20'
-              )}
-            >
-              <div className="flex gap-4">
-                {/* 图标 */}
-                <div className="flex-shrink-0 pt-0.5">
-                  {getNotificationIcon(notification.type)}
-                </div>
-
-                {/* 内容 */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs px-2 py-0.5 bg-secondary rounded-full">
-                          {getTypeLabel(notification.type)}
-                        </span>
-                        {!notification.isRead && (
-                          <span className="w-2 h-2 rounded-full bg-primary"></span>
-                        )}
-                      </div>
-                      <h3 className="font-semibold">{notification.title}</h3>
-                      {notification.content && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {notification.content}
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {new Date(notification.createdAt).toLocaleString('zh-CN', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                    </div>
-
-                    {/* 操作按钮 */}
-                    <div className="flex items-center gap-1">
-                      {(notification.data as NotificationData)?.link && (
-                        <Link
-                          href={(notification.data as NotificationData).link!}
-                          className="p-2 hover:bg-secondary rounded-lg transition-colors text-sm"
-                          title="查看详情"
-                        >
-                          查看
-                        </Link>
-                      )}
-                      {!notification.isRead && (
-                        <button
-                          onClick={() => handleMarkAsRead(notification.id)}
-                          className="p-2 hover:bg-secondary rounded-lg transition-colors"
-                          title="标记已读"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDelete(notification.id)}
-                        className="p-2 hover:bg-red-500/10 hover:text-red-600 rounded-lg transition-colors"
-                        title="删除"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+        {/* 主内容区 */}
+        <main className="flex-1 overflow-y-auto bg-background/30">
+          <div className="max-w-4xl mx-auto px-6 py-8">
+            {/* 头部 */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-bold">通知</h1>
+                <p className="text-muted-foreground text-sm">
+                  {unreadCount && unreadCount > 0
+                    ? `有 ${unreadCount} 条未读通知`
+                    : '没有未读通知'}
+                </p>
               </div>
+              <Space>
+                {unreadCount && unreadCount > 0 && (
+                  <Button
+                    icon={<CheckCheck className="h-4 w-4" />}
+                    onClick={handleMarkAllAsRead}
+                  >
+                    全部已读
+                  </Button>
+                )}
+                <Button
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={handleClearRead}
+                >
+                  清空已读
+                </Button>
+              </Space>
             </div>
-          ))
-        )}
+
+            {/* 过滤器 */}
+            <div className="flex items-center gap-2 mb-6">
+              <Button
+                type={filter === 'all' ? 'primary' : 'default'}
+                icon={<Filter className="h-4 w-4" />}
+                onClick={() => setFilter('all')}
+              >
+                全部
+              </Button>
+              <Badge count={unreadCount || 0} showZero>
+                <Button
+                  type={filter === 'unread' ? 'primary' : 'default'}
+                  icon={<Bell className="h-4 w-4" />}
+                  onClick={() => setFilter('unread')}
+                >
+                  未读
+                </Button>
+              </Badge>
+            </div>
+
+            {/* 通知列表 */}
+            {!notifications || notifications.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={filter === 'unread' ? '没有未读通知' : '还没有任何通知'}
+              />
+            ) : (
+              <div className="space-y-3">
+                {notifications.map((notification) => (
+                  <Card
+                    key={notification.id}
+                    className={cn(
+                      'border-border/60 transition-colors',
+                      !notification.isRead && 'bg-primary/5 border-primary/20'
+                    )}
+                    size="small"
+                  >
+                    <div className="flex gap-4">
+                      {/* 图标 */}
+                      <div className="flex-shrink-0 pt-0.5">
+                        {getNotificationIcon(notification.type)}
+                      </div>
+
+                      {/* 内容 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs px-2 py-0.5 bg-muted rounded-full">
+                                {getTypeLabel(notification.type)}
+                              </span>
+                              {!notification.isRead && (
+                                <span className="w-2 h-2 rounded-full bg-primary"></span>
+                              )}
+                            </div>
+                            <h3 className="font-semibold">{notification.title}</h3>
+                            {notification.content && (
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {notification.content}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-2">
+                              {new Date(notification.createdAt).toLocaleString('zh-CN', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          </div>
+
+                          {/* 操作按钮 */}
+                          <div className="flex items-center gap-1">
+                            {(notification.data as NotificationData)?.link && (
+                              <Link
+                                href={(notification.data as NotificationData).link!}
+                                className="p-2 hover:bg-muted rounded-lg transition-colors text-sm"
+                              >
+                                查看
+                              </Link>
+                            )}
+                            {!notification.isRead && (
+                              <Tooltip title="标记已读">
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  icon={<Check className="h-4 w-4" />}
+                                  onClick={() => handleMarkAsRead(notification.id)}
+                                />
+                              </Tooltip>
+                            )}
+                            <Tooltip title="删除">
+                              <Button
+                                type="text"
+                                size="small"
+                                danger
+                                icon={<Trash2 className="h-4 w-4" />}
+                                onClick={() => handleDelete(notification.id)}
+                              />
+                            </Tooltip>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );

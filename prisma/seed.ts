@@ -35,7 +35,7 @@ async function main() {
     create: {
       email: 'test@example.com',
       username: 'testuser',
-      passwordHash: '$2b$10$abcdefghijklmnopqrstuvwxyz123456', // password123 (需要在实际使用中替换)
+      passwordHash: '$2b$10$FrEAnaiMeHuMZSoVFLOCd.Tpb4.vh2qz/Lw495Wmd/v.XasE/mu96', // password123
       preferences: {
         theme: 'system',
         language: 'zh-CN',

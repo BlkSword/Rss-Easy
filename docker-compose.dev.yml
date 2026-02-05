@@ -1,0 +1,83 @@
+# =====================================================
+# Rss-Easy 开发环境配置
+# 支持热重载和代码同步
+# =====================================================
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: rss-easy-db-dev
+    environment:
+      POSTGRES_USER: rss_easy
+      POSTGRES_PASSWORD: rss_easy_password
+      POSTGRES_DB: rss_easy
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rss_easy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存和队列
+  redis:
+    image: redis:7-alpine
+    container_name: rss-easy-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 开发模式应用 - 支持热重载
+  app:
+    image: node:20-alpine
+    container_name: rss-easy-app-dev
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://rss_easy:rss_easy_password@postgres:5432/rss_easy
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_SECRET: dev-secret-change-in-production
+      NEXTAUTH_URL: http://localhost:3000
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_MODEL: ${AI_MODEL:-gpt-4o}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      CUSTOM_API_BASE_URL: ${CUSTOM_API_BASE_URL}
+      CUSTOM_API_KEY: ${CUSTOM_API_KEY}
+      CUSTOM_API_MODEL: ${CUSTOM_API_MODEL}
+      NODE_ENV: development
+    # 挂载源代码实现热重载
+    volumes:
+      - ./:/app
+      - node_modules_dev:/app/node_modules
+      - /app/.next  # 防止 .next 目录被挂载覆盖
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        npm install &&
+        npx prisma@6.19.2 generate &&
+        npx prisma@6.19.2 db push --accept-data-loss &&
+        npm run dev
+      "
+    restart: unless-stopped
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
+  node_modules_dev:
