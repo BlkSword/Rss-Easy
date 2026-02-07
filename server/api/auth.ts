@@ -181,6 +181,38 @@ export const authRouter = router({
   }),
 
   /**
+   * 更新用户资料
+   */
+  updateProfile: publicProcedure
+    .input(
+      z.object({
+        username: z.string().min(3).max(20).optional(),
+        avatarUrl: z.string().url().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.userId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: '未登录',
+        });
+      }
+
+      const user = await db.user.update({
+        where: { id: ctx.userId },
+        data: input,
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          avatarUrl: true,
+        },
+      });
+
+      return user;
+    }),
+
+  /**
    * 更新用户偏好设置
    */
   updatePreferences: publicProcedure
@@ -189,6 +221,8 @@ export const authRouter = router({
         theme: z.enum(['light', 'dark', 'system']).optional(),
         language: z.string().optional(),
         itemsPerPage: z.number().min(10).max(100).optional(),
+        autoMarkAsRead: z.boolean().optional(),
+        showFullContent: z.boolean().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -213,6 +247,62 @@ export const authRouter = router({
       });
 
       return user;
+    }),
+
+  /**
+   * 更新密码
+   */
+  updatePassword: publicProcedure
+    .input(
+      z.object({
+        currentPassword: z.string(),
+        newPassword: z.string().min(8),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.userId) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: '未登录',
+        });
+      }
+
+      // 获取用户
+      const user = await db.user.findUnique({
+        where: { id: ctx.userId },
+        select: {
+          passwordHash: true,
+        },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '用户不存在',
+        });
+      }
+
+      // 验证当前密码
+      const { verifyPassword } = await import('@/lib/auth');
+      const valid = await verifyPassword(input.currentPassword, user.passwordHash);
+
+      if (!valid) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: '当前密码错误',
+        });
+      }
+
+      // 哈希新密码
+      const { hashPassword } = await import('@/lib/auth');
+      const passwordHash = await hashPassword(input.newPassword);
+
+      await db.user.update({
+        where: { id: ctx.userId },
+        data: { passwordHash },
+      });
+
+      return { success: true };
     }),
 
   /**

@@ -4,6 +4,7 @@
 
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -14,7 +15,7 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import { Button, Card, Row, Col, Statistic, Spin, Empty, Space, Modal, Form, Input, message, Dropdown } from 'antd';
+import { Button, Card, Row, Col, Statistic, Spin, Empty, Space, Modal, Form, Input, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
@@ -158,7 +159,7 @@ export default function CategoryPage() {
                   >
                     <FolderOpen
                       className="h-8 w-8"
-                      style={{ color: category.color }}
+                      style={{ color: category.color || undefined }}
                     />
                   </div>
 

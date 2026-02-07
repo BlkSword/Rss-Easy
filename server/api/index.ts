@@ -13,6 +13,7 @@ import { reportsRouter } from './reports';
 import { settingsRouter } from './settings';
 import { rulesRouter } from './rules';
 import { notificationsRouter } from './notifications';
+import { aiRouter } from './ai';
 
 export const appRouter = router({
   auth: authRouter,
@@ -24,6 +25,7 @@ export const appRouter = router({
   settings: settingsRouter,
   rules: rulesRouter,
   notifications: notificationsRouter,
+  ai: aiRouter,
 });
 
 export type AppRouter = typeof appRouter;

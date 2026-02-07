@@ -1,19 +1,22 @@
 /**
  * 通知页面 - 全屏布局
+ * 使用项目统一的设计系统，增强交互反馈
  */
 
 'use client';
 
 import { useState } from 'react';
 import { Bell, Check, CheckCheck, Trash2, Filter, Mail, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react';
-import { Button, Card, Badge, Space, Empty, Spin, Tooltip } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { handleApiSuccess, handleApiError } from '@/lib/feedback';
-import { useSidebar } from '@/components/providers/sidebar-provider';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
 
 type NotificationData = {
   link?: string;
@@ -21,7 +24,8 @@ type NotificationData = {
 
 export default function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const { isCollapsed, toggleSidebar } = useSidebar();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const toggleSidebar = () => setIsSidebarCollapsed(prev => !prev);
 
   const { data: notifications, refetch } = trpc.notifications.list.useQuery({
     limit: 100,
@@ -103,15 +107,30 @@ export default function NotificationsPage() {
     }
   };
 
+  const getTypeBadgeVariant = (type: string): 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'secondary' => {
+    switch (type) {
+      case 'new_entry':
+        return 'info';
+      case 'report_ready':
+        return 'success';
+      case 'feed_error':
+        return 'danger';
+      case 'ai_complete':
+        return 'secondary';
+      default:
+        return 'default';
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <AppHeader onToggleSidebar={toggleSidebar} isSidebarCollapsed={isCollapsed} />
+      <AppHeader onToggleSidebar={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />
 
       <div className="flex-1 flex overflow-hidden">
         {/* 侧边栏 */}
         <aside className={cn(
           'w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 transition-all duration-300',
-          isCollapsed ? 'hidden lg:hidden' : 'block'
+          isSidebarCollapsed ? 'hidden lg:hidden' : 'block'
         )}>
           <AppSidebar />
         </aside>
@@ -129,65 +148,82 @@ export default function NotificationsPage() {
                     : '没有未读通知'}
                 </p>
               </div>
-              <Space>
+              <div className="flex items-center gap-2">
                 {unreadCount && unreadCount > 0 && (
                   <Button
-                    icon={<CheckCheck className="h-4 w-4" />}
+                    variant="outline"
+                    size="sm"
+                    leftIcon={<CheckCheck className="h-4 w-4" />}
                     onClick={handleMarkAllAsRead}
                   >
                     全部已读
                   </Button>
                 )}
                 <Button
-                  icon={<Trash2 className="h-4 w-4" />}
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<Trash2 className="h-4 w-4" />}
                   onClick={handleClearRead}
                 >
                   清空已读
                 </Button>
-              </Space>
+              </div>
             </div>
 
             {/* 过滤器 */}
             <div className="flex items-center gap-2 mb-6">
               <Button
-                type={filter === 'all' ? 'primary' : 'default'}
-                icon={<Filter className="h-4 w-4" />}
+                variant={filter === 'all' ? 'primary' : 'outline'}
+                size="sm"
+                leftIcon={<Filter className="h-4 w-4" />}
                 onClick={() => setFilter('all')}
               >
                 全部
               </Button>
-              <Badge count={unreadCount || 0} showZero>
-                <Button
-                  type={filter === 'unread' ? 'primary' : 'default'}
-                  icon={<Bell className="h-4 w-4" />}
-                  onClick={() => setFilter('unread')}
-                >
-                  未读
-                </Button>
-              </Badge>
+              <Button
+                variant={filter === 'unread' ? 'primary' : 'outline'}
+                size="sm"
+                leftIcon={<Bell className="h-4 w-4" />}
+                onClick={() => setFilter('unread')}
+                rightIcon={unreadCount ? (
+                  <Badge variant="primary" size="sm" className="ml-1">{unreadCount}</Badge>
+                ) : undefined}
+              >
+                未读
+              </Button>
             </div>
 
             {/* 通知列表 */}
             {!notifications || notifications.length === 0 ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={filter === 'unread' ? '没有未读通知' : '还没有任何通知'}
+              <EmptyState
+                icon={<Bell className="h-12 w-12" />}
+                title={filter === 'unread' ? '没有未读通知' : '还没有任何通知'}
+                description={filter === 'unread' ? '您已阅读所有通知' : '当有新消息时，会显示在这里'}
+                variant="default"
               />
             ) : (
               <div className="space-y-3">
-                {notifications.map((notification) => (
+                {notifications.map((notification, index) => (
                   <Card
                     key={notification.id}
+                    isHoverable
                     className={cn(
-                      'border-border/60 transition-colors',
-                      !notification.isRead && 'bg-primary/5 border-primary/20'
+                      'border-2 transition-all duration-250',
+                      !notification.isRead
+                        ? 'border-primary/20 bg-gradient-to-r from-primary/[0.03] to-transparent'
+                        : 'border-border/60'
                     )}
-                    size="small"
+                    style={{ animationDelay: `${index * 30}ms` }}
                   >
-                    <div className="flex gap-4">
+                    <div className="flex gap-4 p-4">
                       {/* 图标 */}
                       <div className="flex-shrink-0 pt-0.5">
-                        {getNotificationIcon(notification.type)}
+                        <div className={cn(
+                          'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200',
+                          !notification.isRead ? 'bg-primary/10' : 'bg-muted/50'
+                        )}>
+                          {getNotificationIcon(notification.type)}
+                        </div>
                       </div>
 
                       {/* 内容 */}
@@ -195,14 +231,19 @@ export default function NotificationsPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs px-2 py-0.5 bg-muted rounded-full">
+                              <Badge variant={getTypeBadgeVariant(notification.type)} size="sm">
                                 {getTypeLabel(notification.type)}
-                              </span>
+                              </Badge>
                               {!notification.isRead && (
-                                <span className="w-2 h-2 rounded-full bg-primary"></span>
+                                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                               )}
                             </div>
-                            <h3 className="font-semibold">{notification.title}</h3>
+                            <h3 className={cn(
+                              'font-semibold transition-colors',
+                              !notification.isRead ? 'text-foreground' : 'text-muted-foreground'
+                            )}>
+                              {notification.title}
+                            </h3>
                             {notification.content && (
                               <p className="text-sm text-muted-foreground mt-1">
                                 {notification.content}
@@ -224,30 +265,27 @@ export default function NotificationsPage() {
                             {(notification.data as NotificationData)?.link && (
                               <Link
                                 href={(notification.data as NotificationData).link!}
-                                className="p-2 hover:bg-muted rounded-lg transition-colors text-sm"
+                                className="px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
                               >
                                 查看
                               </Link>
                             )}
                             {!notification.isRead && (
-                              <Tooltip title="标记已读">
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  icon={<Check className="h-4 w-4" />}
-                                  onClick={() => handleMarkAsRead(notification.id)}
-                                />
-                              </Tooltip>
+                              <button
+                                onClick={() => handleMarkAsRead(notification.id)}
+                                className="p-2 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all duration-200 hover:scale-110 active:scale-95"
+                                title="标记已读"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
                             )}
-                            <Tooltip title="删除">
-                              <Button
-                                type="text"
-                                size="small"
-                                danger
-                                icon={<Trash2 className="h-4 w-4" />}
-                                onClick={() => handleDelete(notification.id)}
-                              />
-                            </Tooltip>
+                            <button
+                              onClick={() => handleDelete(notification.id)}
+                              className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all duration-200 hover:scale-110 active:scale-95"
+                              title="删除"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
                         </div>
                       </div>

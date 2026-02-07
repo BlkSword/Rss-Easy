@@ -111,6 +111,8 @@ export const feedsRouter = router({
       tags: z.array(z.string()).optional(),
       fetchInterval: z.number().min(60).max(86400).optional(),
       priority: z.number().min(1).max(10).optional(),
+      description: z.string().optional(),
+      siteUrl: z.string().url().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       // 检查是否已存在
@@ -127,12 +129,17 @@ export const feedsRouter = router({
 
       // 解析RSS feed获取标题
       let title = input.title;
-      if (!title) {
+      let description = input.description;
+      let siteUrl = input.siteUrl;
+      
+      if (!title || !description || !siteUrl) {
         try {
           const parsed = await parseFeed(input.url);
-          title = parsed.title;
+          title = title || parsed.title;
+          description = description || parsed.description;
+          siteUrl = siteUrl || parsed.link;
         } catch {
-          title = new URL(input.url).hostname;
+          title = title || new URL(input.url).hostname;
         }
       }
 
@@ -142,6 +149,8 @@ export const feedsRouter = router({
           userId: ctx.userId,
           feedUrl: input.url,
           title,
+          description,
+          siteUrl,
           categoryId: input.categoryId,
           tags: input.tags || [],
           fetchInterval: input.fetchInterval || 3600,
@@ -168,16 +177,22 @@ export const feedsRouter = router({
       tags: z.array(z.string()).optional(),
       fetchInterval: z.number().min(60).max(86400).optional(),
       priority: z.number().min(1).max(10).optional(),
+      description: z.string().optional(),
+      siteUrl: z.string().url().optional(),
+      isActive: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const { id, ...data } = input;
+      const { id, url, ...data } = input;
 
       const feed = await ctx.db.feed.update({
         where: {
           id,
           userId: ctx.userId,
         },
-        data,
+        data: {
+          ...data,
+          ...(url && { feedUrl: url }),
+        },
       });
 
       return feed;
@@ -336,5 +351,50 @@ export const feedsRouter = router({
         unreadCount,
         todayEntries,
       };
+    }),
+
+  /**
+   * 自动发现订阅源信息
+   */
+  discover: protectedProcedure
+    .input(z.object({ url: z.string().url() }))
+    .mutation(async ({ input }) => {
+      try {
+        const response = await fetch(input.url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Rss-Easy/1.0)',
+          },
+        });
+        
+        if (!response.ok) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: '无法获取网站内容',
+          });
+        }
+
+        const html = await response.text();
+        
+        // 解析标题
+        const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+        const title = titleMatch?.[1]?.trim();
+        
+        // 解析描述
+        const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
+        const description = descMatch?.[1]?.trim();
+
+        return {
+          feed: {
+            title: title || null,
+            description: description || null,
+            siteUrl: input.url,
+          },
+        };
+      } catch (error) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: '自动发现失败',
+        });
+      }
     }),
 });

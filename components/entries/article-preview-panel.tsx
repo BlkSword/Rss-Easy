@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { Button, Divider, Skeleton, Tag } from 'antd';
 import { Sparkles } from 'lucide-react';
+import { useToast } from '@/components/ui/toast';
 
 interface ArticlePreviewPanelProps {
   entryId?: string | null;
@@ -28,6 +29,7 @@ export function ArticlePreviewPanel({
   hasPrevious = false,
   hasNext = false,
 }: ArticlePreviewPanelProps) {
+  const { addToast } = useToast();
   const [content, setContent] = useState('');
   const { data: entry, isLoading } = trpc.entries.byId.useQuery(
     { id: entryId || '' },
@@ -35,11 +37,20 @@ export function ArticlePreviewPanel({
   );
   const toggleStar = trpc.entries.toggleStar.useMutation();
   const toggleRead = trpc.entries.toggleRead.useMutation();
-  const [isStarred, setIsStarred] = useState(false);
+
+  // 乐观更新状态
+  const [optimisticStarred, setOptimisticStarred] = useState<boolean | null>(null);
+  const [optimisticRead, setOptimisticRead] = useState<boolean | null>(null);
+
+  // 使用乐观值或原始值
+  const displayIsStarred = optimisticStarred ?? entry?.isStarred ?? false;
+  const displayIsRead = optimisticRead ?? entry?.isRead ?? false;
 
   useEffect(() => {
     if (entry) {
-      setIsStarred(entry.isStarred);
+      // 重置乐观状态，使用新数据
+      setOptimisticStarred(null);
+      setOptimisticRead(null);
       // 这里可以添加内容解析逻辑
       setContent(entry.summary || entry.content || '');
     }
@@ -47,20 +58,43 @@ export function ArticlePreviewPanel({
 
   const handleToggleStar = async () => {
     if (!entry) return;
+
+    const newStarredState = !displayIsStarred;
+
+    // 立即更新UI（乐观更新）
+    setOptimisticStarred(newStarredState);
+
     try {
       await toggleStar.mutateAsync({ entryId: entry.id });
-      setIsStarred(!isStarred);
+      addToast({
+        type: 'success',
+        title: newStarredState ? '已添加星标' : '已取消星标',
+      });
     } catch {
-      // Error handling
+      // 出错时回滚
+      setOptimisticStarred(null);
+      addToast({ type: 'error', title: '操作失败' });
     }
   };
 
   const handleToggleRead = async () => {
     if (!entry) return;
+
+    const newReadState = !displayIsRead;
+
+    // 立即更新UI（乐观更新）
+    setOptimisticRead(newReadState);
+
     try {
       await toggleRead.mutateAsync({ entryId: entry.id });
+      addToast({
+        type: 'success',
+        title: newReadState ? '已标记为已读' : '已标记为未读',
+      });
     } catch {
-      // Error handling
+      // 出错时回滚
+      setOptimisticRead(null);
+      addToast({ type: 'error', title: '操作失败' });
     }
   };
 
@@ -136,21 +170,21 @@ export function ArticlePreviewPanel({
             type="text"
             icon={
               <Bookmark
-                className={cn('h-4 w-4 transition-colors', entry.isRead && 'fill-current')}
+                className={cn('h-4 w-4 transition-colors', displayIsRead && 'fill-current')}
               />
             }
             onClick={handleToggleRead}
-            title={entry.isRead ? '标记为未读' : '标记为已读'}
+            title={displayIsRead ? '标记为未读' : '标记为已读'}
             size="small"
           />
           <Button
             type="text"
-            icon={<Star className={cn('h-4 w-4 transition-colors', isStarred && 'fill-yellow-500 text-yellow-500')} />}
+            icon={<Star className={cn('h-4 w-4 transition-colors', displayIsStarred && 'fill-yellow-500 text-yellow-500')} />}
             onClick={handleToggleStar}
-            title={isStarred ? '取消星标' : '添加星标'}
+            title={displayIsStarred ? '取消星标' : '添加星标'}
             size="small"
           />
-          <Divider type="vertical" className="h-6 mx-1" />
+          <Divider orientation="vertical" className="h-6 mx-1" />
           <a
             href={entry.url}
             target="_blank"

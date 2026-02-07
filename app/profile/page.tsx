@@ -12,8 +12,9 @@ import {
   Calendar,
   Shield,
   Save,
+  Lock,
 } from 'lucide-react';
-import { Button, Card, Form, Input, Switch, Avatar, Space, Tabs, Typography, Divider, Select } from 'antd';
+import { Button, Card, Form, Input, Avatar, Space, Tabs, Typography, Divider, Select, message } from 'antd';
 import type { TabsProps } from 'antd';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
@@ -23,21 +24,25 @@ const { Title, Text } = Typography;
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [form] = Form.useForm();
+  const [profileForm] = Form.useForm();
+  const [passwordForm] = Form.useForm();
   const [isLoading, setIsLoading] = useState(false);
 
   const { data: user, refetch } = trpc.auth.me.useQuery();
   const updateProfile = trpc.auth.updateProfile.useMutation();
   const updatePreferences = trpc.auth.updatePreferences.useMutation();
+  const updatePassword = trpc.auth.updatePassword.useMutation();
 
   const handleProfileSubmit = async (values: any) => {
     setIsLoading(true);
     try {
-      await updateProfile.mutateAsync(values);
+      await updateProfile.mutateAsync({
+        username: values.username,
+      });
       notifySuccess('个人资料已更新');
       refetch();
     } catch (error) {
-      notifyError('更新失败');
+      notifyError(error instanceof Error ? error.message : '更新失败');
     } finally {
       setIsLoading(false);
     }
@@ -46,11 +51,33 @@ export default function ProfilePage() {
   const handlePreferencesSubmit = async (values: any) => {
     setIsLoading(true);
     try {
-      await updatePreferences.mutateAsync(values);
+      await updatePreferences.mutateAsync({
+        theme: values.theme,
+        language: values.language,
+        itemsPerPage: values.itemsPerPage,
+        autoMarkAsRead: values.autoMarkAsRead,
+        showFullContent: values.showFullContent,
+      });
       notifySuccess('偏好设置已更新');
       refetch();
     } catch (error) {
-      notifyError('更新失败');
+      notifyError(error instanceof Error ? error.message : '更新失败');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (values: any) => {
+    setIsLoading(true);
+    try {
+      await updatePassword.mutateAsync({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+      notifySuccess('密码已更新');
+      passwordForm.resetFields();
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : '更新失败');
     } finally {
       setIsLoading(false);
     }
@@ -97,10 +124,12 @@ export default function ProfilePage() {
         {/* 选项卡内容 */}
         <ProfileTabs
           user={user}
-          form={form}
+          profileForm={profileForm}
+          passwordForm={passwordForm}
           isLoading={isLoading}
           onProfileSubmit={handleProfileSubmit}
           onPreferencesSubmit={handlePreferencesSubmit}
+          onPasswordSubmit={handlePasswordSubmit}
         />
       </div>
     </div>
@@ -109,16 +138,20 @@ export default function ProfilePage() {
 
 function ProfileTabs({
   user,
-  form,
+  profileForm,
+  passwordForm,
   isLoading,
   onProfileSubmit,
   onPreferencesSubmit,
+  onPasswordSubmit,
 }: {
   user: any;
-  form: any;
+  profileForm: any;
+  passwordForm: any;
   isLoading: boolean;
   onProfileSubmit: (values: any) => void;
   onPreferencesSubmit: (values: any) => void;
+  onPasswordSubmit: (values: any) => void;
 }) {
   const tabItems: TabsProps['items'] = [
     {
@@ -132,19 +165,22 @@ function ProfileTabs({
       children: (
         <Card className="border-border/60">
           <Form
-            form={form}
+            form={profileForm}
             layout="vertical"
             initialValues={{
               username: user?.username,
               email: user?.email,
-              bio: user?.bio || '',
             }}
             onFinish={onProfileSubmit}
           >
             <Form.Item
               label="用户名"
               name="username"
-              rules={[{ required: true, message: '请输入用户名' }]}
+              rules={[
+                { required: true, message: '请输入用户名' },
+                { min: 3, message: '用户名至少3个字符' },
+                { max: 20, message: '用户名最多20个字符' },
+              ]}
             >
               <Input prefix={<User className="h-4 w-4 text-muted-foreground" />} size="large" />
             </Form.Item>
@@ -157,11 +193,7 @@ function ProfileTabs({
                 { type: 'email', message: '请输入有效的邮箱地址' },
               ]}
             >
-              <Input prefix={<User className="h-4 w-4 text-muted-foreground" />} size="large" />
-            </Form.Item>
-
-            <Form.Item label="个性签名" name="bio">
-              <TextArea rows={4} placeholder="介绍一下自己..." />
+              <Input prefix={<User className="h-4 w-4 text-muted-foreground" />} size="large" disabled />
             </Form.Item>
 
             <Form.Item>
@@ -230,7 +262,7 @@ function ProfileTabs({
                   <div className="font-medium">自动标记为已读</div>
                   <div className="text-sm text-muted-foreground">点击文章后自动标记为已读</div>
                 </div>
-                <Switch />
+                <input type="checkbox" className="w-5 h-5" />
               </div>
             </Form.Item>
 
@@ -240,7 +272,7 @@ function ProfileTabs({
                   <div className="font-medium">显示完整内容</div>
                   <div className="text-sm text-muted-foreground">在列表中显示文章完整内容而非摘要</div>
                 </div>
-                <Switch />
+                <input type="checkbox" className="w-5 h-5" />
               </div>
             </Form.Item>
 
@@ -249,6 +281,66 @@ function ProfileTabs({
             <Form.Item>
               <Button type="primary" htmlType="submit" icon={<Save className="h-4 w-4" />} loading={isLoading}>
                 保存更改
+              </Button>
+            </Form.Item>
+          </Form>
+        </Card>
+      ),
+    },
+    {
+      key: 'security',
+      label: (
+        <span className="flex items-center gap-2">
+          <Lock className="h-4 w-4" />
+          安全设置
+        </span>
+      ),
+      children: (
+        <Card className="border-border/60">
+          <Form
+            form={passwordForm}
+            layout="vertical"
+            onFinish={onPasswordSubmit}
+          >
+            <Form.Item
+              label="当前密码"
+              name="currentPassword"
+              rules={[{ required: true, message: '请输入当前密码' }]}
+            >
+              <Input.Password size="large" placeholder="输入当前密码" />
+            </Form.Item>
+            <Form.Item
+              label="新密码"
+              name="newPassword"
+              rules={[
+                { required: true, message: '请输入新密码' },
+                { min: 8, message: '密码至少8位' },
+              ]}
+            >
+              <Input.Password size="large" placeholder="输入新密码（至少8位）" />
+            </Form.Item>
+            <Form.Item
+              label="确认新密码"
+              name="confirmPassword"
+              dependencies={['newPassword']}
+              rules={[
+                { required: true, message: '请确认新密码' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('newPassword') === value) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(new Error('两次输入的密码不一致'));
+                  },
+                }),
+              ]}
+            >
+              <Input.Password size="large" placeholder="再次输入新密码" />
+            </Form.Item>
+
+            <Form.Item>
+              <Button type="primary" htmlType="submit" icon={<Save className="h-4 w-4" />} loading={isLoading}>
+                更新密码
               </Button>
             </Form.Item>
           </Form>

@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { Star, ExternalLink, Bookmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
-import { message } from 'antd';
+import { useToast } from '@/components/ui/toast';
 
 interface CompactEntryProps {
   id: string;
@@ -37,9 +37,18 @@ export function CompactEntryItem({
   isActive = false,
   onClick,
 }: CompactEntryProps) {
+  const { addToast } = useToast();
   const [imageError, setImageError] = useState(false);
+  // 乐观更新状态
+  const [optimisticStarred, setOptimisticStarred] = useState<boolean | null>(null);
+  const [optimisticRead, setOptimisticRead] = useState<boolean | null>(null);
+
   const toggleStar = trpc.entries.toggleStar.useMutation();
   const toggleRead = trpc.entries.toggleRead.useMutation();
+
+  // 使用乐观值或原始值
+  const displayIsStarred = optimisticStarred ?? isStarred;
+  const displayIsRead = optimisticRead ?? isRead;
 
   const formatTime = (date?: Date | null) => {
     if (!date) return '';
@@ -60,19 +69,41 @@ export function CompactEntryItem({
 
   const handleToggleStar = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const newStarredState = !displayIsStarred;
+
+    // 立即更新UI（乐观更新）
+    setOptimisticStarred(newStarredState);
+
     try {
       await toggleStar.mutateAsync({ entryId: id });
+      addToast({
+        type: 'success',
+        title: newStarredState ? '已添加星标' : '已取消星标',
+      });
     } catch {
-      message.error('操作失败');
+      // 出错时回滚
+      setOptimisticStarred(null);
+      addToast({ type: 'error', title: '操作失败' });
     }
   };
 
   const handleToggleRead = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const newReadState = !displayIsRead;
+
+    // 立即更新UI（乐观更新）
+    setOptimisticRead(newReadState);
+
     try {
       await toggleRead.mutateAsync({ entryId: id });
+      addToast({
+        type: 'success',
+        title: newReadState ? '已标记为已读' : '已标记为未读',
+      });
     } catch {
-      message.error('操作失败');
+      // 出错时回滚
+      setOptimisticRead(null);
+      addToast({ type: 'error', title: '操作失败' });
     }
   };
 
@@ -110,8 +141,8 @@ export function CompactEntryItem({
             <h4
               className={cn(
                 'text-sm leading-snug line-clamp-2 transition-colors',
-                isRead ? 'text-muted-foreground font-normal' : 'text-foreground font-semibold',
-                !isRead && 'group-hover:text-primary'
+                displayIsRead ? 'text-muted-foreground font-normal' : 'text-foreground font-semibold',
+                !displayIsRead && 'group-hover:text-primary'
               )}
             >
               {title}
@@ -130,24 +161,24 @@ export function CompactEntryItem({
             <button
               onClick={handleToggleRead}
               className="p-1.5 rounded-md hover:bg-muted transition-colors"
-              title={isRead ? '标记为未读' : '标记为已读'}
+              title={displayIsRead ? '标记为未读' : '标记为已读'}
             >
               <Bookmark
                 className={cn(
                   'h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors',
-                  isRead && 'fill-current'
+                  displayIsRead && 'fill-current'
                 )}
               />
             </button>
             <button
               onClick={handleToggleStar}
               className="p-1.5 rounded-md hover:bg-muted transition-colors"
-              title={isStarred ? '取消星标' : '添加星标'}
+              title={displayIsStarred ? '取消星标' : '添加星标'}
             >
               <Star
                 className={cn(
                   'h-3.5 w-3.5 transition-colors',
-                  isStarred ? 'text-yellow-500 fill-current' : 'text-muted-foreground hover:text-yellow-500'
+                  displayIsStarred ? 'text-yellow-500 fill-current' : 'text-muted-foreground hover:text-yellow-500'
                 )}
               />
             </button>
@@ -166,7 +197,7 @@ export function CompactEntryItem({
       </div>
 
       {/* 未读指示器 */}
-      {!isRead && (
+      {!displayIsRead && (
         <div className="flex-shrink-0 mt-1">
           <div className="w-2 h-2 rounded-full bg-primary" />
         </div>

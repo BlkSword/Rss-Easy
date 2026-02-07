@@ -427,6 +427,7 @@ model ApiKey {
 
   name            String
   keyHash         String    @unique @map("key_hash")
+  keyPrefix       String    @map("key_prefix")
   scopes          String[]  @default(["read", "write"])
   isActive        Boolean   @default(true) @map("is_active")
 

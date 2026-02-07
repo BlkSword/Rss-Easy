@@ -1,101 +1,60 @@
 /**
  * 全局反馈工具函数
- * 使用 Ant Design 的 Notification 和 Message
+ * 统一使用自定义 Toast 组件
  */
-import { notification, message } from 'antd';
 
-export type NotificationType = 'success' | 'info' | 'warning' | 'error';
-export type MessageType = 'success' | 'info' | 'warning' | 'error' | 'loading';
+type ToastType = 'success' | 'error' | 'warning' | 'info';
+
+// 全局 toast 回调函数类型
+type ToastCallback = (toast: { type: ToastType; title: string; message?: string }) => void;
+
+// 全局 toast 回调（在 ToastProvider 中设置）
+let globalAddToast: ToastCallback | null = null;
 
 /**
- * 显示通知提醒框
+ * 设置全局 toast 回调
  */
-export function showNotification(
-  type: NotificationType,
-  title: string,
-  description?: string,
-  duration = 4.5
-) {
-  return notification[type]({
-    message: title,
-    description,
-    duration,
-    placement: 'topRight',
-    style: {
-      borderRadius: '12px',
-      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-    },
-  });
+export function setGlobalToast(callback: ToastCallback) {
+  globalAddToast = callback;
+}
+
+/**
+ * 显示 toast 通知
+ */
+function showToast(type: ToastType, title: string, message?: string) {
+  if (globalAddToast) {
+    globalAddToast({ type, title, message });
+  } else {
+    console.warn('Toast provider not initialized, falling back to console:', type, title, message);
+  }
 }
 
 /**
  * 显示成功通知
  */
-export function notifySuccess(title: string, description?: string) {
-  return showNotification('success', title, description);
+export function notifySuccess(title: string, message?: string) {
+  return showToast('success', title, message);
 }
 
 /**
  * 显示错误通知
  */
-export function notifyError(title: string, description?: string) {
-  return showNotification('error', title, description);
+export function notifyError(title: string, message?: string) {
+  return showToast('error', title, message);
 }
 
 /**
  * 显示信息通知
  */
-export function notifyInfo(title: string, description?: string) {
-  return showNotification('info', title, description);
+export function notifyInfo(title: string, message?: string) {
+  return showToast('info', title, message);
 }
 
 /**
  * 显示警告通知
  */
-export function notifyWarning(title: string, description?: string) {
-  return showNotification('warning', title, description);
-}
-
-/**
- * 显示消息提示
- */
-export function showMessage(type: MessageType, content: string, duration = 3) {
-  return message[type](content, duration);
-}
-
-/**
- * 显示成功消息
- */
-export function messageSuccess(content: string) {
-  return showMessage('success', content);
-}
-
-/**
- * 显示错误消息
- */
-export function messageError(content: string) {
-  return showMessage('error', content);
-}
-
-/**
- * 显示信息消息
- */
-export function messageInfo(content: string) {
-  return showMessage('info', content);
-}
-
-/**
- * 显示警告消息
- */
-export function messageWarning(content: string) {
-  return showMessage('warning', content);
-}
-
-/**
- * 显示加载消息
- */
-export function messageLoading(content: string) {
-  return showMessage('loading', content, 0);
+export function notifyWarning(title: string, message?: string) {
+  return showToast('warning', title, message);
 }
 
 /**
@@ -121,6 +80,6 @@ export function handleApiError(error: unknown, context = '操作失败') {
 /**
  * API 成功处理辅助函数
  */
-export function handleApiSuccess(message: string, description?: string) {
-  return notifySuccess(message, description);
+export function handleApiSuccess(title: string, message?: string) {
+  return notifySuccess(title, message);
 }

@@ -128,14 +128,80 @@ export class SearchService {
   ): Promise<{ results: SearchResult[]; total: number }> {
     const { limit = 20, offset = 0, filters = {} } = options;
 
-    // TODO: 实现向量嵌入和语义搜索
-    // 这需要：
-    // 1. 为查询生成向量嵌入
-    // 2. 使用 pgvector 进行相似度搜索
-    // 3. 结合关键词过滤
+    try {
+      // 获取 AI 服务生成查询嵌入
+      const { getDefaultAIService } = await import('../ai/client');
+      const aiService = getDefaultAIService();
+      const { embedding } = await aiService.generateEmbedding(query);
 
-    // 暂时回退到关键词搜索
-    return this.keywordSearch(query, options);
+      // 构建 WHERE 条件
+      const whereConditions = this.buildFilters(filters);
+
+      // 使用 pgvector 进行相似度搜索
+      // 计算余弦相似度
+      const similaritySql = `
+        1 - (embedding <=> '[${embedding.join(',')}]'::vector)
+      `.trim();
+
+      // 查询相似度最高的文章
+      const entries = await db.$queryRaw`
+        SELECT
+          e.id,
+          e.title,
+          e.url,
+          e.summary,
+          e.published_at,
+          e.is_read,
+          e.is_starred,
+          e.ai_category,
+          e.ai_importance_score,
+          e.content,
+          f.id as "feedId",
+          f.title as "feedTitle"
+        FROM "Entry" e
+        LEFT JOIN "Feed" f ON e."feedId" = f.id
+        WHERE e.embedding IS NOT NULL
+          ${whereConditions.length > 0 ? this.buildSqlWhere(whereConditions) : ''}
+        ORDER BY (e.embedding <=> '[${embedding.join(',')}]'::vector) ASC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      ` as any[];
+
+      // 查询总数（对于相似度搜索，我们只返回有嵌入的条目）
+      const totalResult = await db.$queryRaw`
+        SELECT COUNT(*) as count
+        FROM "Entry" e
+        WHERE e.embedding IS NOT NULL
+          ${whereConditions.length > 0 ? this.buildSqlWhere(whereConditions) : ''}
+      ` as { count: bigint }[];
+      const total = Number(totalResult[0].count);
+
+      // 转换结果并计算相关性得分
+      const results: SearchResult[] = entries.map((entry: any) => ({
+        entryId: entry.id,
+        title: entry.title,
+        url: entry.url,
+        summary: entry.summary,
+        feedTitle: entry.feedTitle,
+        feedId: entry.feedId,
+        publishedAt: entry.publishedAt ? new Date(entry.publishedAt) : null,
+        isRead: entry.is_read,
+        isStarred: entry.is_starred,
+        aiCategory: entry.ai_category,
+        aiImportanceScore: entry.ai_importance_score || 0,
+        relevanceScore: 1 - parseFloat(entry.similarity || '0'), // 相似度转换为相关性得分
+        highlights: this.generateHighlights(query, {
+          title: entry.title,
+          summary: entry.summary,
+          content: entry.content,
+        }),
+      }));
+
+      return { results, total };
+    } catch (error) {
+      console.error('语义搜索失败，回退到关键词搜索:', error);
+      return this.keywordSearch(query, options);
+    }
   }
 
   /**
@@ -201,6 +267,40 @@ export class SearchService {
     }
 
     return conditions;
+  }
+
+  /**
+   * 构建 SQL WHERE 条件（用于原始查询）
+   */
+  private buildSqlWhere(conditions: Prisma.EntryWhereInput[]): string {
+    if (conditions.length === 0) return '';
+
+    const parts: string[] = [];
+    for (const condition of conditions) {
+      if (condition.feedId) {
+        parts.push(`e."feedId" = '${(condition.feedId as any).in?.[0] || ''}'`);
+      }
+      if (condition.feed?.categoryId) {
+        parts.push(`f."categoryId" = '${(condition.feed?.categoryId as any).in?.[0] || ''}'`);
+      }
+      if (condition.isRead !== undefined) {
+        parts.push(`e."isRead" = ${condition.isRead}`);
+      }
+      if (condition.isStarred !== undefined) {
+        parts.push(`e."isStarred" = ${condition.isStarred}`);
+      }
+      if ((condition.publishedAt as any)?.gte instanceof Date) {
+        parts.push(`e.published_at >= '${(condition.publishedAt as any).gte.toISOString()}'`);
+      }
+      if ((condition.publishedAt as any)?.lte instanceof Date) {
+        parts.push(`e.published_at <= '${(condition.publishedAt as any).lte.toISOString()}'`);
+      }
+      if (typeof (condition.aiImportanceScore as any)?.gte === 'number') {
+        parts.push(`e.ai_importance_score >= ${(condition.aiImportanceScore as any).gte}`);
+      }
+    }
+
+    return parts.length > 0 ? `AND ${parts.join(' AND ')}` : '';
   }
 
   /**

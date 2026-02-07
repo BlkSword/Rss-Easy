@@ -202,7 +202,7 @@ export const rulesRouter = router({
    * 切换规则启用状态
    */
   toggle: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().uuid(), enabled: z.boolean().optional() }))
     .mutation(async ({ input, ctx }) => {
       const rule = await ctx.db.subscriptionRule.findFirst({
         where: {
@@ -218,10 +218,12 @@ export const rulesRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: '规则不存在' });
       }
 
+      const newEnabled = input.enabled !== undefined ? input.enabled : !rule.isEnabled;
+
       const updated = await ctx.db.subscriptionRule.update({
         where: { id: input.id },
         data: {
-          isEnabled: !rule.isEnabled,
+          isEnabled: newEnabled,
         },
       });
 
@@ -234,35 +236,39 @@ export const rulesRouter = router({
   test: protectedProcedure
     .input(
       z.object({
-        conditions: z.array(
-          z.object({
-            field: z.enum(['title', 'content', 'author', 'category', 'tag', 'feedTitle']),
-            operator: z.enum(['contains', 'notContains', 'equals', 'notEquals', 'matches', 'in', 'gt', 'lt']),
-            value: z.union([z.string(), z.array(z.string()), z.number()]),
-          })
-        ),
-        actions: z.array(
-          z.object({
-            type: z.enum([
-              'markRead',
-              'markUnread',
-              'star',
-              'unstar',
-              'archive',
-              'unarchive',
-              'assignCategory',
-              'addTag',
-              'removeTag',
-              'skip',
-            ]),
-            params: z.record(z.string(), z.any()).optional(),
-          })
-        ),
+        rule: z.object({
+          name: z.string().optional(),
+          conditions: z.array(
+            z.object({
+              field: z.enum(['title', 'content', 'author', 'category', 'tag', 'feedTitle']),
+              operator: z.enum(['contains', 'notContains', 'equals', 'notEquals', 'matches', 'in', 'gt', 'lt']),
+              value: z.union([z.string(), z.array(z.string()), z.number()]),
+            })
+          ),
+          actions: z.array(
+            z.object({
+              type: z.enum([
+                'markRead',
+                'markUnread',
+                'star',
+                'unstar',
+                'archive',
+                'unarchive',
+                'assignCategory',
+                'addTag',
+                'removeTag',
+                'skip',
+              ]),
+              params: z.record(z.string(), z.any()).optional(),
+            })
+          ),
+        }),
+        sampleCount: z.number().min(1).max(20).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const engine = getRuleEngine();
-      const result = await engine.testRule(ctx.userId, input);
+      const result = await engine.testRule(ctx.userId, input.rule);
 
       return result;
     }),
@@ -340,6 +346,50 @@ export const rulesRouter = router({
         success: true,
         processed: results.length,
         total: input.entryIds.length,
+      };
+    }),
+
+  /**
+   * 手动执行规则
+   */
+  execute: protectedProcedure
+    .input(z.object({ ruleId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const rule = await ctx.db.subscriptionRule.findFirst({
+        where: {
+          id: input.ruleId,
+          userId: ctx.userId,
+        },
+      });
+
+      if (!rule) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '规则不存在' });
+      }
+
+      // 获取用户的最新文章
+      const entries = await ctx.db.entry.findMany({
+        where: {
+          feed: { userId: ctx.userId },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+
+      const engine = getRuleEngine();
+      let processed = 0;
+
+      for (const entry of entries) {
+        const matched = await engine.matchRule(entry.id, rule as any);
+        if (matched) {
+          await engine.executeActions(entry.id, rule.actions as any);
+          processed++;
+        }
+      }
+
+      return {
+        success: true,
+        processed,
+        total: entries.length,
       };
     }),
 });

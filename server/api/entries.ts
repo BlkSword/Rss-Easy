@@ -9,7 +9,7 @@ import { AIAnalysisQueue } from '@/lib/ai/queue';
 
 export const entriesRouter = router({
   /**
-   * 获取文章列表
+   * 获取文章列表（支持分页）
    */
   list: protectedProcedure
     .input(z.object({
@@ -90,6 +90,94 @@ export const entriesRouter = router({
           totalPages: Math.ceil(total / limit),
           hasNext: skip + limit < total,
           hasPrev: page > 1,
+        },
+      };
+    }),
+
+  /**
+   * 获取文章列表（无限滚动）
+   */
+  infiniteList: protectedProcedure
+    .input(z.object({
+      limit: z.number().min(1).max(50).default(20),
+      cursor: z.string().optional(),
+      feedId: z.string().uuid().optional(),
+      categoryId: z.string().uuid().optional(),
+      tag: z.string().optional(),
+      unreadOnly: z.boolean().default(false),
+      starredOnly: z.boolean().default(false),
+      archivedOnly: z.boolean().default(false),
+      search: z.string().optional(),
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+      aiCategory: z.string().optional(),
+      minImportance: z.number().min(0).max(1).optional(),
+    }))
+    .query(async ({ input, ctx }) => {
+      const { limit, cursor, ...filters } = input;
+
+      // 构建where条件
+      const where: any = {
+        feed: {
+          userId: ctx.userId,
+        },
+      };
+
+      if (filters.feedId) where.feedId = filters.feedId;
+      if (filters.categoryId) where.feed.categoryId = filters.categoryId;
+      if (filters.tag) where.tags = { has: filters.tag };
+      if (filters.unreadOnly) where.isRead = false;
+      if (filters.starredOnly) where.isStarred = true;
+      if (filters.archivedOnly) where.isArchived = true;
+      if (filters.aiCategory) where.aiCategory = filters.aiCategory;
+      if (filters.minImportance) where.aiImportanceScore = { gte: filters.minImportance };
+
+      if (filters.dateFrom || filters.dateTo) {
+        where.publishedAt = {};
+        if (filters.dateFrom) where.publishedAt.gte = filters.dateFrom;
+        if (filters.dateTo) where.publishedAt.lte = filters.dateTo;
+      }
+
+      if (filters.search) {
+        where.OR = [
+          { title: { contains: filters.search, mode: 'insensitive' } },
+          { summary: { contains: filters.search, mode: 'insensitive' } },
+          { content: { contains: filters.search, mode: 'insensitive' } },
+        ];
+      }
+
+      // 游标条件
+      if (cursor) {
+        where.publishedAt = { lt: new Date(cursor) };
+      }
+
+      const entries = await ctx.db.entry.findMany({
+        where,
+        take: limit + 1, // 多取一个判断是否还有更多
+        orderBy: { publishedAt: 'desc' },
+        include: {
+          feed: {
+            select: {
+              id: true,
+              title: true,
+              iconUrl: true,
+              categoryId: true,
+            },
+          },
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (entries.length > limit) {
+        const nextItem = entries.pop();
+        nextCursor = nextItem?.publishedAt?.toISOString();
+      }
+
+      return {
+        items: entries,
+        pagination: {
+          nextCursor,
+          hasNext: !!nextCursor,
         },
       };
     }),

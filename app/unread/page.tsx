@@ -12,12 +12,12 @@ import { AppSidebar } from '@/components/layout/app-sidebar';
 import { CompactEntryList, CompactEntryItem, CompactEntryEmpty } from '@/components/entries/compact-entry-list';
 import { ArticlePreviewPanel } from '@/components/entries/article-preview-panel';
 import { Button, Tabs } from 'antd';
-import { useSidebar } from '@/components/providers/sidebar-provider';
 import { cn } from '@/lib/utils';
 
 export default function UnreadPage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  const { isCollapsed, toggleSidebar } = useSidebar();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const toggleSidebar = () => setIsSidebarCollapsed(prev => !prev);
 
   const { data: entriesData, isLoading } = trpc.entries.list.useQuery({
     page: 1,
@@ -46,13 +46,13 @@ export default function UnreadPage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <AppHeader onToggleSidebar={toggleSidebar} isSidebarCollapsed={isCollapsed} />
+      <AppHeader onToggleSidebar={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />
 
       <div className="flex-1 flex overflow-hidden">
         {/* 左侧栏 */}
         <aside className={cn(
           'w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 transition-all duration-300',
-          isCollapsed ? 'hidden lg:hidden' : 'block'
+          isSidebarCollapsed ? 'hidden lg:hidden' : 'block'
         )}>
           <AppSidebar />
         </aside>
