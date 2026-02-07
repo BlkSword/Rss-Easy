@@ -33,7 +33,7 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
-  const { sidebarCollapsed, setSidebarCollapsed, autoMarkRead } = useUserPreferences();
+  const { sidebarCollapsed, setSidebarCollapsed } = useUserPreferences();
 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -48,7 +48,139 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
   });
 
   // 定义 mutation（必须在组件顶层）
-  const markAsRead = trpc.entries.markAsRead.useMutation();
+  const markAsRead = trpc.entries.markAsRead.useMutation({
+    onMutate: async (vars) => {
+      // 取消正在进行的查询
+      await Promise.all([
+        utils.entries.list.cancel({ ...filters, limit: 50 }),
+        utils.entries.infiniteList.cancel({ ...filters, limit: 20 }),
+        utils.feeds.globalStats.cancel(),
+        utils.categories.list.cancel(),
+        utils.feeds.list.cancel({ limit: 100 }),
+      ]);
+
+      // 保存当前数据以便回滚
+      const previousListData = utils.entries.list.getData({ ...filters, limit: 50 });
+      const previousInfiniteData = utils.entries.infiniteList.getData({ ...filters, limit: 20 });
+      const previousGlobalStats = utils.feeds.globalStats.getData();
+      const previousCategories = utils.categories.list.getData();
+      const previousFeeds = utils.feeds.list.getData({ limit: 100 });
+
+      // 乐观更新：立即更新 list 缓存中的数据
+      utils.entries.list.setData({ ...filters, limit: 50 }, (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          items: oldData.items.map((item: any) =>
+            vars.entryIds.includes(item.id)
+              ? { ...item, isRead: true }
+              : item
+          ),
+        };
+      });
+
+      // 乐观更新：立即更新 infiniteList 缓存中的数据
+      utils.entries.infiniteList.setData({ ...filters, limit: 20 }, (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page: any) => ({
+            ...page,
+            items: page.items.map((item: any) =>
+              vars.entryIds.includes(item.id)
+                ? { ...item, isRead: true }
+                : item
+            ),
+          })),
+        };
+      });
+
+      // 乐观更新：更新全局未读计数
+      utils.feeds.globalStats.setData(undefined, (oldStats: any) => {
+        if (!oldStats) return oldStats;
+        return {
+          ...oldStats,
+          unreadCount: Math.max(0, oldStats.unreadCount - vars.entryIds.length),
+        };
+      });
+
+      // 乐观更新：更新分类和订阅源未读计数
+      const currentEntries = entriesData?.items || [];
+      utils.categories.list.setData(undefined, (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          categories: oldData.categories.map((category: any) => {
+            const affectedCount = vars.entryIds.filter((id: string) => {
+              const entry = currentEntries.find((e: any) => e.id === id);
+              return entry?.feed?.categoryId === category.id;
+            }).length;
+            return {
+              ...category,
+              unreadCount: Math.max(0, category.unreadCount - affectedCount),
+              feeds: category.feeds?.map((feed: any) => {
+                const feedAffectedCount = vars.entryIds.filter((id: string) => {
+                  const entry = currentEntries.find((e: any) => e.id === id);
+                  return entry?.feedId === feed.id;
+                }).length;
+                return {
+                  ...feed,
+                  unreadCount: Math.max(0, feed.unreadCount - feedAffectedCount),
+                };
+              }),
+            };
+          }),
+        };
+      });
+
+      utils.feeds.list.setData({ limit: 100 }, (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          items: oldData.items.map((feed: any) => {
+            const affectedCount = vars.entryIds.filter((id: string) => {
+              const entry = currentEntries.find((e: any) => e.id === id);
+              return entry?.feedId === feed.id;
+            }).length;
+            return {
+              ...feed,
+              unreadCount: Math.max(0, (feed.unreadCount || 0) - affectedCount),
+            };
+          }),
+        };
+      });
+
+      return { previousListData, previousInfiniteData, previousGlobalStats, previousCategories, previousFeeds };
+    },
+    onSuccess: async () => {
+      // 重新验证查询以确保数据同步
+      await Promise.all([
+        utils.entries.list.invalidate({ ...filters, limit: 50 }),
+        utils.entries.infiniteList.invalidate({ ...filters, limit: 20 }),
+        utils.feeds.globalStats.invalidate(),
+        utils.categories.list.invalidate(),
+        utils.feeds.list.invalidate({ limit: 100 }),
+      ]);
+    },
+    onError: (error, _vars, context) => {
+      // 出错时回滚到之前的状态
+      if (context?.previousListData) {
+        utils.entries.list.setData({ ...filters, limit: 50 }, context.previousListData);
+      }
+      if (context?.previousInfiniteData) {
+        utils.entries.infiniteList.setData({ ...filters, limit: 20 }, context.previousInfiniteData);
+      }
+      if (context?.previousGlobalStats) {
+        utils.feeds.globalStats.setData(undefined, context.previousGlobalStats);
+      }
+      if (context?.previousCategories) {
+        utils.categories.list.setData(undefined, context.previousCategories);
+      }
+      if (context?.previousFeeds) {
+        utils.feeds.list.setData({ limit: 100 }, context.previousFeeds);
+      }
+    },
+  });
 
   const entries = entriesData?.items || [];
   const selectedIndex = entries.findIndex((e) => e.id === selectedEntryId);
@@ -57,12 +189,18 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
   useReaderShortcuts({
     onNext: () => {
       if (selectedIndex < entries.length - 1) {
-        setSelectedEntryId(entries[selectedIndex + 1].id);
+        const nextEntryId = entries[selectedIndex + 1].id;
+        setSelectedEntryId(nextEntryId);
+        // 点击查看时自动标记为已读
+        markAsRead.mutate({ entryIds: [nextEntryId] });
       }
     },
     onPrevious: () => {
       if (selectedIndex > 0) {
-        setSelectedEntryId(entries[selectedIndex - 1].id);
+        const prevEntryId = entries[selectedIndex - 1].id;
+        setSelectedEntryId(prevEntryId);
+        // 点击查看时自动标记为已读
+        markAsRead.mutate({ entryIds: [prevEntryId] });
       }
     },
     onRefresh: () => handleRefresh(),
@@ -71,37 +209,53 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
 
   const handleSelectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId);
-    if (autoMarkRead) {
-      // 自动标记已读
-      markAsRead.mutate({ entryIds: [entryId] });
-    }
-  }, [autoMarkRead, markAsRead]);
+    // 点击查看时自动标记为已读
+    markAsRead.mutate({ entryIds: [entryId] });
+  }, [markAsRead]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // 刷新所有相关查询
+      // 刷新所有相关查询，包括侧边栏统计数据
       await Promise.all([
+        // 文章列表
         utils.entries.list.invalidate({ ...filters, limit: 50 }),
         utils.entries.infiniteList.invalidate({ ...filters, limit: 20 }),
+        // 侧边栏数据
+        utils.feeds.globalStats.invalidate(),
+        utils.categories.list.invalidate(),
+        utils.feeds.list.invalidate({ limit: 100 }),
       ]);
+      // 等待所有查询重新完成
+      await Promise.all([
+        utils.entries.list.refetch({ ...filters, limit: 50 }),
+        utils.feeds.globalStats.refetch(),
+      ]);
+    } catch (error) {
+      console.error('刷新失败:', error);
     } finally {
       // 延迟一点时间让用户看到刷新动画
-      setTimeout(() => setIsRefreshing(false), 500);
+      setTimeout(() => setIsRefreshing(false), 300);
     }
   }, [filters, utils]);
 
   const handlePrevious = useCallback(() => {
     if (selectedIndex > 0) {
-      setSelectedEntryId(entries[selectedIndex - 1].id);
+      const prevEntryId = entries[selectedIndex - 1].id;
+      setSelectedEntryId(prevEntryId);
+      // 点击查看时自动标记为已读
+      markAsRead.mutate({ entryIds: [prevEntryId] });
     }
-  }, [selectedIndex, entries]);
+  }, [selectedIndex, entries, markAsRead]);
 
   const handleNext = useCallback(() => {
     if (selectedIndex < entries.length - 1) {
-      setSelectedEntryId(entries[selectedIndex + 1].id);
+      const nextEntryId = entries[selectedIndex + 1].id;
+      setSelectedEntryId(nextEntryId);
+      // 点击查看时自动标记为已读
+      markAsRead.mutate({ entryIds: [nextEntryId] });
     }
-  }, [selectedIndex, entries]);
+  }, [selectedIndex, entries, markAsRead]);
 
   // 移动端：选择文章后跳转到详情页
   const handleMobileSelect = useCallback((entryId: string) => {

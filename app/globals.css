@@ -251,6 +251,42 @@
     animation: spin 3s linear infinite;
   }
 
+  /* 刷新按钮旋转 - 带缓入缓出效果 */
+  @keyframes refresh-spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    70% {
+      transform: rotate(360deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-refresh {
+    animation: refresh-spin 1s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* 持续旋转 - 用于长时间加载 */
+  @keyframes continuous-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-spin-smooth {
+    animation: continuous-spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  /* 加载状态旋转 - 线性持续旋转 */
+  .animate-spin-loading {
+    animation: continuous-spin 0.8s linear infinite;
+  }
+
   /* 弹跳 */
   @keyframes bounce-subtle {
     0%, 100% {

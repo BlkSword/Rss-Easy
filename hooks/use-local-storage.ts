@@ -1,25 +1,27 @@
 /**
  * localStorage hook
- * 支持状态持久化
+ * 支持状态持久化，并正确处理 SSR
  */
 
 import { useState, useEffect, useCallback } from 'react';
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
-  // 获取初始值
-  const readValue = useCallback((): T => {
-    if (typeof window === 'undefined') return initialValue;
-    
+  // 使用 initialValue 作为初始状态，避免 SSR 不匹配
+  const [storedValue, setStoredValue] = useState<T>(initialValue);
+
+  // 在客户端挂载后，从 localStorage 读取实际值
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     try {
       const item = window.localStorage.getItem(key);
-      return item ? (JSON.parse(item) as T) : initialValue;
+      if (item) {
+        setStoredValue(JSON.parse(item) as T);
+      }
     } catch (error) {
       console.warn(`Error reading localStorage key "${key}":`, error);
-      return initialValue;
     }
-  }, [initialValue, key]);
-
-  const [storedValue, setStoredValue] = useState<T>(readValue);
+  }, [key]);
 
   // 更新 localStorage
   const setValue = useCallback(
@@ -51,6 +53,8 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
   // 监听其他窗口的更改
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === key && event.newValue !== null) {
         setStoredValue(JSON.parse(event.newValue));

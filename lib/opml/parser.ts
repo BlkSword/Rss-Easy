@@ -9,6 +9,7 @@ import { parseFeed } from '@/lib/rss/parser';
 export interface OPMLOutline {
   text: string;
   title?: string;
+  description?: string;
   xmlUrl?: string;
   htmlUrl?: string;
   type?: string;
@@ -52,6 +53,9 @@ function parseOutlines(elements: Element[]): OPMLOutline[] {
     if (el.hasAttribute('title')) {
       outline.title = el.getAttribute('title')!;
     }
+    if (el.hasAttribute('description')) {
+      outline.description = el.getAttribute('description')!;
+    }
     if (el.hasAttribute('xmlUrl')) {
       outline.xmlUrl = el.getAttribute('xmlUrl')!;
     }
@@ -76,18 +80,28 @@ function parseOutlines(elements: Element[]): OPMLOutline[] {
  */
 export function extractFeedsFromOPML(opml: ParsedOPML): Array<{
   title: string;
+  text: string;
   feedUrl: string;
   siteUrl?: string;
+  description?: string;
 }> {
-  const feeds: Array<{ title: string; feedUrl: string; siteUrl?: string }> = [];
+  const feeds: Array<{
+    title: string;
+    text: string;
+    feedUrl: string;
+    siteUrl?: string;
+    description?: string;
+  }> = [];
 
   function traverseOutlines(outlines: OPMLOutline[]) {
     for (const outline of outlines) {
       if (outline.xmlUrl && (outline.type === 'rss' || !outline.type)) {
         feeds.push({
           title: outline.title || outline.text,
+          text: outline.text,
           feedUrl: outline.xmlUrl,
           siteUrl: outline.htmlUrl,
+          description: outline.description,
         });
       }
 
@@ -151,15 +165,20 @@ export async function importOPML(
           continue;
         }
 
+        // 优先使用 OPML 中的标题和描述
+        // OPML 中的 text 是主要的显示文本，应该作为首选标题
+        const title = feed.title || feed.text || parsed.title;
+        const description = feed.description || parsed.description;
+
         // 创建 feed
         await db.feed.create({
           data: {
             userId,
             categoryId: options?.categoryId || null,
-            title: parsed.title || feed.title,
-            description: parsed.description,
+            title,
+            description,
             feedUrl: feed.feedUrl,
-            siteUrl: parsed.link || feed.siteUrl,
+            siteUrl: feed.siteUrl || parsed.link,
             fetchInterval: 3600,
             priority: 5,
             isActive: true,

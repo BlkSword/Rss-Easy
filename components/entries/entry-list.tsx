@@ -80,12 +80,22 @@ export function EntryList({
   const markAsRead = trpc.entries.markAsRead.useMutation({
     onMutate: async (vars) => {
       // 取消正在进行的查询
-      await utils.entries.infiniteList.cancel({ ...filters, limit: 20 });
+      await Promise.all([
+        utils.entries.infiniteList.cancel({ ...filters, limit: 20 }),
+        utils.entries.list.cancel({ ...filters, limit: 50 }),
+        utils.feeds.globalStats.cancel(),
+        utils.categories.list.cancel(),
+        utils.feeds.list.cancel({ limit: 100 }),
+      ]);
 
       // 保存当前数据以便回滚
-      const previousData = utils.entries.infiniteList.getData({ ...filters, limit: 20 });
+      const previousInfiniteData = utils.entries.infiniteList.getData({ ...filters, limit: 20 });
+      const previousListData = utils.entries.list.getData({ ...filters, limit: 50 });
+      const previousGlobalStats = utils.feeds.globalStats.getData();
+      const previousCategories = utils.categories.list.getData();
+      const previousFeeds = utils.feeds.list.getData({ limit: 100 });
 
-      // 乐观更新：立即更新缓存中的数据
+      // 乐观更新：立即更新 infiniteList 缓存中的数据
       utils.entries.infiniteList.setData({ ...filters, limit: 20 }, (oldData: any) => {
         if (!oldData) return oldData;
 
@@ -102,17 +112,104 @@ export function EntryList({
         };
       });
 
-      return { previousData };
+      // 乐观更新：立即更新 list 缓存中的数据
+      utils.entries.list.setData({ ...filters, limit: 50 }, (oldData: any) => {
+        if (!oldData) return oldData;
+
+        return {
+          ...oldData,
+          items: oldData.items.map((item: any) =>
+            vars.entryIds.includes(item.id)
+              ? { ...item, isRead: true }
+              : item
+          ),
+        };
+      });
+
+      // 乐观更新：更新全局未读计数
+      utils.feeds.globalStats.setData(undefined, (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          unreadCount: Math.max(0, oldData.unreadCount - vars.entryIds.length),
+        };
+      });
+
+      // 乐观更新：更新分类未读计数
+      utils.categories.list.setData(undefined, (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          categories: oldData.categories.map((category: any) => {
+            // 计算该分类中被标记的未读文章数
+            const affectedCount = vars.entryIds.filter((id: string) => {
+              const entry = entries.find(e => e.id === id);
+              return entry?.feed?.categoryId === category.id;
+            }).length;
+            return {
+              ...category,
+              unreadCount: Math.max(0, category.unreadCount - affectedCount),
+              feeds: category.feeds?.map((feed: any) => {
+                const feedAffectedCount = vars.entryIds.filter((id: string) => {
+                  const entry = entries.find(e => e.id === id);
+                  return entry?.feedId === feed.id;
+                }).length;
+                return {
+                  ...feed,
+                  unreadCount: Math.max(0, feed.unreadCount - feedAffectedCount),
+                };
+              }),
+            };
+          }),
+        };
+      });
+
+      // 乐观更新：更新订阅源列表中的未读计数
+      utils.feeds.list.setData({ limit: 100 }, (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          items: oldData.items.map((feed: any) => {
+            const affectedCount = vars.entryIds.filter((id: string) => {
+              const entry = entries.find(e => e.id === id);
+              return entry?.feedId === feed.id;
+            }).length;
+            return {
+              ...feed,
+              unreadCount: Math.max(0, (feed.unreadCount || 0) - affectedCount),
+            };
+          }),
+        };
+      });
+
+      return { previousInfiniteData, previousListData, previousGlobalStats, previousCategories, previousFeeds };
     },
     onSuccess: async () => {
       // 重新验证查询以确保数据同步
-      await utils.entries.infiniteList.invalidate({ ...filters, limit: 20 });
-      addToast({ type: 'success', title: '已标记为已读' });
+      await Promise.all([
+        utils.entries.infiniteList.invalidate({ ...filters, limit: 20 }),
+        utils.entries.list.invalidate({ ...filters, limit: 50 }),
+        utils.feeds.globalStats.invalidate(),
+        utils.categories.list.invalidate(),
+        utils.feeds.list.invalidate({ limit: 100 }),
+      ]);
     },
     onError: (error, _vars, context) => {
       // 出错时回滚到之前的状态
-      if (context?.previousData) {
-        utils.entries.infiniteList.setData({ ...filters, limit: 20 }, context.previousData);
+      if (context?.previousInfiniteData) {
+        utils.entries.infiniteList.setData({ ...filters, limit: 20 }, context.previousInfiniteData);
+      }
+      if (context?.previousListData) {
+        utils.entries.list.setData({ ...filters, limit: 50 }, context.previousListData);
+      }
+      if (context?.previousGlobalStats) {
+        utils.feeds.globalStats.setData(undefined, context.previousGlobalStats);
+      }
+      if (context?.previousCategories) {
+        utils.categories.list.setData(undefined, context.previousCategories);
+      }
+      if (context?.previousFeeds) {
+        utils.feeds.list.setData({ limit: 100 }, context.previousFeeds);
       }
       addToast({
         type: 'error',
@@ -125,12 +222,16 @@ export function EntryList({
   const markAsStarred = trpc.entries.markAsStarred.useMutation({
     onMutate: async (vars) => {
       // 取消正在进行的查询
-      await utils.entries.infiniteList.cancel({ ...filters, limit: 20 });
+      await Promise.all([
+        utils.entries.infiniteList.cancel({ ...filters, limit: 20 }),
+        utils.entries.list.cancel({ ...filters, limit: 50 }),
+      ]);
 
       // 保存当前数据以便回滚
-      const previousData = utils.entries.infiniteList.getData({ ...filters, limit: 20 });
+      const previousInfiniteData = utils.entries.infiniteList.getData({ ...filters, limit: 20 });
+      const previousListData = utils.entries.list.getData({ ...filters, limit: 50 });
 
-      // 乐观更新：立即更新缓存中的数据
+      // 乐观更新：立即更新 infiniteList 缓存中的数据
       utils.entries.infiniteList.setData({ ...filters, limit: 20 }, (oldData: any) => {
         if (!oldData) return oldData;
 
@@ -147,12 +248,29 @@ export function EntryList({
         };
       });
 
+      // 乐观更新：立即更新 list 缓存中的数据
+      utils.entries.list.setData({ ...filters, limit: 50 }, (oldData: any) => {
+        if (!oldData) return oldData;
+
+        return {
+          ...oldData,
+          items: oldData.items.map((item: any) =>
+            vars.entryIds.includes(item.id)
+              ? { ...item, isStarred: vars.starred }
+              : item
+          ),
+        };
+      });
+
       // 返回上下文以便在出错时回滚
-      return { previousData };
+      return { previousInfiniteData, previousListData };
     },
     onSuccess: async (_, vars) => {
       // 重新验证查询以确保数据同步
-      await utils.entries.infiniteList.invalidate({ ...filters, limit: 20 });
+      await Promise.all([
+        utils.entries.infiniteList.invalidate({ ...filters, limit: 20 }),
+        utils.entries.list.invalidate({ ...filters, limit: 50 }),
+      ]);
       addToast({
         type: 'success',
         title: vars.starred ? '已添加星标' : '已取消星标',
@@ -160,8 +278,11 @@ export function EntryList({
     },
     onError: (error, vars, context) => {
       // 出错时回滚到之前的状态
-      if (context?.previousData) {
-        utils.entries.infiniteList.setData({ ...filters, limit: 20 }, context.previousData);
+      if (context?.previousInfiniteData) {
+        utils.entries.infiniteList.setData({ ...filters, limit: 20 }, context.previousInfiniteData);
+      }
+      if (context?.previousListData) {
+        utils.entries.list.setData({ ...filters, limit: 50 }, context.previousListData);
       }
       addToast({
         type: 'error',
@@ -205,6 +326,16 @@ export function EntryList({
       return next;
     });
   };
+
+  // 选择文章时自动标记为已读
+  const handleSelect = useCallback((entryId: string) => {
+    onSelect?.(entryId);
+    // 查找该文章是否未读，如果是则标记为已读
+    const entry = entries.find(e => e.id === entryId);
+    if (entry && !entry.isRead) {
+      markAsRead.mutate({ entryIds: [entryId] });
+    }
+  }, [onSelect, entries, markAsRead]);
 
   const handleToggleStar = async (entryId: string, isStarred: boolean) => {
     await markAsStarred.mutateAsync({ entryIds: [entryId], starred: !isStarred });
@@ -311,7 +442,7 @@ export function EntryList({
               entry={entry}
               isSelected={selectedId === entry.id}
               isChecked={selectedIds.has(entry.id)}
-              onSelect={() => onSelect?.(entry.id)}
+              onSelect={() => handleSelect(entry.id)}
               onToggleCheck={() => toggleSelect(entry.id)}
               onToggleStar={() => handleToggleStar(entry.id, entry.isStarred)}
               onMarkRead={() => handleMarkRead(entry.id)}

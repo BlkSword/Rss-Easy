@@ -298,7 +298,7 @@ export function FeedsManagePageContent() {
       <Fade in={isLoaded} duration={400}>
         <div className="min-h-screen bg-background">
           {/* 顶部导航栏 */}
-          <header className="flex-shrink-0 h-16 border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-10">
+          <header className="flex-shrink-0 h-14 border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-10">
             <div className="flex h-full items-center justify-between px-4">
               <div className="flex items-center gap-3">
                 <Tooltip title="返回主页">
@@ -310,7 +310,7 @@ export function FeedsManagePageContent() {
                   />
                 </Tooltip>
                 <div>
-                  <h1 className="font-semibold">订阅源管理</h1>
+                  <h1 className="font-semibold text-sm">订阅源管理</h1>
                   <p className="text-xs text-muted-foreground">{feeds.length} 个订阅源</p>
                 </div>
               </div>
@@ -336,33 +336,33 @@ export function FeedsManagePageContent() {
 
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
             {/* 统计卡片 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
                   value={feeds.length}
                   label="订阅源总数"
-                  icon={<Rss className="h-5 w-5 text-primary" />}
+                  icon={<Rss className="h-4 w-4 text-primary" />}
                 />
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
                   value={feeds.filter(f => f.isActive).length}
                   label="启用中"
-                  icon={<Check className="h-5 w-5 text-green-500" />}
+                  icon={<Check className="h-4 w-4 text-green-500" />}
                 />
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
                   value={feeds.filter(f => !f.isActive).length}
                   label="已禁用"
-                  icon={<AlertCircle className="h-5 w-5 text-yellow-500" />}
+                  icon={<X className="h-4 w-4 text-red-500" />}
                 />
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
                   value={feeds.reduce((acc, f) => acc + (f.unreadCount || 0), 0)}
                   label="未读文章"
-                  icon={<FolderOpen className="h-5 w-5 text-blue-500" />}
+                  icon={<FolderOpen className="h-4 w-4 text-blue-500" />}
                 />
               </Card>
             </div>
@@ -383,11 +383,11 @@ export function FeedsManagePageContent() {
             {/* 批量操作栏 */}
             {selectedIds.size > 0 && (
               <Fade in direction="down" duration={200}>
-                <Card className="mb-6 border-primary/20 bg-primary/5" size="small">
+                <Card className="mb-4 border-primary/20 bg-primary/5" size="small">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                       <CheckSquare
-                        className="h-5 w-5 cursor-pointer text-primary"
+                        className="h-4 w-4 cursor-pointer text-primary"
                         onClick={toggleSelectAll}
                       />
                       <span className="text-sm">
@@ -406,14 +406,14 @@ export function FeedsManagePageContent() {
                       <Button
                         size="small"
                         onClick={() => handleBulkAction('activate')}
-                        className="bg-green-500/10 text-green-600 hover:bg-green-500/20"
+                        className="bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-500/20"
                       >
                         启用
                       </Button>
                       <Button
                         size="small"
                         onClick={() => handleBulkAction('deactivate')}
-                        className="bg-yellow-500/10 text-yellow-600 hover:bg-yellow-500/20"
+                        className="bg-red-500/10 text-red-600 hover:bg-red-500/20 border-red-500/20"
                       >
                         禁用
                       </Button>
@@ -448,24 +448,26 @@ export function FeedsManagePageContent() {
             ) : (
               <Card className="divide-y divide-border/60 overflow-hidden" styles={{ body: { padding: 0 } }}>
                 {/* 表头 */}
-                <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-muted/30 font-medium text-sm">
-                  <div className="col-span-1">
+                <div className="grid grid-cols-12 gap-3 px-4 py-3 bg-muted/30 font-medium text-xs">
+                  <div className="col-span-1 flex items-center">
                     {selectedIds.size === feeds.length ? (
-                      <CheckSquare
-                        className="h-5 w-5 cursor-pointer text-primary"
+                      <div
+                        className="w-4 h-4 rounded bg-primary border-primary border flex items-center justify-center cursor-pointer"
                         onClick={toggleSelectAll}
-                      />
+                      >
+                        <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                      </div>
                     ) : (
-                      <Square
-                        className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-primary transition-colors"
+                      <div
+                        className="w-4 h-4 rounded border-2 border-muted-foreground/30 cursor-pointer hover:border-primary/50 transition-colors"
                         onClick={toggleSelectAll}
                       />
                     )}
                   </div>
                   <div className="col-span-5">订阅源</div>
-                  <div className="col-span-2">分类</div>
+                  <div className="col-span-3">分类</div>
                   <div className="col-span-2">状态</div>
-                  <div className="col-span-2">操作</div>
+                  <div className="col-span-1">操作</div>
                 </div>
 
                 {/* 列表项 */}
@@ -476,36 +478,38 @@ export function FeedsManagePageContent() {
                     <ListItemFade key={feed.id} index={index} baseDelay={30}>
                       <div
                         className={cn(
-                          'grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-primary/[0.02] transition-colors',
-                          !feed.isActive && 'opacity-60 bg-muted/20'
+                          'grid grid-cols-12 gap-3 px-4 py-3 items-center hover:bg-primary/[0.02] transition-colors border-b border-border/40 last:border-0',
+                          !feed.isActive && 'opacity-60 bg-muted/10'
                         )}
                       >
-                        <div className="col-span-1">
+                        {/* 复选框 */}
+                        <div className="col-span-1 flex items-center">
                           <div
                             className={cn(
-                              'w-5 h-5 rounded border-2 cursor-pointer flex items-center justify-center transition-colors',
+                              'w-4 h-4 rounded border-2 cursor-pointer flex items-center justify-center transition-all duration-200',
                               selectedIds.has(feed.id)
-                                ? 'bg-primary border-primary text-white'
-                                : 'border-muted-foreground/30 hover:border-primary/50'
+                                ? 'bg-primary border-primary scale-105'
+                                : 'border-muted-foreground/30 hover:border-primary/50 hover:scale-105'
                             )}
                             onClick={() => toggleSelect(feed.id)}
                           >
                             {selectedIds.has(feed.id) && (
-                              <Check className="h-3.5 w-3.5" />
+                              <Check className="h-3 w-3 text-white" strokeWidth={3} />
                             )}
                           </div>
                         </div>
 
-                        <div className="col-span-5 flex items-center gap-3 min-w-0">
+                        {/* 订阅源信息 */}
+                        <div className="col-span-5 flex items-center gap-2.5 min-w-0">
                           {feed.iconUrl ? (
-                            <img src={feed.iconUrl} alt="" className="w-10 h-10 rounded-xl shadow-sm" />
+                            <img src={feed.iconUrl} alt="" className="w-8 h-8 rounded-lg shadow-sm flex-shrink-0" />
                           ) : (
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                              <Rss className="h-5 w-5 text-primary" />
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center flex-shrink-0">
+                              <Rss className="h-4 w-4 text-primary" />
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{feed.title}</div>
+                            <div className="font-medium text-sm truncate">{feed.title}</div>
                             <div className="text-xs text-muted-foreground truncate">
                               {feed.feedUrl}
                             </div>
@@ -517,41 +521,43 @@ export function FeedsManagePageContent() {
                           </div>
                         </div>
 
-                        <div className="col-span-2">
+                        {/* 分类 */}
+                        <div className="col-span-3 flex items-center">
                           {category ? (
-                            <Tag
-                              icon={<FolderOpen className="h-3 w-3" />}
-                              style={{
-                                backgroundColor: `${category.color || '#94a3b8'}20`,
-                                color: category.color || '#94a3b8',
-                                border: 'none',
-                              }}
-                              className="rounded-full"
-                            >
-                              {category.name}
-                            </Tag>
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium" style={{
+                              backgroundColor: `${category.color || '#94a3b8'}15`,
+                              color: category.color || '#94a3b8',
+                            }}>
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: category.color || '#94a3b8' }} />
+                              <span className="truncate">{category.name}</span>
+                            </div>
                           ) : (
-                            <span className="text-sm text-muted-foreground">未分类</span>
+                            <span className="text-xs text-muted-foreground">未分类</span>
                           )}
                         </div>
 
-                        <div className="col-span-2">
-                          <StatusBadge 
-                            status={feed.isActive ? 'success' : 'default'}
-                            pulse={feed.isActive}
-                          >
-                            {feed.isActive ? '启用' : '禁用'}
-                          </StatusBadge>
+                        {/* 状态 */}
+                        <div className="col-span-2 flex items-center">
+                          {feed.isActive ? (
+                            <StatusBadge status="success" pulse>
+                              启用
+                            </StatusBadge>
+                          ) : (
+                            <StatusBadge status="error">
+                              禁用
+                            </StatusBadge>
+                          )}
                         </div>
 
-                        <div className="col-span-2 flex items-center gap-1">
+                        {/* 操作按钮 */}
+                        <div className="col-span-1 flex items-center justify-end gap-1">
                           <Tooltip title="编辑">
                             <Button
                               type="text"
                               size="small"
-                              icon={<Edit className="h-4 w-4" />}
+                              icon={<Edit className="h-3.5 w-3.5" />}
                               onClick={() => goToEdit(feed.id)}
-                              className="hover:bg-primary/10"
+                              className="hover:bg-primary/10 hover:text-primary transition-colors"
                             />
                           </Tooltip>
                           <Tooltip title="删除">
@@ -559,8 +565,9 @@ export function FeedsManagePageContent() {
                               type="text"
                               size="small"
                               danger
-                              icon={<Trash2 className="h-4 w-4" />}
+                              icon={<Trash2 className="h-3.5 w-3.5" />}
                               onClick={() => handleDelete(feed.id, feed.title)}
+                              className="hover:bg-red-500/10"
                             />
                           </Tooltip>
                         </div>
@@ -581,7 +588,7 @@ export function FeedsManagePageContent() {
     <Fade in duration={300}>
       <div className="min-h-screen bg-background">
         {/* 顶部导航栏 */}
-        <header className="flex-shrink-0 h-16 border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-10">
+        <header className="flex-shrink-0 h-14 border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex h-full items-center justify-between px-4">
             <div className="flex items-center gap-3">
               <Tooltip title="返回列表">
@@ -592,15 +599,15 @@ export function FeedsManagePageContent() {
                   className="hover:bg-muted/50"
                 />
               </Tooltip>
-              <h1 className="font-semibold">
+              <h1 className="font-semibold text-sm">
                 {viewMode === 'add' ? '添加订阅源' : '编辑订阅源'}
               </h1>
             </div>
           </div>
         </header>
 
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
-          <Card 
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
+          <Card
             className={cn('border-border/60', isShaking && 'animate-shake')}
             title={
               <div className="flex items-center gap-2">
@@ -635,8 +642,8 @@ export function FeedsManagePageContent() {
                     status={formErrors.url ? 'error' : ''}
                     className="flex-1"
                   />
-                  <Button 
-                    onClick={handleDiscover} 
+                  <Button
+                    onClick={handleDiscover}
                     loading={discoverFeed.isPending}
                     icon={<Zap className="h-4 w-4" />}
                   >
@@ -700,11 +707,11 @@ export function FeedsManagePageContent() {
                   options={categories?.map((cat) => ({
                     label: (
                       <div className="flex items-center gap-2">
-                        <span 
-                          className="w-3 h-3 rounded-full" 
+                        <span
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: cat.color || '#94a3b8' }}
                         />
-                        {cat.name}
+                        <span className="truncate">{cat.name}</span>
                       </div>
                     ),
                     value: cat.id,
@@ -720,7 +727,7 @@ export function FeedsManagePageContent() {
                       <Settings className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm font-medium text-muted-foreground">高级设置</span>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* 更新频率 */}
                       <div>
@@ -763,12 +770,17 @@ export function FeedsManagePageContent() {
                   </div>
 
                   {/* 启用状态 */}
-                  <div className="flex items-center justify-between py-2 px-4 bg-muted/30 rounded-lg">
+                  <div className="flex items-center justify-between py-3 px-4 bg-muted/30 rounded-xl">
                     <div>
-                      <div className="font-medium">启用此订阅源</div>
-                      <div className="text-sm text-muted-foreground">禁用后将不再获取新文章</div>
+                      <div className="font-medium text-sm">启用此订阅源</div>
+                      <div className="text-xs text-muted-foreground">禁用后将不再获取新文章</div>
                     </div>
-                    <Switch checked={formIsActive} onChange={setFormIsActive} />
+                    <Switch
+                      checked={formIsActive}
+                      onChange={setFormIsActive}
+                      checkedChildren="启用"
+                      unCheckedChildren="禁用"
+                    />
                   </div>
                 </>
               )}

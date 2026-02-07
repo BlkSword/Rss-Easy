@@ -193,9 +193,16 @@ export function AppHeader({
               variant="ghost"
               size="icon"
               onClick={onRefresh}
-              isLoading={isRefreshing}
+              disabled={isRefreshing}
+              className={cn(
+                'transition-all duration-200',
+                isRefreshing && 'hover:bg-transparent'
+              )}
             >
-              <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+              <RefreshCw className={cn(
+                'h-4 w-4 transition-transform duration-500',
+                isRefreshing && 'animate-spin-smooth'
+              )} />
             </Button>
           </Tooltip>
 
@@ -227,7 +234,7 @@ export function AppHeader({
               className="relative"
             >
               <Bell className="h-4 w-4" />
-              {notifications && notifications > 0 && (
+              {(notifications ?? 0) > 0 && (
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-background" />
               )}
             </Button>
