@@ -30,10 +30,28 @@ export interface EmbeddingResult {
   tokensUsed: number;
 }
 
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatResponse {
+  content: string;
+  tokensUsed?: number;
+}
+
+export interface ChatOptions {
+  model: string;
+  messages: ChatMessage[];
+  max_tokens?: number;
+  temperature?: number;
+  response_format?: { type: 'json_object' | 'text' };
+}
+
 /**
  * AI服务基类
  */
-abstract class AIProvider {
+export abstract class AIProvider {
   protected config: AIConfig;
 
   constructor(config: AIConfig) {
@@ -46,6 +64,7 @@ abstract class AIProvider {
   abstract analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'>;
   abstract calculateImportance(content: string): Promise<number>;
   abstract generateEmbedding(text: string): Promise<EmbeddingResult>;
+  abstract chat(options: ChatOptions): Promise<ChatResponse>;
 }
 
 /**
@@ -170,6 +189,21 @@ AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
       tokensUsed: response.usage.total_tokens,
     };
   }
+
+  async chat(options: ChatOptions): Promise<ChatResponse> {
+    const response = await this.client.chat.completions.create({
+      model: options.model,
+      messages: options.messages as any,
+      max_tokens: options.max_tokens || this.config.maxTokens || 2000,
+      temperature: options.temperature ?? this.config.temperature ?? 0.7,
+      response_format: options.response_format as any,
+    });
+
+    return {
+      content: response.choices[0].message.content || '',
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
 }
 
 /**
@@ -291,6 +325,22 @@ class AnthropicProvider extends AIProvider {
       tokensUsed: response.usage.total_tokens,
     };
   }
+
+  async chat(options: ChatOptions): Promise<ChatResponse> {
+    const response = await this.client.messages.create({
+      model: options.model,
+      max_tokens: options.max_tokens || this.config.maxTokens || 2000,
+      temperature: options.temperature ?? this.config.temperature ?? 0.7,
+      system: options.messages.find(m => m.role === 'system')?.content,
+      messages: options.messages.filter(m => m.role !== 'system') as any,
+    });
+
+    const content = response.content[0];
+    return {
+      content: content.type === 'text' ? content.text : '',
+      tokensUsed: response.usage?.input_tokens + response.usage?.output_tokens,
+    };
+  }
 }
 
 /**
@@ -410,6 +460,21 @@ class DeepSeekProvider extends AIProvider {
     return {
       embedding: response.data[0].embedding,
       tokensUsed: response.usage.total_tokens,
+    };
+  }
+
+  async chat(options: ChatOptions): Promise<ChatResponse> {
+    const response = await this.client.chat.completions.create({
+      model: options.model,
+      messages: options.messages as any,
+      max_tokens: options.max_tokens || this.config.maxTokens || 2000,
+      temperature: options.temperature ?? this.config.temperature ?? 0.7,
+      response_format: options.response_format as any,
+    });
+
+    return {
+      content: response.choices[0].message.content || '',
+      tokensUsed: response.usage?.total_tokens,
     };
   }
 }

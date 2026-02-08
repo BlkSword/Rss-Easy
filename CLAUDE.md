@@ -22,12 +22,12 @@ npm run db:migrate       # 运行数据库迁移（生产环境）
 npm run db:studio        # 打开 Prisma Studio
 npm run db:seed          # 填充初始数据
 
-# 测试
-npm run test             # 运行 Jest 测试
-npm run test:watch       # 监听模式运行测试
-npm run test:coverage    # 运行测试并生成覆盖率报告
+# Docker 部署
+docker-compose up -d     # 启动所有服务（数据库 + Redis + 应用）
+docker-compose down      # 停止所有服务
+docker-compose logs -f   # 查看日志
 
-# 一键启动（推荐）
+# 一键启动脚本（推荐用于本地开发）
 start.bat                # Windows: 启动 Docker 服务、数据库迁移和应用
 ./start.sh              # Linux/macOS: 同上
 ```
@@ -219,24 +219,99 @@ CUSTOM_API_KEY=         # 自定义 API Key
 CUSTOM_API_MODEL=       # 自定义 API 模型
 ```
 
+## 前端 tRPC 调用
+
+前端使用 tRPC React Query 集成：
+
+```typescript
+// 调用公开 API
+const { data } = api.auth.login.useMutation({ /* ... */ });
+
+// 调用需要认证的 API
+const { data: feeds } = api.feeds.list.useQuery();
+
+// Mutation 操作
+const markAsRead = api.entries.markAsRead.useMutation();
+```
+
+## 后台任务调度
+
+项目使用 **BullMQ + Redis** 处理异步任务：
+
+- **AI 分析队列**：`lib/ai/queue.ts` - AIAnalysisQueue 类
+- **任务调度器**：定时抓取订阅源内容
+- **队列状态 API**：`app/api/scheduler/status/route.ts` 和 `app/api/scheduler/trigger/route.ts`
+
+**启动队列处理器**：
+```typescript
+import { getAIQueue } from '@/lib/ai/queue';
+
+const queue = getAIQueue();
+queue.start(); // 启动后台处理
+queue.stop();  // 停止处理
+```
+
+## Docker 部署
+
+项目包含 Docker Compose 配置（`docker-compose.yml`）：
+- PostgreSQL 数据库
+- Redis 缓存和队列
+- 应用服务
+
+```bash
+# 使用 Docker 启动所有服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+```
+
+## 部署注意事项
+
+### Next.js Standalone 输出
+
+项目配置为 `output: 'standalone'` 模式（`next.config.ts`），这意味着：
+- 构建后生成 `.next/standalone` 目录
+- 该目录包含运行应用所需的最小依赖
+- Docker 使用此模式构建最小化镜像
+
+**重要**：运行 `npm run db:push` 或数据库迁移后，必须运行 `npm run db:generate` 重新生成 Prisma Client。
+
+### 环境变量优先级
+
+1. 用户级别 AI 配置（`User.aiConfig`）- 最高优先级
+2. 环境变量（`AI_PROVIDER`、`AI_MODEL` 等）
+3. 默认值（OpenAI gpt-4o）
+
 ## 开发注意事项
 
 ### 添加新的 tRPC 路由
 
-目前项目使用简化的 tRPC 结构：
+tRPC 路由定义在 `server/api/` 目录中：
 - `server/trpc/init.ts` - tRPC 初始化、中间件、router/procedure 导出
 - `server/trpc/context.ts` - tRPC 上下文（db, userId, session）
+- `server/api/index.ts` - 主路由入口，合并所有子路由
 
 添加新路由：
-1. 创建路由文件并定义 router
+1. 在 `server/api/` 中创建路由文件（如 `my-feature.ts`）
 2. 使用 `publicProcedure` 或 `protectedProcedure` 定义 procedure
-3. 在主应用中合并路由
+3. 在 `server/api/index.ts` 中导入并合并路由：
+```typescript
+import { myFeatureRouter } from './my-feature';
+
+export const appRouter = router({
+  // ...
+  myFeature: myFeatureRouter,
+});
+```
 
 ### 数据库变更
 
 1. 修改 `prisma/schema.prisma`
 2. 开发环境：`npm run db:push` + `npm run db:generate`
 3. 生产环境：`npm run db:migrate` + `npm run db:generate`
+
+**重要**：修改 schema 后务必重新生成 Prisma Client，否则 tRPC Context 和其他使用数据库的地方会报错。
 
 ### AI 功能集成
 

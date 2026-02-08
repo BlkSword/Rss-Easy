@@ -33,6 +33,8 @@ model User {
   feeds         Feed[]
   categories    Category[]
   readingHistory ReadingHistory[]
+  readingSessions ReadingSession[]
+  userPreference UserPreference?
   searchHistory  SearchHistory[]
   reports       Report[]
   notifications  Notification[]
@@ -181,11 +183,45 @@ model Entry {
   // 阅读时间估算
   readingTime       Int?      @map("reading_time") // 秒
 
+  // =====================================================
+  // AI-Native 深度分析字段（新增）
+  // =====================================================
+
+  // 增强分析结果
+  aiOneLineSummary   String?   @map("ai_one_line_summary") @db.Text           // 一句话总结
+  aiMainPoints       Json?     @map("ai_main_points")                           // 主要观点 [{point, explanation, importance}]
+  aiKeyQuotes        Json?     @map("ai_key_quotes")                            // 关键引用 [{quote, significance}]
+  aiScoreDimensions  Json?     @map("ai_score_dimensions")                      // 评分维度 {depth, quality, practicality, novelty}
+
+  // 分析元数据
+  aiAnalysisModel    String?   @map("ai_analysis_model")                        // 使用的模型组合
+  aiProcessingTime   Int?      @map("ai_processing_time")                       // 处理耗时(ms)
+  aiReflectionRounds Int       @default(0) @map("ai_reflection_rounds")         // 反思轮数
+  aiAnalyzedAt       DateTime? @map("ai_analyzed_at")                           // 深度分析时间
+
+  // =====================================================
+  // 初评字段（BestBlogs 改进）
+  // =====================================================
+
+  // 初评结果
+  aiPrelimIgnore      Boolean?  @map("ai_prelim_ignore")                         // 是否忽略（低质内容）
+  aiPrelimReason      String?   @map("ai_prelim_reason") @db.Text               // 主题描述
+  aiPrelimValue       Int?      @map("ai_prelim_value")                          // 价值评分 1-5
+  aiPrelimSummary     String?   @map("ai_prelim_summary") @db.Text              // 一句话总结
+  aiPrelimLanguage    String?   @map("ai_prelim_language")                       // 语言类型 'zh', 'en', 'other'
+  aiPrelimStatus      String?   @map("ai_prelim_status")                         // 初评状态 'pending', 'passed', 'rejected'
+  aiPrelimAnalyzedAt  DateTime? @map("ai_prelim_analyzed_at")                    // 初评时间
+  aiPrelimModel       String?   @map("ai_prelim_model")                          // 初评使用的模型
+
   // 关联关系
   feed              Feed              @relation(fields: [feedId], references: [id], onDelete: Cascade)
   readingHistory    ReadingHistory[]
+  readingSessions   ReadingSession[]
   reportEntries     ReportEntry[]
   aiAnalysisQueue   AIAnalysisQueue[]
+  sourceRelations   ArticleRelation[] @relation("SourceRelations")
+  targetRelations   ArticleRelation[] @relation("TargetRelations")
+  feedbacks         AnalysisFeedback[]
 
   @@index([feedId])
   @@index([publishedAt])
@@ -441,4 +477,131 @@ model ApiKey {
   @@index([userId])
   @@index([keyHash])
   @@map("api_keys")
+}
+
+// =====================================================
+// 12. 用户阅读行为（AI-Native 新增）
+// =====================================================
+
+model ReadingSession {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  entryId     String    @map("entry_id")
+
+  // 阅读行为数据
+  startedAt   DateTime  @default(now()) @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  dwellTime   Int       @default(0) @map("dwell_time")      // 停留秒数
+  scrollDepth Float     @default(0) @map("scroll_depth")    // 滚动深度 0-1
+  isCompleted Boolean   @default(false) @map("is_completed") // 是否阅读到底部
+
+  // 交互数据
+  isStarred   Boolean   @default(false) @map("is_starred")
+  rating      Int?      @map("rating")                      // 用户主动评分 1-5
+
+  // AI分析数据
+  attentionSegments Json?  @map("attention_segments")      // 用户关注段落（基于滚动停留）
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // 关联关系
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry       Entry     @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entryId, startedAt])
+  @@index([userId, createdAt])
+  @@index([entryId])
+  @@map("reading_sessions")
+}
+
+// =====================================================
+// 13. 用户偏好画像（AI-Native 新增）
+// =====================================================
+
+model UserPreference {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+
+  // 主题权重（动态计算）
+  topicWeights    Json     @default("{}") @map("topic_weights") // {"Rust": 0.8, "AI": 0.9}
+
+  // 阅读偏好
+  preferredDepth  String?  @map("preferred_depth")   // 'deep' | 'medium' | 'light'
+  preferredLength String?  @map("preferred_length")  // 'short' | 'medium' | 'long'
+
+  // 负反馈（不感兴趣）
+  excludedTags    String[] @default([]) @map("excluded_tags")
+
+  // 统计数据
+  totalReadTime   Int      @default(0) @map("total_read_time")   // 总阅读时间（秒）
+  totalEntries    Int      @default(0) @map("total_entries")     // 总阅读文章数
+  avgCompletion   Float    @default(0) @map("avg_completion")    // 平均完成率
+  avgDwellTime    Int      @default(0) @map("avg_dwell_time")   // 平均停留时间
+
+  // 多样性评分
+  diversityScore  Float    @default(0) @map("diversity_score")   // 阅读多样性 0-1
+
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // 关联关系
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_preferences")
+}
+
+// =====================================================
+// 14. 文章关系（知识图谱，AI-Native 新增）
+// =====================================================
+
+model ArticleRelation {
+  id          String   @id @default(uuid())
+  sourceId    String   @map("source_id")
+  targetId    String   @map("target_id")
+  relationType String  @map("relation_type") // 'similar', 'prerequisite', 'contradiction', 'extension'
+  strength    Float    @default(0)           // 关系强度 0-1
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // 关联关系
+  sourceEntry Entry    @relation("SourceRelations", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetEntry Entry    @relation("TargetRelations", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, targetId, relationType])
+  @@index([sourceId, relationType])
+  @@index([targetId, relationType])
+  @@index([strength])
+  @@map("article_relations")
+}
+
+// =====================================================
+// 15. 用户分析反馈（反馈改进机制）
+// =====================================================
+
+model AnalysisFeedback {
+  id          String   @id @default(uuid())
+  entryId     String   @map("entry_id")
+  userId      String   @map("user_id")
+
+  // 反馈内容
+  summaryIssue    String?  @map("summary_issue") @db.Text    // 摘要问题描述
+  tagSuggestions  String[] @default([]) @map("tag_suggestions") // 标签建议
+  rating          Int?     @map("rating")                     // 用户评分 1-5
+  isHelpful       Boolean? @map("is_helpful")                 // 是否有帮助
+  comments        String?  @map("comments") @db.Text          // 其他意见
+
+  // 应用状态
+  isApplied    Boolean  @default(false) @map("is_applied")   // 是否已应用到分析
+  appliedAt    DateTime? @map("applied_at")                  // 应用时间
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // 关联关系
+  entry       Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, userId])
+  @@index([entryId])
+  @@index([userId])
+  @@index([isApplied])
+  @@map("analysis_feedback")
 }

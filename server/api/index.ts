@@ -14,6 +14,9 @@ import { settingsRouter } from './settings';
 import { rulesRouter } from './rules';
 import { notificationsRouter } from './notifications';
 import { aiRouter } from './ai';
+import { analyticsRouter } from './analytics';
+import { recommendationsRouter } from './recommendations';
+import { preliminaryRouter } from './preliminary';
 
 export const appRouter = router({
   auth: authRouter,
@@ -26,6 +29,9 @@ export const appRouter = router({
   rules: rulesRouter,
   notifications: notificationsRouter,
   ai: aiRouter,
+  analytics: analyticsRouter,
+  recommendations: recommendationsRouter,
+  preliminary: preliminaryRouter,
 });
 
 export type AppRouter = typeof appRouter;

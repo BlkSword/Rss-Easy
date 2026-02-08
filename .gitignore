@@ -51,3 +51,4 @@ prisma/migrations/
 *.temp
 
 .claude
+CLAUDE.md

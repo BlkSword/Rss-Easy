@@ -6,6 +6,7 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { AIAnalysisQueue } from '@/lib/ai/queue';
+import { addDeepAnalysisJob } from '@/lib/queue/deep-analysis-processor';
 
 export const entriesRouter = router({
   /**
@@ -471,5 +472,201 @@ export const entriesRouter = router({
         status: 'queued',
         message: 'AI分析已加入队列',
       };
+    }),
+
+  // =====================================================
+  // AI-Native 深度分析 API（新增）
+  // =====================================================
+
+  /**
+   * 触发深度分析
+   */
+  triggerDeepAnalysis: protectedProcedure
+    .input(z.object({
+      entryId: z.string().uuid(),
+      priority: z.number().min(1).max(10).default(5),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { entryId, priority } = input;
+      const userId = ctx.userId;
+
+      // 检查文章是否存在
+      const entry = await ctx.db.entry.findFirst({
+        where: {
+          id: entryId,
+          feed: { userId },
+        },
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          aiAnalyzedAt: true,
+        },
+      });
+
+      if (!entry) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '文章不存在',
+        });
+      }
+
+      if (!entry.content) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '文章没有内容，无法进行深度分析',
+        });
+      }
+
+      // 检查是否已有深度分析
+      if (entry.aiAnalyzedAt) {
+        return {
+          status: 'already_analyzed',
+          message: '文章已进行过深度分析',
+          entryId: entry.id,
+        };
+      }
+
+      // 添加到深度分析队列
+      try {
+        const jobId = await addDeepAnalysisJob({
+          entryId,
+          userId,
+          priority,
+        });
+
+        return {
+          status: 'queued',
+          jobId,
+          message: '深度分析已加入队列',
+          entryId: entry.id,
+        };
+      } catch (error) {
+        console.error('添加深度分析任务失败:', error);
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: '添加分析任务失败',
+        });
+      }
+    }),
+
+  /**
+   * 获取深度分析结果
+   */
+  getDeepAnalysis: protectedProcedure
+    .input(z.object({
+      entryId: z.string().uuid(),
+    }))
+    .query(async ({ input, ctx }) => {
+      const entry = await ctx.db.entry.findFirst({
+        where: {
+          id: input.entryId,
+          feed: { userId: ctx.userId },
+        },
+        select: {
+          id: true,
+          title: true,
+          aiOneLineSummary: true,
+          aiSummary: true,
+          aiMainPoints: true,
+          aiKeyQuotes: true,
+          aiScoreDimensions: true,
+          aiAnalysisModel: true,
+          aiProcessingTime: true,
+          aiReflectionRounds: true,
+          aiAnalyzedAt: true,
+          feed: {
+            select: {
+              title: true,
+            },
+          },
+        },
+      });
+
+      if (!entry) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '文章不存在',
+        });
+      }
+
+      // 如果没有深度分析，返回 null
+      if (!entry.aiAnalyzedAt) {
+        return null;
+      }
+
+      // 计算综合评分
+      const scoreDimensions = entry.aiScoreDimensions as any;
+      const aiScore = scoreDimensions
+        ? ((scoreDimensions.depth || 5) * 0.3 +
+           (scoreDimensions.quality || 5) * 0.3 +
+           (scoreDimensions.practicality || 5) * 0.2 +
+           (scoreDimensions.novelty || 5) * 0.2)
+        : 5;
+
+      return {
+        entryId: entry.id,
+        title: entry.title,
+        feedName: entry.feed.title,
+        oneLineSummary: entry.aiOneLineSummary,
+        summary: entry.aiSummary,
+        mainPoints: entry.aiMainPoints,
+        keyQuotes: entry.aiKeyQuotes,
+        scoreDimensions,
+        aiScore,
+        analysisModel: entry.aiAnalysisModel,
+        processingTime: entry.aiProcessingTime,
+        reflectionRounds: entry.aiReflectionRounds,
+        analyzedAt: entry.aiAnalyzedAt,
+      };
+    }),
+
+  /**
+   * 批量获取分析状态
+   */
+  getAnalysisStatus: protectedProcedure
+    .input(z.object({
+      entryIds: z.array(z.string().uuid()),
+    }))
+    .query(async ({ input, ctx }) => {
+      const entries = await ctx.db.entry.findMany({
+        where: {
+          id: { in: input.entryIds },
+          feed: { userId: ctx.userId },
+        },
+        select: {
+          id: true,
+          aiAnalyzedAt: true,
+          aiProcessingTime: true,
+          aiReflectionRounds: true,
+          aiScoreDimensions: true,
+        },
+      });
+
+      const statusMap: Record<string, {
+        analyzed: boolean;
+        processingTime?: number;
+        reflectionRounds?: number;
+        score?: number;
+      }> = {};
+
+      for (const entry of entries) {
+        const scoreDimensions = entry.aiScoreDimensions as any;
+        const aiScore = scoreDimensions
+          ? ((scoreDimensions.depth || 5) * 0.3 +
+             (scoreDimensions.quality || 5) * 0.3 +
+             (scoreDimensions.practicality || 5) * 0.2 +
+             (scoreDimensions.novelty || 5) * 0.2)
+          : undefined;
+
+        statusMap[entry.id] = {
+          analyzed: !!entry.aiAnalyzedAt,
+          processingTime: entry.aiProcessingTime || undefined,
+          reflectionRounds: entry.aiReflectionRounds,
+          score: aiScore,
+        };
+      }
+
+      return statusMap;
     }),
 });

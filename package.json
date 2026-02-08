@@ -15,7 +15,14 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "test:deep-analysis": "tsx scripts/test-deep-analysis.ts",
+    "test:preliminary": "tsx scripts/test-preliminary.ts",
+    "test:smart-analyzer": "tsx scripts/test-smart-analyzer.ts",
+    "cost-analysis": "tsx scripts/cost-analysis.ts",
+    "worker:deep-analysis": "tsx scripts/start-deep-analysis-worker.ts",
+    "worker:preliminary": "tsx scripts/start-preliminary-worker.ts",
+    "queue": "tsx scripts/queue-manager.ts"
   },
   "repository": {
     "type": "git",
@@ -58,6 +65,7 @@
     "ioredis": "^5.9.2",
     "jose": "^6.1.3",
     "lucide-react": "^0.563.0",
+    "marked": "^15.0.12",
     "nanoid": "^5.1.6",
     "next": "^16.1.6",
     "openai": "^6.17.0",
