@@ -8,6 +8,8 @@ import { db } from '@/lib/db';
 import { hashPassword, verifyPassword, signToken } from '@/lib/auth';
 import { TRPCError } from '@trpc/server';
 import { info, warn, error } from '@/lib/logger';
+import { createEmailServiceFromUser, createSystemEmailService } from '@/lib/email/service';
+import { randomBytes } from 'crypto';
 
 export const authRouter = router({
   /**
@@ -358,5 +360,167 @@ export const authRouter = router({
       });
 
       return user;
+    }),
+
+  /**
+   * 请求密码重置
+   */
+  requestPasswordReset: publicProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // 查找用户
+      const user = await db.user.findUnique({
+        where: { email: input.email },
+      });
+
+      // 无论用户是否存在都返回成功，防止邮箱枚举攻击
+      if (!user) {
+        await info('auth', '密码重置请求（用户不存在）', { email: input.email });
+        return { success: true, message: '如果该邮箱已注册，您将收到密码重置邮件' };
+      }
+
+      // 检查是否在24小时内请求超过3次
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const resetCount = (user as any).passwordResetCount || 0;
+      const existingResetExpiresAt = (user as any).passwordResetExpiresAt;
+
+      if (resetCount >= 3 && existingResetExpiresAt && existingResetExpiresAt > oneDayAgo) {
+        await warn('auth', '密码重置请求过于频繁', { email: input.email, count: resetCount });
+        return { success: true, message: '请求过于频繁，请稍后再试' };
+      }
+
+      // 生成重置 token
+      const resetToken = randomBytes(32).toString('hex');
+      const resetExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1小时后过期
+
+      // 更新用户记录
+      await (db.user as any).update({
+        where: { id: user.id },
+        data: {
+          passwordResetToken: resetToken,
+          passwordResetExpiresAt: resetExpiresAt,
+          passwordResetCount: resetCount + 1,
+        },
+      });
+
+      // 发送密码重置邮件
+      try {
+        // 优先使用用户配置的邮件服务
+        let emailService = createEmailServiceFromUser(user.emailConfig);
+
+        // 如果用户没有配置，使用系统默认邮件服务
+        if (!emailService) {
+          emailService = createSystemEmailService();
+        }
+
+        if (emailService) {
+          const resetUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+          await emailService.sendPasswordResetEmail(user.email, user.username, resetUrl, '1小时');
+          await info('auth', '密码重置邮件已发送', { email: user.email });
+        } else {
+          await error('auth', '邮件服务未配置', undefined, { email: user.email });
+          return { success: false, message: '邮件服务未配置，请联系管理员' };
+        }
+      } catch (err: any) {
+        await error('auth', '发送密码重置邮件失败', err, { email: user.email });
+        return { success: false, message: '发送邮件失败，请稍后重试' };
+      }
+
+      return { success: true, message: '如果该邮箱已注册，您将收到密码重置邮件' };
+    }),
+
+  /**
+   * 验证重置 token
+   */
+  verifyResetToken: publicProcedure
+    .input(
+      z.object({
+        token: z.string(),
+      })
+    )
+    .query(async ({ input }) => {
+      const user = await (db.user as any).findUnique({
+        where: { passwordResetToken: input.token } as any,
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          passwordResetExpiresAt: true,
+        },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '无效的重置链接',
+        });
+      }
+
+      if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '重置链接已过期，请重新申请',
+        });
+      }
+
+      return {
+        valid: true,
+        email: user.email,
+        username: user.username,
+      };
+    }),
+
+  /**
+   * 重置密码
+   */
+  resetPassword: publicProcedure
+    .input(
+      z.object({
+        token: z.string(),
+        newPassword: z.string().min(6),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // 查找用户
+      const user = await (db.user as any).findUnique({
+        where: { passwordResetToken: input.token } as any,
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '无效的重置链接',
+        });
+      }
+
+      // 检查 token 是否过期
+      if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '重置链接已过期，请重新申请',
+        });
+      }
+
+      // 哈希新密码
+      const passwordHash = await hashPassword(input.newPassword);
+
+      // 更新密码并清除重置 token
+      await (db.user as any).update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          passwordResetToken: null,
+          passwordResetExpiresAt: null,
+          passwordResetCount: 0,
+        },
+      });
+
+      await info('auth', '密码已重置', { email: user.email });
+
+      return { success: true, message: '密码已成功重置，请使用新密码登录' };
     }),
 });

@@ -54,50 +54,58 @@ async function main() {
 
   console.log(`✅ 用户创建成功: ${testUser.email}`);
 
-  // 创建默认分类
+  // 创建默认分类（使用 upsert 避免重复）
   console.log('📁 创建默认分类...');
-  const categories = await Promise.all([
-    prisma.category.create({
-      data: {
-        userId: testUser.id,
-        name: '技术',
-        description: '技术相关文章',
-        color: '#3B82F6',
-        icon: '💻',
-        sortOrder: 1,
-      },
-    }),
-    prisma.category.create({
-      data: {
-        userId: testUser.id,
-        name: '新闻',
-        description: '新闻资讯',
-        color: '#10B981',
-        icon: '📰',
-        sortOrder: 2,
-      },
-    }),
-    prisma.category.create({
-      data: {
-        userId: testUser.id,
-        name: '设计',
-        description: '设计相关',
-        color: '#8B5CF6',
-        icon: '🎨',
-        sortOrder: 3,
-      },
-    }),
-    prisma.category.create({
-      data: {
-        userId: testUser.id,
-        name: '产品',
-        description: '产品经理相关',
-        color: '#F59E0B',
-        icon: '📦',
-        sortOrder: 4,
-      },
-    }),
-  ]);
+
+  const categoryData = [
+    {
+      userId: testUser.id,
+      name: '技术',
+      description: '技术相关文章',
+      color: '#3B82F6',
+      icon: '💻',
+      sortOrder: 1,
+    },
+    {
+      userId: testUser.id,
+      name: '新闻',
+      description: '新闻资讯',
+      color: '#10B981',
+      icon: '📰',
+      sortOrder: 2,
+    },
+    {
+      userId: testUser.id,
+      name: '设计',
+      description: '设计相关',
+      color: '#8B5CF6',
+      icon: '🎨',
+      sortOrder: 3,
+    },
+    {
+      userId: testUser.id,
+      name: '产品',
+      description: '产品经理相关',
+      color: '#F59E0B',
+      icon: '📦',
+      sortOrder: 4,
+    },
+  ];
+
+  const categories = await Promise.all(
+    categoryData.map((cat) =>
+      prisma.category.upsert({
+        where: {
+          userId_name: {
+            userId: cat.userId,
+            name: cat.name,
+          },
+        },
+        update: {},
+        create: cat,
+      })
+    )
+  );
 
   console.log(`✅ 创建了 ${categories.length} 个分类`);
 
@@ -189,7 +197,7 @@ async function main() {
 
   console.log(`✅ 创建了 ${createdFeeds.length} 个订阅源`);
 
-  // 创建示例文章（用于展示）
+  // 创建示例文章（使用 upsert 避免重复）
   console.log('📝 创建示例文章...');
   const sampleEntries = [
     {
@@ -200,7 +208,7 @@ async function main() {
       summary: 'Anthropic发布了最新的Claude 4.5模型，在代码生成、调试和架构设计方面实现了重大突破。',
       author: 'AI科技前沿',
       publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      contentHash: 'hash1',
+      contentHash: 'claude-45-release-hash-2024',
       isRead: false,
       isStarred: true,
       aiSummary: 'Claude 4.5在编程能力上显著提升，支持更复杂的代码理解和生成任务。',
@@ -218,7 +226,7 @@ async function main() {
       summary: 'Vercel宣布Next.js 15正式发布，默认启用Turbopack，构建速度提升5倍，同时推出了多项新特性。',
       author: '前端周刊',
       publishedAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
-      contentHash: 'hash2',
+      contentHash: 'nextjs-15-turbopack-hash-2024',
       isRead: false,
       isStarred: false,
       aiSummary: 'Next.js 15默认启用Turbopack，构建速度大幅提升，同时改进了开发体验。',
@@ -236,7 +244,7 @@ async function main() {
       summary: 'Rust团队公布了2024年的发展路线图，重点包括编译器性能优化、安全增强以及工具链改进。',
       author: 'Rust语言中文社区',
       publishedAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
-      contentHash: 'hash3',
+      contentHash: 'rust-2024-roadmap-hash',
       isRead: true,
       isStarred: false,
       aiSummary: 'Rust 2024将重点优化编译器性能，增强安全特性，并改进开发工具链。',
@@ -254,7 +262,7 @@ async function main() {
       summary: 'PostgreSQL 17正式发布，引入了增量备份功能，增强了性能监控工具，并修复了多个重要bug。',
       author: '数据库技术',
       publishedAt: new Date(Date.now() - 8 * 60 * 60 * 1000),
-      contentHash: 'hash4',
+      contentHash: 'postgresql-17-backup-hash',
       isRead: true,
       isStarred: false,
       aiSummary: 'PostgreSQL 17新增增量备份功能，性能监控得到显著增强。',
@@ -272,7 +280,7 @@ async function main() {
       summary: '随着边缘计算的兴起，在边缘节点部署Kubernetes集群成为新的技术趋势。本文分享了一套完整的实践方案。',
       author: '云原生技术',
       publishedAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
-      contentHash: 'hash5',
+      contentHash: 'k8s-edge-deployment-hash',
       isRead: false,
       isStarred: false,
       aiSummary: '介绍了在边缘计算场景下部署Kubernetes的最佳实践和注意事项。',
@@ -281,6 +289,24 @@ async function main() {
       aiSentiment: 'neutral',
       aiImportanceScore: 7.5,
       readingTime: 600,
+    },
+    {
+      feedId: createdFeeds[5].id,
+      title: 'UI设计趋势2024：从新拟物到玻璃态的演进',
+      url: 'https://example.com/ui-trends-2024',
+      content: '2024年UI设计领域经历了显著的变革，新拟物设计逐渐让位于更轻盈通透的玻璃态设计风格...',
+      summary: '2024年UI设计领域经历了显著的变革，新拟物设计逐渐让位于更轻盈通透的玻璃态设计风格。',
+      author: '设计前沿',
+      publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      contentHash: 'ui-trends-glassmorphism-2024',
+      isRead: false,
+      isStarred: true,
+      aiSummary: '探讨了2024年UI设计的主要趋势，包括玻璃态、微动效和3D元素的回归。',
+      aiCategory: 'UI/UX设计',
+      aiKeywords: ['UI设计', '玻璃态', '设计趋势'],
+      aiSentiment: 'positive',
+      aiImportanceScore: 7.0,
+      readingTime: 540,
     },
   ];
 
@@ -296,22 +322,34 @@ async function main() {
 
   console.log(`✅ 创建了 ${createdEntries.length} 篇示例文章`);
 
-  // 创建阅读历史
+  // 创建阅读历史（使用 upsert 避免重复）
   console.log('📖 创建阅读历史...');
-  await prisma.readingHistory.createMany({
-    data: createdEntries
-      .filter((e) => e.isRead)
-      .map((entry) => ({
-        userId: testUser.id,
-        entryId: entry.id,
-        readProgress: 100,
-        readingTime: entry.readingTime || 300,
-        firstOpenedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-        lastOpenedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        source: 'feed',
-      })),
-  });
+
+  const readHistoryData = createdEntries
+    .filter((e) => e.isRead)
+    .map((entry) => ({
+      userId: testUser.id,
+      entryId: entry.id,
+      readProgress: 100,
+      readingTime: entry.readingTime || 300,
+      firstOpenedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      lastOpenedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      completedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      source: 'feed',
+    }));
+
+  for (const history of readHistoryData) {
+    await prisma.readingHistory.upsert({
+      where: {
+        userId_entryId: {
+          userId: history.userId,
+          entryId: history.entryId,
+        },
+      },
+      update: {},
+      create: history,
+    });
+  }
 
   console.log(`✅ 创建了阅读历史记录`);
 

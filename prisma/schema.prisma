@@ -43,6 +43,11 @@ model User {
   apiKeys       ApiKey[]
   subscriptionRules SubscriptionRule[]
 
+  // 密码重置相关字段
+  passwordResetToken     String?   @map("password_reset_token")
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at")
+  passwordResetCount     Int       @default(0) @map("password_reset_count")
+
   @@map("users")
 }
 

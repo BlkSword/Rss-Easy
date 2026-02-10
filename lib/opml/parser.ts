@@ -22,6 +22,39 @@ export interface ParsedOPML {
 }
 
 /**
+ * 获取元素属性，忽略大小写
+ * OPML 文件可能使用不同的属性大小写（如 xmlUrl, XMLUrl, xmlurl）
+ */
+function getAttributeCaseInsensitive(el: Element, attrName: string): string | null {
+  // 先尝试精确匹配
+  let value = el.getAttribute(attrName);
+  if (value) return value;
+
+  // 尝试所有小写
+  value = el.getAttribute(attrName.toLowerCase());
+  if (value) return value;
+
+  // 尝试首字母大写
+  const camelCase = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+  value = el.getAttribute(camelCase);
+  if (value) return value;
+
+  // 尝试全大写
+  value = el.getAttribute(attrName.toUpperCase());
+  if (value) return value;
+
+  // 遍历所有属性查找匹配
+  const attrs = el.attributes;
+  for (let i = 0; i < attrs.length; i++) {
+    if (attrs[i].name.toLowerCase() === attrName.toLowerCase()) {
+      return attrs[i].value;
+    }
+  }
+
+  return null;
+}
+
+/**
  * 解析 OPML XML 字符串
  */
 export function parseOPML(xmlString: string): ParsedOPML {
@@ -47,24 +80,23 @@ export function parseOPML(xmlString: string): ParsedOPML {
 function parseOutlines(elements: Element[]): OPMLOutline[] {
   return elements.map((el) => {
     const outline: OPMLOutline = {
-      text: el.getAttribute('text') || '',
+      text: getAttributeCaseInsensitive(el, 'text') || '',
     };
 
-    if (el.hasAttribute('title')) {
-      outline.title = el.getAttribute('title')!;
-    }
-    if (el.hasAttribute('description')) {
-      outline.description = el.getAttribute('description')!;
-    }
-    if (el.hasAttribute('xmlUrl')) {
-      outline.xmlUrl = el.getAttribute('xmlUrl')!;
-    }
-    if (el.hasAttribute('htmlUrl')) {
-      outline.htmlUrl = el.getAttribute('htmlUrl')!;
-    }
-    if (el.hasAttribute('type')) {
-      outline.type = el.getAttribute('type')!;
-    }
+    const title = getAttributeCaseInsensitive(el, 'title');
+    if (title) outline.title = title;
+
+    const description = getAttributeCaseInsensitive(el, 'description');
+    if (description) outline.description = description;
+
+    const xmlUrl = getAttributeCaseInsensitive(el, 'xmlUrl');
+    if (xmlUrl) outline.xmlUrl = xmlUrl;
+
+    const htmlUrl = getAttributeCaseInsensitive(el, 'htmlUrl');
+    if (htmlUrl) outline.htmlUrl = htmlUrl;
+
+    const type = getAttributeCaseInsensitive(el, 'type');
+    if (type) outline.type = type;
 
     const childOutlines = el.children;
     if (childOutlines.length > 0) {
@@ -95,14 +127,24 @@ export function extractFeedsFromOPML(opml: ParsedOPML): Array<{
 
   function traverseOutlines(outlines: OPMLOutline[]) {
     for (const outline of outlines) {
-      if (outline.xmlUrl && (outline.type === 'rss' || !outline.type)) {
-        feeds.push({
-          title: outline.title || outline.text,
-          text: outline.text,
-          feedUrl: outline.xmlUrl,
-          siteUrl: outline.htmlUrl,
-          description: outline.description,
-        });
+      // 检查是否有 xmlUrl（RSS feed URL）
+      if (outline.xmlUrl) {
+        // type 可能是 rss、atom 等，或者为空（默认为 rss）
+        const isFeedType = !outline.type ||
+          outline.type.toLowerCase() === 'rss' ||
+          outline.type.toLowerCase() === 'atom' ||
+          outline.type.toLowerCase() === 'feed';
+
+        if (isFeedType) {
+          feeds.push({
+            // 优先使用 text 作为标题（OPML 标准中 text 是主要的显示文本）
+            title: outline.text || outline.title || '',
+            text: outline.text,
+            feedUrl: outline.xmlUrl,
+            siteUrl: outline.htmlUrl,
+            description: outline.description,
+          });
+        }
       }
 
       if (outline.outlines) {
@@ -129,6 +171,7 @@ export async function importOPML(
   success: boolean;
   imported: number;
   failed: number;
+  skipped: number;
   errors: string[];
 }> {
   try {
@@ -139,6 +182,7 @@ export async function importOPML(
       success: true,
       imported: 0,
       failed: 0,
+      skipped: 0,
       errors: [] as string[],
     };
 
@@ -148,9 +192,6 @@ export async function importOPML(
 
     for (const feed of feeds) {
       try {
-        // 验证 feed URL
-        const parsed = await parseFeed(feed.feedUrl);
-
         // 检查是否已存在
         const existing = await db.feed.findFirst({
           where: {
@@ -161,14 +202,27 @@ export async function importOPML(
 
         if (existing) {
           result.errors.push(`Feed already exists: ${feed.title}`);
-          result.failed++;
+          result.skipped++;
           continue;
         }
 
-        // 优先使用 OPML 中的标题和描述
-        // OPML 中的 text 是主要的显示文本，应该作为首选标题
-        const title = feed.title || feed.text || parsed.title;
-        const description = feed.description || parsed.description;
+        // 解析 feed 获取详细信息
+        let parsed;
+        try {
+          parsed = await parseFeed(feed.feedUrl);
+        } catch {
+          // 如果解析失败，使用 OPML 中的信息
+          parsed = null;
+        }
+
+        // 标题优先级：OPML text > OPML title > 解析出的标题
+        const title = feed.text || feed.title || (parsed?.title) || 'Unknown Feed';
+
+        // 描述优先级：OPML description > 解析出的描述
+        const description = feed.description || parsed?.description || '';
+
+        // 站点 URL 优先级：OPML htmlUrl > 解析出的 link
+        const siteUrl = feed.siteUrl || parsed?.link || '';
 
         // 创建 feed
         await db.feed.create({
@@ -178,7 +232,7 @@ export async function importOPML(
             title,
             description,
             feedUrl: feed.feedUrl,
-            siteUrl: feed.siteUrl || parsed.link,
+            siteUrl,
             fetchInterval: 3600,
             priority: 5,
             isActive: true,

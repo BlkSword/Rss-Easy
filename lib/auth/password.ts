@@ -24,7 +24,8 @@ export async function verifyPassword(
 }
 
 /**
- * 验证密码强度
+ * 验证密码强度（仅基础验证）
+ * 注意：前端仍会显示密码强度指示器供用户参考
  */
 export function validatePasswordStrength(password: string): {
   valid: boolean;
@@ -32,24 +33,12 @@ export function validatePasswordStrength(password: string): {
 } {
   const errors: string[] = [];
 
-  if (password.length < 8) {
-    errors.push('密码长度至少为8个字符');
+  if (password.length < 6) {
+    errors.push('密码长度至少为6个字符');
   }
 
   if (password.length > 128) {
     errors.push('密码长度不能超过128个字符');
-  }
-
-  if (!/[a-z]/.test(password)) {
-    errors.push('密码必须包含至少一个小写字母');
-  }
-
-  if (!/[A-Z]/.test(password)) {
-    errors.push('密码必须包含至少一个大写字母');
-  }
-
-  if (!/[0-9]/.test(password)) {
-    errors.push('密码必须包含至少一个数字');
   }
 
   return {

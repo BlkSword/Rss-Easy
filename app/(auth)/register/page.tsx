@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 // 密码强度计算
 function calculatePasswordStrength(password: string): number {
   let strength = 0;
-  if (password.length >= 8) strength += 25;
+  if (password.length >= 6) strength += 25;
   if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 25;
   if (/\d/.test(password)) strength += 25;
   if (/[^a-zA-Z0-9]/.test(password)) strength += 25;
@@ -62,12 +62,6 @@ export default function RegisterPage() {
   };
 
   const handleSubmit = async (values: { username: string; email: string; password: string; confirmPassword: string }) => {
-    if (passwordStrength < 50) {
-      shake();
-      handleApiError('密码强度不足，请使用更复杂的密码', '注册失败');
-      return;
-    }
-
     setIsLoading(true);
 
     try {
@@ -208,7 +202,7 @@ export default function RegisterPage() {
                 label={<span className="text-sm font-medium">密码</span>}
                 rules={[
                   { required: true, message: '请输入密码' },
-                  { min: 8, message: '密码长度至少为8个字符' },
+                  { min: 6, message: '密码长度至少为6个字符' },
                 ]}
               >
                 <Input.Password

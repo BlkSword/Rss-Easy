@@ -5,7 +5,8 @@
 
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
-import { info } from '@/lib/logger';
+import { info, error } from '@/lib/logger';
+import { createEmailServiceFromUser } from '@/lib/email/service';
 
 export const settingsRouter = router({
   /**
@@ -538,22 +539,40 @@ export const settingsRouter = router({
         });
 
         if (!user) {
-          throw new Error('用户不存在');
+          return { success: false, message: '用户不存在' };
         }
 
         const config = user.emailConfig as any;
         if (!config?.enabled || !config?.smtpHost || !config?.smtpUser) {
-          return { success: false, message: '邮件配置未完成' };
+          return { success: false, message: '邮件配置未完成，请填写所有必填项' };
         }
 
-        // 这里可以实现实际的邮件发送测试
-        // 为了简化，先返回成功，实际项目中需要集成 nodemailer
-        return { 
-          success: true, 
-          message: `测试邮件已发送到 ${user.email}` 
-        };
-      } catch (error: any) {
-        return { success: false, message: error.message };
+        // 创建邮件服务并发送测试邮件
+        const emailService = createEmailServiceFromUser(user.emailConfig);
+
+        if (!emailService) {
+          return { success: false, message: '邮件服务未启用' };
+        }
+
+        // 验证连接
+        const verifyResult = await emailService.verifyConnection();
+        if (!verifyResult.success) {
+          return { success: false, message: `SMTP 连接失败: ${verifyResult.message}` };
+        }
+
+        // 发送测试邮件
+        const sendResult = await emailService.sendTestEmail(user.email, user.username);
+
+        if (sendResult.success) {
+          await info('system', '测试邮件发送成功', { userId: ctx.userId, email: user.email });
+        } else {
+          await error('system', '测试邮件发送失败', undefined, { userId: ctx.userId, error: sendResult.message });
+        }
+
+        return sendResult;
+      } catch (err: any) {
+        await error('system', '测试邮件配置异常', err, { userId: ctx.userId, error: err.message });
+        return { success: false, message: err.message || '发送测试邮件失败' };
       }
     }),
 });
