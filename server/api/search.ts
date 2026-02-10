@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { getSearchService } from '@/lib/search/service';
+import { info } from '@/lib/logger';
 
 export const searchRouter = router({
   /**
@@ -45,6 +46,13 @@ export const searchRouter = router({
 
       // 保存搜索历史
       await searchService.saveSearchHistory(ctx.userId, input.query, total, input.filters);
+
+      await info('api', '搜索文章', { 
+        userId: ctx.userId, 
+        query: input.query,
+        results: total,
+        semantic: input.semanticSearch 
+      });
 
       return {
         results,

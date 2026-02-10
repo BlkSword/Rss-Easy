@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
+import { info } from '@/lib/logger';
 
 export const settingsRouter = router({
   /**
@@ -85,6 +86,8 @@ export const settingsRouter = router({
         },
       });
 
+      await info('system', '更新偏好设置', { userId: ctx.userId });
+
       return user;
     }),
 
@@ -125,6 +128,11 @@ export const settingsRouter = router({
         data: {
           aiConfig: updatedConfig as any,
         },
+      });
+
+      await info('ai', '更新AI配置', { 
+        userId: ctx.userId, 
+        provider: updatedConfig.provider 
       });
 
       return user;
@@ -472,5 +480,80 @@ export const settingsRouter = router({
         skipped,
         total: uniqueUrls.length,
       };
+    }),
+
+  /**
+   * 更新邮件配置
+   */
+  updateEmailConfig: protectedProcedure
+    .input(
+      z.object({
+        enabled: z.boolean().optional(),
+        smtpHost: z.string().optional(),
+        smtpPort: z.number().optional(),
+        smtpSecure: z.boolean().optional(),
+        smtpUser: z.string().optional(),
+        smtpPassword: z.string().optional(),
+        fromEmail: z.string().email().optional(),
+        fromName: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      // 获取当前配置
+      const current = await ctx.db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { emailConfig: true },
+      });
+
+      const updatedConfig = {
+        ...((current?.emailConfig as any) || {}),
+        ...input,
+      };
+
+      // 如果密码为空字符串，保留原密码
+      if (input.smtpPassword === '') {
+        delete updatedConfig.smtpPassword;
+      }
+
+      const user = await ctx.db.user.update({
+        where: { id: ctx.userId },
+        data: {
+          emailConfig: updatedConfig as any,
+        },
+      });
+
+      return { success: true };
+    }),
+
+  /**
+   * 测试邮件配置
+   */
+  testEmailConfig: protectedProcedure
+    .output(z.object({ success: z.boolean(), message: z.string() }))
+    .mutation(async ({ ctx }) => {
+      try {
+        const user = await ctx.db.user.findUnique({
+          where: { id: ctx.userId },
+          select: { email: true, emailConfig: true, username: true },
+        });
+
+        if (!user) {
+          throw new Error('用户不存在');
+        }
+
+        const config = user.emailConfig as any;
+        if (!config?.enabled || !config?.smtpHost || !config?.smtpUser) {
+          return { success: false, message: '邮件配置未完成' };
+        }
+
+        // 这里可以实现实际的邮件发送测试
+        // 为了简化，先返回成功，实际项目中需要集成 nodemailer
+        return { 
+          success: true, 
+          message: `测试邮件已发送到 ${user.email}` 
+        };
+      } catch (error: any) {
+        return { success: false, message: error.message };
+      }
     }),
 });

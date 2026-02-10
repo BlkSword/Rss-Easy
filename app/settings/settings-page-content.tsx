@@ -16,6 +16,8 @@ import {
   Bell,
   Sparkles,
   Shield,
+  Mail,
+  ScrollText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
@@ -28,16 +30,20 @@ import { ApiSettings } from './settings/api-settings';
 import { DataSettings } from './settings/data-settings';
 import { NotificationSettings } from './settings/notification-settings';
 import { AISettings } from './settings/ai-settings';
+import { EmailSettings } from './settings/email-settings';
+import { LogsSettings } from './settings/logs-settings';
 
-type TabKey = 'profile' | 'preferences' | 'security' | 'api' | 'data' | 'notifications' | 'ai';
+type TabKey = 'profile' | 'preferences' | 'security' | 'api' | 'data' | 'notifications' | 'ai' | 'email' | 'logs';
 
 const tabs = [
   { key: 'profile' as TabKey, label: '个人资料', icon: User },
   { key: 'preferences' as TabKey, label: '偏好设置', icon: Palette },
   { key: 'security' as TabKey, label: '安全设置', icon: Shield },
   { key: 'api' as TabKey, label: 'API密钥', icon: Key },
+  { key: 'email' as TabKey, label: '邮件配置', icon: Mail },
   { key: 'notifications' as TabKey, label: '通知设置', icon: Bell },
   { key: 'ai' as TabKey, label: 'AI配置', icon: Sparkles },
+  { key: 'logs' as TabKey, label: '系统日志', icon: ScrollText },
   { key: 'data' as TabKey, label: '数据管理', icon: Database },
 ];
 
@@ -104,8 +110,8 @@ export function SettingsPageContent() {
                     'nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-250',
                     'group relative overflow-hidden',
                     isActive
-                      ? 'bg-gradient-to-r from-primary/10 to-primary/5 text-primary shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-gradient-to-r from-primary/20 to-primary/10 text-primary shadow-md border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   )}
                 >
                   {/* 背景光晕效果 */}
@@ -120,7 +126,10 @@ export function SettingsPageContent() {
                   <span className="relative">{tab.label}</span>
                   {/* 选中指示器 */}
                   {isActive && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary shadow-sm" />
+                    <>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary shadow-sm" />
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
+                    </>
                   )}
                 </button>
               );
@@ -145,7 +154,7 @@ export function SettingsPageContent() {
                         'option-item flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-250',
                         'border-2',
                         isActive
-                          ? 'border-primary/30 bg-gradient-to-br from-primary/10 to-primary/5 text-primary shadow-sm'
+                          ? 'border-primary/50 bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-md ring-2 ring-primary/10'
                           : 'border-transparent text-muted-foreground hover:bg-muted/60'
                       )}
                     >
@@ -168,6 +177,8 @@ export function SettingsPageContent() {
               {activeTab === 'api' && <ApiSettings />}
               {activeTab === 'notifications' && <NotificationSettings user={user} />}
               {activeTab === 'ai' && <AISettings user={user} />}
+              {activeTab === 'email' && <EmailSettings user={user} />}
+              {activeTab === 'logs' && <LogsSettings />}
               {activeTab === 'data' && (
                 <DataSettings onOpenDeleteModal={() => setIsDeleteModalOpen(true)} />
               )}

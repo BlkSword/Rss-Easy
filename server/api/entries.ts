@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { AIAnalysisQueue } from '@/lib/ai/queue';
 import { addDeepAnalysisJob } from '@/lib/queue/deep-analysis-processor';
+import { info } from '@/lib/logger';
 
 export const entriesRouter = router({
   /**
@@ -267,6 +268,11 @@ export const entriesRouter = router({
         });
       }
 
+      await info('rss', '标记文章已读', { 
+        userId: ctx.userId, 
+        count: input.entryIds.length 
+      });
+
       return { success: true };
     }),
 
@@ -287,6 +293,11 @@ export const entriesRouter = router({
         data: {
           isStarred: input.starred,
         },
+      });
+
+      await info('rss', input.starred ? '添加星标' : '取消星标', { 
+        userId: ctx.userId, 
+        count: input.entryIds.length 
       });
 
       return { success: true };
@@ -315,7 +326,14 @@ export const entriesRouter = router({
         data: { isStarred: !entry.isStarred },
       });
 
-      return { isStarred: !entry.isStarred };
+      const newStatus = !entry.isStarred;
+      
+      await info('rss', newStatus ? '添加星标' : '取消星标', { 
+        userId: ctx.userId, 
+        entryId: input.entryId 
+      });
+
+      return { isStarred: newStatus };
     }),
 
   /**

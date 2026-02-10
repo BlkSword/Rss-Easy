@@ -7,6 +7,7 @@ import { db } from '../db';
 import { AIService, type AIConfig } from './client';
 import { sleep } from '../utils';
 import { getNotificationService } from '../notifications/service';
+import { info, warn, error } from '../logger';
 import type { Entry, Feed, User } from '@prisma/client';
 import type { AIAnalysisQueue as AIAnalysisQueueModel } from '@prisma/client';
 
@@ -49,6 +50,7 @@ export class AIAnalysisQueue {
     }
 
     this.processing = true;
+    await info('queue', 'AI分析队列启动', { concurrency: this.concurrency });
 
     while (this.processing) {
       try {
@@ -59,12 +61,14 @@ export class AIAnalysisQueue {
           continue;
         }
 
+        await info('queue', '开始批量处理AI任务', { count: tasks.length });
+
         // 并发处理任务
         await Promise.allSettled(
           tasks.map((task) => this.processTask(task))
         );
-      } catch (error) {
-        console.error('Queue processor error:', error);
+      } catch (err) {
+        await error('queue', '队列处理器错误', err instanceof Error ? err : undefined);
         await sleep(10000); // 出错后等待10秒
       }
     }

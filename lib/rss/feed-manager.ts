@@ -6,6 +6,7 @@
 import { db } from '../db';
 import { parseFeed } from './parser';
 import { generateContentHash } from '../utils';
+import { info, warn, error } from '../logger';
 import type { Feed, Entry } from '@prisma/client';
 
 export interface FeedUpdateResult {
@@ -23,6 +24,7 @@ export class FeedManager {
    * 抓取单个feed
    */
   async fetchFeed(feedId: string): Promise<FeedUpdateResult> {
+    const startTime = Date.now();
     try {
       // 获取feed信息
       const feed = await db.feed.findUnique({
@@ -30,8 +32,11 @@ export class FeedManager {
       });
 
       if (!feed) {
+        await warn('rss', '订阅源不存在', { feedId });
         return { success: false, entriesAdded: 0, entriesUpdated: 0, error: 'Feed not found' };
       }
+
+      await info('rss', '开始抓取订阅源', { feedId, feedUrl: feed.feedUrl, title: feed.title });
 
       // 解析RSS feed
       const parsedFeed = await parseFeed(feed.feedUrl);
@@ -83,6 +88,15 @@ export class FeedManager {
         }
       }
 
+      const duration = Date.now() - startTime;
+      await info('rss', '订阅源抓取完成', { 
+        feedId, 
+        title: feed.title,
+        entriesAdded, 
+        entriesUpdated,
+        duration,
+      });
+
       // 更新feed信息
       await db.feed.update({
         where: { id: feedId },
@@ -106,8 +120,15 @@ export class FeedManager {
         entriesAdded,
         entriesUpdated,
       };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const duration = Date.now() - startTime;
+
+      await error('rss', '订阅源抓取失败', err instanceof Error ? err : undefined, { 
+        feedId, 
+        duration,
+        error: errorMessage,
+      });
 
       // 更新错误信息
       await db.feed.update({

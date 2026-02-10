@@ -8,6 +8,7 @@ import { protectedProcedure, router } from '../trpc/init';
 import { feedManager } from '@/lib/rss/feed-manager';
 import { parseFeed } from '@/lib/rss/parser';
 import { AIAnalysisQueue } from '@/lib/ai/queue';
+import { info, warn, error } from '@/lib/logger';
 
 export const feedsRouter = router({
   /**
@@ -162,6 +163,13 @@ export const feedsRouter = router({
       // 异步抓取
       feedManager.fetchFeed(feed.id).catch(console.error);
 
+      await info('rss', '添加订阅源', { 
+        userId: ctx.userId, 
+        feedId: feed.id, 
+        title: feed.title,
+        url: input.url 
+      });
+
       return feed;
     }),
 
@@ -204,11 +212,17 @@ export const feedsRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
-      await ctx.db.feed.delete({
+      const feed = await ctx.db.feed.delete({
         where: {
           id: input.id,
           userId: ctx.userId,
         },
+      });
+
+      await info('rss', '删除订阅源', { 
+        userId: ctx.userId, 
+        feedId: input.id,
+        title: feed.title 
       });
 
       return { success: true };
@@ -233,6 +247,12 @@ export const feedsRouter = router({
 
       // 异步抓取
       feedManager.fetchFeed(feed.id).catch(console.error);
+
+      await info('rss', '手动刷新订阅源', { 
+        userId: ctx.userId, 
+        feedId: feed.id,
+        title: feed.title 
+      });
 
       return { success: true };
     }),

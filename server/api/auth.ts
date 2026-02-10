@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashPassword, verifyPassword, signToken } from '@/lib/auth';
 import { TRPCError } from '@trpc/server';
+import { info, warn, error } from '@/lib/logger';
 
 export const authRouter = router({
   /**
@@ -126,6 +127,8 @@ export const authRouter = router({
         email: user.email,
       });
 
+      await info('auth', '用户登录成功', { userId: user.id, email: user.email });
+
       return {
         user: {
           id: user.id,
@@ -134,9 +137,21 @@ export const authRouter = router({
           avatarUrl: user.avatarUrl,
           preferences: user.preferences,
           aiConfig: user.aiConfig,
+          emailConfig: user.emailConfig,
         },
         token,
       };
+    }),
+
+  /**
+   * 用户登出
+   */
+  logout: publicProcedure
+    .mutation(async ({ ctx }) => {
+      if (ctx.userId) {
+        await info('auth', '用户登出', { userId: ctx.userId });
+      }
+      return { success: true };
     }),
 
   /**
@@ -159,6 +174,7 @@ export const authRouter = router({
         avatarUrl: true,
         preferences: true,
         aiConfig: true,
+        emailConfig: true,
         createdAt: true,
         updatedAt: true,
         _count: {

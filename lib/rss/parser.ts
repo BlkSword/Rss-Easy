@@ -58,27 +58,47 @@ export class RSSParser {
         // 处理每个条目，提取完整内容
         const items = await Promise.all(
           (feed.items || []).map(async (item) => {
-            let content = item['content:encoded'] || item.content || item.contentSnippet;
+            try {
+              let content = item['content:encoded'] || item.content || item.contentSnippet;
 
-            // 如果没有内容，尝试从链接抓取
-            if (!content && item.link) {
-              content = await this.fetchContent(item.link);
+              // 如果没有内容，尝试从链接抓取
+              if (!content && item.link) {
+                try {
+                  content = await this.fetchContent(item.link);
+                } catch {
+                  // 静默失败，使用空内容
+                  content = null;
+                }
+              }
+
+              // 清理HTML标签，获取纯文本摘要
+              const contentSnippet = this.extractSnippet(content || '');
+
+              return {
+                title: item.title || 'Untitled',
+                link: item.link || '',
+                pubDate: item.pubDate ? new Date(item.pubDate) : undefined,
+                content: content || undefined,
+                contentSnippet,
+                author: item.author || item.creator || undefined,
+                categories: item.categories || [],
+                guid: item.guid,
+                isoDate: item.isoDate,
+              } as ParsedEntry;
+            } catch (error) {
+              // 如果单个条目处理失败，返回基本条目
+              return {
+                title: item.title || 'Untitled',
+                link: item.link || '',
+                pubDate: item.pubDate ? new Date(item.pubDate) : undefined,
+                content: item.content || undefined,
+                contentSnippet: item.contentSnippet || '',
+                author: item.author || item.creator || undefined,
+                categories: item.categories || [],
+                guid: item.guid,
+                isoDate: item.isoDate,
+              } as ParsedEntry;
             }
-
-            // 清理HTML标签，获取纯文本摘要
-            const contentSnippet = this.extractSnippet(content || '');
-
-            return {
-              title: item.title || 'Untitled',
-              link: item.link || '',
-              pubDate: item.pubDate ? new Date(item.pubDate) : undefined,
-              content: content || undefined,
-              contentSnippet,
-              author: item.author || item.creator || undefined,
-              categories: item.categories || [],
-              guid: item.guid,
-              isoDate: item.isoDate,
-            } as ParsedEntry;
           })
         );
 

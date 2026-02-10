@@ -214,8 +214,9 @@ export function getScheduler(): TaskScheduler {
   return schedulerInstance;
 }
 
-// 自动启动（仅在非测试环境）
-if (process.env.NODE_ENV !== 'test') {
+// 自动启动（仅在非测试环境且明确启用时）
+// 设置 SCHEDULER_AUTO_START=true 来自动启动调度器
+if (process.env.NODE_ENV !== 'test' && process.env.SCHEDULER_AUTO_START === 'true') {
   // 延迟启动，等待数据库连接就绪
   setTimeout(() => {
     const scheduler = getScheduler();

@@ -56,7 +56,7 @@ export function Fade({
 
   return (
     <div
-      className={cn('transition-all', className)}
+      className={cn('transition-all h-full', className)}
       style={{
         opacity: isVisible ? 1 : 0,
         transform: isVisible ? 'none' : directions[direction],

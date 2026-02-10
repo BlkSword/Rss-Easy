@@ -72,18 +72,31 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
           <div
             className={cn(
               'flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-250 cursor-pointer group',
-              'hover:border-primary/25 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
-              emailNotifications ? 'border-primary/20 bg-primary/[0.03]' : 'border-border/80 bg-muted/30'
+              'hover:border-primary/30 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
+              emailNotifications 
+                ? 'border-primary/50 bg-gradient-to-r from-primary/[0.08] to-primary/[0.03] shadow-sm' 
+                : 'border-border/80 bg-muted/20'
             )}
             onClick={() => setEmailNotifications(!emailNotifications)}
           >
-            <div>
+            <div className="flex items-center gap-3">
               <div className={cn(
-                'font-medium transition-colors duration-200',
-                emailNotifications ? 'text-primary' : 'group-hover:text-primary/90'
-              )}>启用邮件通知</div>
-              <div className="text-sm text-muted-foreground mt-1">
-                通过邮件接收重要通知和摘要
+                'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-250',
+                emailNotifications ? 'bg-primary/20 shadow-sm' : 'bg-muted/60 group-hover:bg-primary/10'
+              )}>
+                <Mail className={cn(
+                  'h-5 w-5 transition-all duration-250',
+                  emailNotifications ? 'text-primary scale-110' : 'text-muted-foreground group-hover:text-primary/60'
+                )} />
+              </div>
+              <div>
+                <div className={cn(
+                  'font-medium transition-colors duration-200',
+                  emailNotifications ? 'text-primary' : 'group-hover:text-primary/90'
+                )}>启用邮件通知</div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  通过邮件接收重要通知和摘要
+                </div>
               </div>
             </div>
             <button
@@ -92,16 +105,18 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
                 setEmailNotifications(!emailNotifications);
               }}
               className={cn(
-                'toggle-switch relative w-12 h-6 rounded-full transition-all duration-300',
+                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
                 emailNotifications
-                  ? 'bg-primary shadow-md shadow-primary/20'
-                  : 'bg-muted hover:bg-muted/70'
+                  ? 'bg-slate-300 dark:bg-slate-600'
+                  : 'bg-primary shadow-lg shadow-primary/30'
               )}
             >
               <span
                 className={cn(
-                  'toggle-knob absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300',
-                  emailNotifications ? 'left-7' : 'left-1'
+                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
+                  emailNotifications 
+                    ? 'left-8 bg-white' 
+                    : 'left-1 bg-white'
                 )}
               />
             </button>
@@ -137,19 +152,32 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
           <div
             className={cn(
               'flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-250 cursor-pointer group',
-              'hover:border-primary/25 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
+              'hover:border-primary/30 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
               !emailNotifications && 'opacity-60 cursor-not-allowed hover:border-border/80 hover:bg-muted/30',
-              notifyNewEntries && emailNotifications ? 'border-primary/20 bg-primary/[0.03]' : 'border-border/80 bg-muted/30'
+              notifyNewEntries && emailNotifications 
+                ? 'border-primary/50 bg-gradient-to-r from-primary/[0.08] to-primary/[0.03] shadow-sm' 
+                : 'border-border/80 bg-muted/30'
             )}
             onClick={() => emailNotifications && setNotifyNewEntries(!notifyNewEntries)}
           >
-            <div>
+            <div className="flex items-center gap-3">
               <div className={cn(
-                'font-medium transition-colors duration-200',
-                notifyNewEntries && emailNotifications ? 'text-primary' : 'group-hover:text-primary/90'
-              )}>新文章通知</div>
-              <div className="text-sm text-muted-foreground mt-1">
-                关注的订阅源有新文章时通知
+                'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-250',
+                notifyNewEntries && emailNotifications ? 'bg-primary/20 shadow-sm' : 'bg-muted/60 group-hover:bg-primary/10'
+              )}>
+                <Bell className={cn(
+                  'h-5 w-5 transition-all duration-250',
+                  notifyNewEntries && emailNotifications ? 'text-primary scale-110' : 'text-muted-foreground group-hover:text-primary/60'
+                )} />
+              </div>
+              <div>
+                <div className={cn(
+                  'font-medium transition-colors duration-200',
+                  notifyNewEntries && emailNotifications ? 'text-primary' : 'group-hover:text-primary/90'
+                )}>新文章通知</div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  关注的订阅源有新文章时通知
+                </div>
               </div>
             </div>
             <button
@@ -159,17 +187,19 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
               }}
               disabled={!emailNotifications}
               className={cn(
-                'toggle-switch relative w-12 h-6 rounded-full transition-all duration-300',
+                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
                 notifyNewEntries && emailNotifications
-                  ? 'bg-primary shadow-md shadow-primary/20'
-                  : 'bg-muted hover:bg-muted/70',
-                'disabled:opacity-50 disabled:cursor-not-allowed'
+                  ? 'bg-slate-300 dark:bg-slate-600'
+                  : 'bg-primary shadow-lg shadow-primary/30',
+                'disabled:opacity-40 disabled:cursor-not-allowed'
               )}
             >
               <span
                 className={cn(
-                  'toggle-knob absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300',
-                  notifyNewEntries ? 'left-7' : 'left-1'
+                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
+                  notifyNewEntries 
+                    ? 'left-8 bg-white' 
+                    : 'left-1 bg-white'
                 )}
               />
             </button>
@@ -191,18 +221,31 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
           <div
             className={cn(
               'flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-250 cursor-pointer group',
-              'hover:border-primary/25 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
-              notifyErrors ? 'border-primary/20 bg-primary/[0.03]' : 'border-border/80 bg-muted/30'
+              'hover:border-primary/30 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
+              notifyErrors 
+                ? 'border-primary/50 bg-gradient-to-r from-primary/[0.08] to-primary/[0.03] shadow-sm' 
+                : 'border-border/80 bg-muted/20'
             )}
             onClick={() => setNotifyErrors(!notifyErrors)}
           >
-            <div>
+            <div className="flex items-center gap-3">
               <div className={cn(
-                'font-medium transition-colors duration-200',
-                notifyErrors ? 'text-primary' : 'group-hover:text-primary/90'
-              )}>错误通知</div>
-              <div className="text-sm text-muted-foreground mt-1">
-                订阅源抓取失败时显示通知
+                'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-250',
+                notifyErrors ? 'bg-primary/20 shadow-sm' : 'bg-muted/60 group-hover:bg-primary/10'
+              )}>
+                <Bell className={cn(
+                  'h-5 w-5 transition-all duration-250',
+                  notifyErrors ? 'text-primary scale-110' : 'text-muted-foreground group-hover:text-primary/60'
+                )} />
+              </div>
+              <div>
+                <div className={cn(
+                  'font-medium transition-colors duration-200',
+                  notifyErrors ? 'text-primary' : 'group-hover:text-primary/90'
+                )}>错误通知</div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  订阅源抓取失败时显示通知
+                </div>
               </div>
             </div>
             <button
@@ -211,16 +254,18 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
                 setNotifyErrors(!notifyErrors);
               }}
               className={cn(
-                'toggle-switch relative w-12 h-6 rounded-full transition-all duration-300',
+                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
                 notifyErrors
-                  ? 'bg-primary shadow-md shadow-primary/20'
-                  : 'bg-muted hover:bg-muted/70'
+                  ? 'bg-slate-300 dark:bg-slate-600'
+                  : 'bg-primary shadow-lg shadow-primary/30'
               )}
             >
               <span
                 className={cn(
-                  'toggle-knob absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300',
-                  notifyErrors ? 'left-7' : 'left-1'
+                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
+                  notifyErrors 
+                    ? 'left-8 bg-white' 
+                    : 'left-1 bg-white'
                 )}
               />
             </button>

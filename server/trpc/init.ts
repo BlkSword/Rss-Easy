@@ -6,6 +6,7 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import { type Context } from './context';
 import superjson from 'superjson';
 import { ZodError } from 'zod';
+import { info, warn, error } from '@/lib/logger';
 
 /**
  * tRPC实例
@@ -21,6 +22,43 @@ const t = initTRPC.context<Context>().create({
       },
     };
   },
+});
+
+/**
+ * 中间件：请求日志记录
+ */
+const requestLogger = t.middleware(async ({ ctx, path, type, next }) => {
+  const start = Date.now();
+  
+  try {
+    const result = await next();
+    const duration = Date.now() - start;
+    
+    // 记录API请求日志
+    if (path.startsWith('logs.')) {
+      // 避免记录日志查询本身，防止循环
+      return result;
+    }
+    
+    await info('api', `API ${type}`, {
+      path,
+      userId: ctx.userId,
+      duration,
+      success: true,
+    });
+    
+    return result;
+  } catch (err) {
+    const duration = Date.now() - start;
+    
+    await error('api', `API ${type} 失败`, err instanceof Error ? err : undefined, {
+      path,
+      userId: ctx.userId,
+      duration,
+    });
+    
+    throw err;
+  }
 });
 
 /**
@@ -42,5 +80,5 @@ const isAuthed = t.middleware(({ ctx, next }) => {
  * 导出tRPC实例和中间件
  */
 export const router = t.router;
-export const publicProcedure = t.procedure;
-export const protectedProcedure = t.procedure.use(isAuthed);
+export const publicProcedure = t.procedure.use(requestLogger);
+export const protectedProcedure = t.procedure.use(isAuthed).use(requestLogger);

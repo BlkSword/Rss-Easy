@@ -5,6 +5,7 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
+import { info } from '@/lib/logger';
 
 export const categoriesRouter = router({
   /**
@@ -111,6 +112,12 @@ export const categoriesRouter = router({
         },
       });
 
+      await info('rss', '创建分类', { 
+        userId: ctx.userId, 
+        categoryId: category.id,
+        name: category.name 
+      });
+
       return category;
     }),
 
@@ -136,6 +143,12 @@ export const categoriesRouter = router({
           userId: ctx.userId,
         },
         data,
+      });
+
+      await info('rss', '更新分类', { 
+        userId: ctx.userId, 
+        categoryId: category.id,
+        name: category.name 
       });
 
       return category;
@@ -165,11 +178,17 @@ export const categoriesRouter = router({
         data: { categoryId: null },
       });
 
-      await ctx.db.category.delete({
+      const category = await ctx.db.category.delete({
         where: {
           id: input.id,
           userId: ctx.userId,
         },
+      });
+
+      await info('rss', '删除分类', { 
+        userId: ctx.userId, 
+        categoryId: input.id,
+        name: category.name 
       });
 
       return { success: true };

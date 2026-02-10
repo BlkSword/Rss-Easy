@@ -44,24 +44,38 @@ export interface PreliminaryJobResult {
 }
 
 // =====================================================
-// 队列定义
+// 队列定义（懒加载）
 // =====================================================
 
-export const preliminaryQueue = new Queue<PreliminaryJobData>('preliminary-analysis', {
-  connection: REDIS_CONFIG,
-  defaultJobOptions: {
-    attempts: 2,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
-    },
-    removeOnComplete: {
-      age: 3 * 24 * 3600, // 3天后删除
-      count: 500,
-    },
-    removeOnFail: {
-      age: 7 * 24 * 3600, // 7天后删除
-    },
+let preliminaryQueueInstance: Queue<PreliminaryJobData> | null = null;
+
+export function getPreliminaryQueue(): Queue<PreliminaryJobData> {
+  if (!preliminaryQueueInstance) {
+    preliminaryQueueInstance = new Queue<PreliminaryJobData>('preliminary-analysis', {
+      connection: REDIS_CONFIG,
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+        removeOnComplete: {
+          age: 3 * 24 * 3600, // 3天后删除
+          count: 500,
+        },
+        removeOnFail: {
+          age: 7 * 24 * 3600, // 7天后删除
+        },
+      },
+    });
+  }
+  return preliminaryQueueInstance;
+}
+
+// 向后兼容的导出（已废弃，建议使用 getPreliminaryQueue）
+export const preliminaryQueue = new Proxy({} as Queue<PreliminaryJobData>, {
+  get(target, prop) {
+    return getPreliminaryQueue()[prop as keyof Queue<PreliminaryJobData>];
   },
 });
 

@@ -15,8 +15,8 @@ import { rulesRouter } from './rules';
 import { notificationsRouter } from './notifications';
 import { aiRouter } from './ai';
 import { analyticsRouter } from './analytics';
-import { recommendationsRouter } from './recommendations';
 import { preliminaryRouter } from './preliminary';
+import { logsRouter } from './logs';
 
 export const appRouter = router({
   auth: authRouter,
@@ -30,8 +30,8 @@ export const appRouter = router({
   notifications: notificationsRouter,
   ai: aiRouter,
   analytics: analyticsRouter,
-  recommendations: recommendationsRouter,
   preliminary: preliminaryRouter,
+  logs: logsRouter,
 });
 
 export type AppRouter = typeof appRouter;

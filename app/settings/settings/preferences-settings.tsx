@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Palette, Save, Sun, Moon, Monitor, Type, List } from 'lucide-react';
+import { Palette, Save, Sun, Moon, Monitor, Type, List, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
@@ -95,7 +95,7 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
                     className={cn(
                       'option-item group relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-250',
                       isActive
-                        ? 'border-primary/40 bg-gradient-to-br from-primary/10 to-primary/5 shadow-md'
+                        ? 'border-primary/60 bg-gradient-to-br from-primary/15 to-primary/5 shadow-md ring-2 ring-primary/10'
                         : 'border-border hover:border-primary/25'
                     )}
                   >
@@ -144,7 +144,7 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
                     className={cn(
                       'option-item group relative flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all duration-250',
                       isActive
-                        ? 'border-primary/40 bg-gradient-to-br from-primary/10 to-primary/5 shadow-sm'
+                        ? 'border-primary/60 bg-gradient-to-br from-primary/15 to-primary/5 shadow-md ring-2 ring-primary/10'
                         : 'border-border hover:border-primary/25'
                     )}
                   >
@@ -184,20 +184,18 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
                     key={item.value}
                     onClick={() => setLanguage(item.value)}
                     className={cn(
-                      'option-item group relative p-3 rounded-xl border-2 text-center transition-all duration-250',
+                      'option-item group relative p-4 rounded-xl border-2 text-center transition-all duration-250 flex items-center justify-center gap-2',
                       isActive
-                        ? 'border-primary/40 bg-gradient-to-br from-primary/10 to-primary/5 text-primary font-medium shadow-sm'
-                        : 'border-border hover:border-primary/25'
+                        ? 'border-primary bg-primary/10 text-primary font-semibold shadow-md ring-1 ring-primary/20'
+                        : 'border-border/80 hover:border-primary/40 hover:bg-muted/30'
                     )}
                   >
-                    <span className={cn(
-                      'absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-transparent opacity-0 transition-opacity duration-300',
-                      !isActive && 'group-hover:opacity-100'
-                    )} />
-                    <span className="relative">{item.label}</span>
                     {isActive && (
-                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
+                      <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
                     )}
+                    <span className="relative">{item.label}</span>
                   </button>
                 );
               })}
@@ -263,24 +261,37 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
               key={key}
               className={cn(
                 'flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-250 cursor-pointer group',
-                'hover:border-primary/25 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
-                value ? 'border-primary/20 bg-primary/[0.03]' : 'border-border/80'
+                'hover:border-primary/30 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
+                value 
+                  ? 'border-primary/50 bg-gradient-to-r from-primary/[0.08] to-primary/[0.03] shadow-sm' 
+                  : 'border-border/80 bg-muted/20'
               )}
               onClick={() => onChange(!value)}
             >
-              <div className="flex-1">
+              <div className="flex items-center gap-3 flex-1">
                 <div className={cn(
-                  'font-medium transition-colors duration-200',
-                  value ? 'text-primary' : 'group-hover:text-primary/90'
-                )}>{title}</div>
-                <div className="text-sm text-muted-foreground mt-1">{description}</div>
+                  'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-250',
+                  value ? 'bg-primary/20 shadow-sm' : 'bg-muted/60 group-hover:bg-primary/10'
+                )}>
+                  <Check className={cn(
+                    'h-5 w-5 transition-all duration-250',
+                    value ? 'text-primary scale-110' : 'text-muted-foreground group-hover:text-primary/60'
+                  )} />
+                </div>
+                <div>
+                  <div className={cn(
+                    'font-medium transition-colors duration-200',
+                    value ? 'text-primary' : 'group-hover:text-primary/90'
+                  )}>{title}</div>
+                  <div className="text-sm text-muted-foreground">{description}</div>
+                </div>
               </div>
               <button
                 className={cn(
-                  'toggle-switch relative w-12 h-6 rounded-full transition-all duration-300',
+                  'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
                   value
-                    ? 'bg-primary shadow-md shadow-primary/20'
-                    : 'bg-muted hover:bg-muted/70'
+                    ? 'bg-slate-300 dark:bg-slate-600'
+                    : 'bg-primary shadow-lg shadow-primary/30'
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -289,8 +300,10 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
               >
                 <span
                   className={cn(
-                    'toggle-knob absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300',
-                    value ? 'left-7' : 'left-1'
+                    'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
+                    value 
+                      ? 'left-8 bg-white' 
+                      : 'left-1 bg-white'
                   )}
                 />
               </button>

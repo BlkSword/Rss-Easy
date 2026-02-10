@@ -28,6 +28,8 @@ model User {
   preferences   Json      @default("{}")
   // AI配置
   aiConfig      Json      @default("{}") @map("ai_config")
+  // 邮件配置
+  emailConfig   Json      @default("{}") @map("email_config")
 
   // 关联关系
   feeds         Feed[]
@@ -604,4 +606,51 @@ model AnalysisFeedback {
   @@index([userId])
   @@index([isApplied])
   @@map("analysis_feedback")
+}
+
+// =====================================================
+// 16. 系统日志（新增）
+// =====================================================
+
+model SystemLog {
+  id          String   @id @default(uuid())
+  
+  // 日志级别
+  level       String   // 'debug', 'info', 'warn', 'error', 'fatal'
+  
+  // 日志分类
+  category    String   // 'system', 'rss', 'ai', 'auth', 'email', 'api', 'queue'
+  
+  // 日志内容
+  message     String   @db.Text
+  details     Json?    // 详细数据
+  
+  // 上下文信息
+  userId      String?  @map("user_id")
+  requestId   String?  @map("request_id")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  
+  // 错误堆栈
+  stackTrace  String?  @map("stack_trace") @db.Text
+  errorCode   String?  @map("error_code")
+  
+  // 性能指标
+  duration    Int?     // 执行时间(ms)
+  memory      Int?     // 内存使用(bytes)
+  
+  // 元数据
+  source      String?  // 日志来源文件/模块
+  tags        String[] @default([])
+  
+  // 时间戳
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  @@index([level])
+  @@index([category])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([level, category])
+  @@index([level, createdAt])
+  @@map("system_logs")
 }

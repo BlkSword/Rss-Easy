@@ -15,12 +15,26 @@ npm run build            # 构建生产版本
 npm run start            # 启动生产服务器
 npm run lint             # ESLint 检查
 
+# 测试
+npm run test             # 运行测试
+npm run test:watch       # 监听模式运行测试
+npm run test:coverage    # 生成测试覆盖率报告
+
 # 数据库
 npm run db:generate      # 生成 Prisma Client
 npm run db:push          # 推送 schema 变更到数据库（开发环境）
 npm run db:migrate       # 运行数据库迁移（生产环境）
 npm run db:studio        # 打开 Prisma Studio
 npm run db:seed          # 填充初始数据
+
+# AI-Native 智能分析脚本
+npm run test:preliminary      # 测试初步评估
+npm run test:deep-analysis    # 测试深度分析
+npm run test:smart-analyzer   # 测试智能分析器
+npm run cost-analysis         # 成本分析报告
+npm run worker:preliminary    # 启动初步评估 Worker
+npm run worker:deep-analysis  # 启动深度分析 Worker
+npm run queue                 # 队列管理工具
 
 # Docker 部署
 docker-compose up -d     # 启动所有服务（数据库 + Redis + 应用）
@@ -178,6 +192,8 @@ User (用户)
   ├── Feed[] (订阅源) - 多对一
   ├── Category[] (分类) - 多对一，支持层级（parentId）
   ├── ReadingHistory[] (阅读历史) - 阅读进度跟踪
+  ├── ReadingSession[] (阅读会话) - 阅读行为追踪（停留时间、滚动深度）
+  ├── UserPreference (用户偏好) - 主题权重、阅读偏好
   ├── SearchHistory[] (搜索历史)
   ├── Report[] (报告) - 日报/周报
   ├── Notification[] (通知)
@@ -191,14 +207,56 @@ Feed (订阅源)
 Entry (文章)
   ├── Feed (所属订阅源) - 多对一
   ├── contentHash (唯一标识，用于去重)
+
+  # 基础 AI 字段
   ├── AI 字段 (aiSummary, aiKeywords, aiSentiment, aiCategory, aiImportanceScore)
   ├── 向量嵌入 (titleEmbedding, contentEmbedding) - 用于语义搜索
+
+  # AI-Native 深度分析字段
+  ├── aiOneLineSummary - 一句话总结
+  ├── aiMainPoints - 主要观点 [{point, explanation, importance}]
+  ├── aiKeyQuotes - 关键引用 [{quote, significance}]
+  ├── aiScoreDimensions - 评分维度 {depth, quality, practicality, novelty}
+  ├── aiAnalysisModel - 使用的模型组合
+  ├── aiProcessingTime - 处理耗时(ms)
+  ├── aiReflectionRounds - 反思轮数
+  ├── aiAnalyzedAt - 深度分析时间
+
+  # 初评字段（BestBlogs 改进）
+  ├── aiPrelimIgnore - 是否忽略（低质内容）
+  ├── aiPrelimReason - 主题描述
+  ├── aiPrelimValue - 价值评分 1-5
+  ├── aiPrelimSummary - 一句话总结
+  ├── aiPrelimLanguage - 语言类型 'zh', 'en', 'other'
+  ├── aiPrelimStatus - 初评状态 'pending', 'passed', 'rejected'
+  ├── aiPrelimAnalyzedAt - 初评时间
+  ├── aiPrelimModel - 初评使用的模型
+
   ├── ReadingHistory[] (阅读历史)
+  ├── ReadingSession[] (阅读会话)
   ├── AIAnalysisQueue[] (AI 分析任务)
-  └── ReportEntry[] (报告关联)
+  ├── ReportEntry[] (报告关联)
+  ├── ArticleRelation[] (文章关系 - 知识图谱)
+  └── AnalysisFeedback[] (用户反馈)
+
+ArticleRelation (文章关系)
+  ├── sourceEntry - 源文章
+  ├── targetEntry - 目标文章
+  ├── relationType - 'similar', 'prerequisite', 'contradiction', 'extension'
+  └── strength - 关系强度 0-1
+
+AnalysisFeedback (分析反馈)
+  ├── entry - 关联文章
+  ├── summaryIssue - 摘要问题描述
+  ├── tagSuggestions - 标签建议
+  ├── rating - 用户评分 1-5
+  ├── isHelpful - 是否有帮助
+  └── isApplied - 是否已应用到分析
 ```
 
 ### 环境变量
+
+完整的环境变量配置请参考 `.env.example` 文件。关键配置：
 
 ```env
 # 数据库
@@ -207,16 +265,40 @@ REDIS_URL=              # Redis 连接字符串（BullMQ 队列）
 
 # 认证
 JWT_SECRET=             # JWT 密钥（或 NEXTAUTH_SECRET）
+NEXTAUTH_URL=           # 应用 URL
 
 # AI 服务
-AI_PROVIDER=            # openai | anthropic | deepseek | ollama | custom
+AI_PROVIDER=            # openai | anthropic | deepseek | gemini | ollama | custom
 AI_MODEL=               # 自定义模型名称
 OPENAI_API_KEY=         # OpenAI API Key
 ANTHROPIC_API_KEY=      # Anthropic API Key
 DEEPSEEK_API_KEY=       # DeepSeek API Key
+GEMINI_API_KEY=         # Google Gemini API Key
 CUSTOM_API_BASE_URL=    # 自定义 API 地址
 CUSTOM_API_KEY=         # 自定义 API Key
 CUSTOM_API_MODEL=       # 自定义 API 模型
+
+# AI-Native 配置（可选，使用默认值即可）
+PRELIMINARY_MIN_VALUE=  # 初步评估最低分数（默认 3）
+REFLECTION_ENABLED=     # 是否启用反思引擎（默认 true）
+MAX_REFLECTION_ROUNDS=  # 最大反思轮数（默认 2）
+
+# 自定义 API 示例（支持国内 AI 服务）
+# Moonshot（月之暗面）
+CUSTOM_API_BASE_URL="https://api.moonshot.cn/v1"
+CUSTOM_API_KEY="sk-xxx"
+CUSTOM_API_MODEL="moonshot-v1-8k"
+AI_PROVIDER="custom"
+
+# 通义千问
+CUSTOM_API_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+CUSTOM_API_KEY="sk-xxx"
+CUSTOM_API_MODEL="qwen-plus"
+
+# 智谱 GLM
+CUSTOM_API_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+CUSTOM_API_KEY="xxx"
+CUSTOM_API_MODEL="glm-4-plus"
 ```
 
 ## 前端 tRPC 调用
@@ -254,9 +336,10 @@ queue.stop();  // 停止处理
 ## Docker 部署
 
 项目包含 Docker Compose 配置（`docker-compose.yml`）：
-- PostgreSQL 数据库
-- Redis 缓存和队列
-- 应用服务
+- **PostgreSQL 数据库** - 用户数据 16-alpine
+- **Redis 缓存和队列** - BullMQ 任务队列 7-alpine
+- **应用服务** - Next.js standalone 模式
+- **初始化服务** - 自动运行数据库迁移和种子数据
 
 ```bash
 # 使用 Docker 启动所有服务
@@ -264,7 +347,18 @@ docker-compose up -d
 
 # 查看日志
 docker-compose logs -f
+
+# 停止服务
+docker-compose down
+
+# 重新构建并启动
+docker-compose up -d --build
 ```
+
+**Docker 默认配置**：
+- PostgreSQL: `rss_easy:rss_easy_password@localhost:5432/rss_easy`
+- Redis: `localhost:6379`
+- 应用: `http://localhost:3000`
 
 ## 部署注意事项
 
@@ -305,6 +399,21 @@ export const appRouter = router({
 });
 ```
 
+**现有 tRPC 路由**：
+- `auth` - 认证（登录/注册）
+- `feeds` - 订阅源管理
+- `entries` - 文章操作
+- `categories` - 分类管理
+- `search` - 搜索功能
+- `reports` - 报告生成
+- `settings` - 用户设置
+- `rules` - 订阅规则
+- `notifications` - 通知管理
+- `ai` - AI 功能
+- `analytics` - 用户行为追踪和偏好学习（AI-Native）
+- `recommendations` - 个性化推荐
+- `preliminary` - 初步评估队列（AI-Native）
+
 ### 数据库变更
 
 1. 修改 `prisma/schema.prisma`
@@ -324,6 +433,94 @@ export const appRouter = router({
 - **全文搜索**：PostgreSQL 全文搜索
 - **语义搜索**：pgvector 向量相似度搜索
 - 搜索历史保存在 SearchHistory 模型
+
+## AI-Native 智能分析系统
+
+项目采用**双层分析架构**，优化成本和质量：
+
+### 分析流程
+
+```
+文章抓取 → 初步评估 (PreliminaryEvaluator)
+    ↓ (通过价值阈值)
+深度分析队列 → SmartAnalyzer (根据长度选择策略)
+    ↓
+反思引擎 → 反馈收集 → 质量优化
+```
+
+### 核心组件
+
+**`lib/ai/smart-analyzer.ts`** - 智能分析器
+- 短文章 (≤6000字符)：直接分析
+- 中等文章 (6000-12000字符)：分段分析
+- 长文章 (>12000字符)：分段分析 + 结果合并
+
+**`lib/ai/preliminary-evaluator.ts`** - 初步评估器
+- 快速评估文章价值
+- 过滤低质量内容
+- 节省深度分析成本
+
+**`lib/ai/model-selector.ts`** - 模型选择器
+- 根据语言选择最佳模型
+- 中文：DeepSeek（成本低、质量好）
+- 英文：GPT-4o-mini（速度快）
+- 其他：GPT-4o-mini
+
+**`lib/ai/analysis/reflection-engine.ts`** - 反思引擎
+- 自动检查分析质量
+- 迭代改进结果
+- 支持多轮反思
+
+**`lib/ai/feedback-engine.ts`** - 反馈引擎
+- 收集用户反馈
+- 调整评分策略
+- 个性化优化
+
+### 队列系统
+
+**`lib/queue/preliminary-processor.ts`** - 初步评估队列
+- 快速处理新文章
+- 价值评分
+- 决策是否深度分析
+
+**`lib/queue/deep-analysis-processor.ts`** - 深度分析队列
+- 完整 AI 分析
+- 支持优先级
+- 失败重试
+
+### 队列管理命令
+
+```bash
+# 查看队列状态
+npm run queue status
+
+# 添加单个分析任务
+npm run queue add <entryId> [priority]
+
+# 批量添加任务
+npm run queue add-batch [limit] [priority]
+
+# 查看任务状态
+npm run queue job <jobId>
+
+# 重试失败任务
+npm run queue retry [limit]
+```
+
+### 成本和性能监控
+
+```bash
+# 生成成本和性能分析报告
+npm run cost-analysis
+```
+
+报告包括：
+- 总体统计（处理数、成功率、平均时间、成本）
+- 按模型/语言/阶段分组统计
+- 成本优化建议
+- 性能指标（P50/P95/P99）
+- 模型对比分析
+- 性价比分析
 
 ## 测试账号
 

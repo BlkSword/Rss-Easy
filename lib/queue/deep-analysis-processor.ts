@@ -40,24 +40,38 @@ export interface DeepAnalysisJobData {
 }
 
 // =====================================================
-// 队列定义
+// 队列定义（懒加载）
 // =====================================================
 
-export const deepAnalysisQueue = new Queue<DeepAnalysisJobData>('deep-analysis', {
-  connection: REDIS_CONFIG,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
-    },
-    removeOnComplete: {
-      age: 7 * 24 * 3600, // 7天后删除
-      count: 1000, // 最多保留1000个
-    },
-    removeOnFail: {
-      age: 30 * 24 * 3600, // 30天后删除
-    },
+let deepAnalysisQueueInstance: Queue<DeepAnalysisJobData> | null = null;
+
+export function getDeepAnalysisQueue(): Queue<DeepAnalysisJobData> {
+  if (!deepAnalysisQueueInstance) {
+    deepAnalysisQueueInstance = new Queue<DeepAnalysisJobData>('deep-analysis', {
+      connection: REDIS_CONFIG,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: {
+          age: 7 * 24 * 3600, // 7天后删除
+          count: 1000, // 最多保留1000个
+        },
+        removeOnFail: {
+          age: 30 * 24 * 3600, // 30天后删除
+        },
+      },
+    });
+  }
+  return deepAnalysisQueueInstance;
+}
+
+// 向后兼容的导出（已废弃，建议使用 getDeepAnalysisQueue）
+export const deepAnalysisQueue = new Proxy({} as Queue<DeepAnalysisJobData>, {
+  get(target, prop) {
+    return getDeepAnalysisQueue()[prop as keyof Queue<DeepAnalysisJobData>];
   },
 });
 
