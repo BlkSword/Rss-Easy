@@ -107,30 +107,28 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
       // 乐观更新：更新分类和订阅源未读计数
       const currentEntries = entriesData?.items || [];
       utils.categories.list.setData(undefined, (oldData: any) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          categories: oldData.categories.map((category: any) => {
-            const affectedCount = vars.entryIds.filter((id: string) => {
-              const entry = currentEntries.find((e: any) => e.id === id);
-              return entry?.feed?.categoryId === category.id;
-            }).length;
-            return {
-              ...category,
-              unreadCount: Math.max(0, category.unreadCount - affectedCount),
-              feeds: category.feeds?.map((feed: any) => {
-                const feedAffectedCount = vars.entryIds.filter((id: string) => {
-                  const entry = currentEntries.find((e: any) => e.id === id);
-                  return entry?.feedId === feed.id;
-                }).length;
-                return {
-                  ...feed,
-                  unreadCount: Math.max(0, feed.unreadCount - feedAffectedCount),
-                };
-              }),
-            };
-          }),
-        };
+        // oldData 直接是数组，不是包含 categories 属性的对象
+        if (!oldData || !Array.isArray(oldData)) return oldData;
+        return oldData.map((category: any) => {
+          const affectedCount = vars.entryIds.filter((id: string) => {
+            const entry = currentEntries.find((e: any) => e.id === id);
+            return entry?.feed?.categoryId === category.id;
+          }).length;
+          return {
+            ...category,
+            unreadCount: Math.max(0, (category.unreadCount || 0) - affectedCount),
+            feeds: category.feeds?.map((feed: any) => {
+              const feedAffectedCount = vars.entryIds.filter((id: string) => {
+                const entry = currentEntries.find((e: any) => e.id === id);
+                return entry?.feedId === feed.id;
+              }).length;
+              return {
+                ...feed,
+                unreadCount: Math.max(0, (feed.unreadCount || 0) - feedAffectedCount),
+              };
+            }),
+          };
+        });
       });
 
       utils.feeds.list.setData({ limit: 100 }, (oldData: any) => {

@@ -52,18 +52,21 @@ export function Fade({
     none: 'none',
   };
 
-  if (!isMounted) return null;
-
-  return (
-    <div
-      className={cn('transition-all h-full', className)}
-      style={{
+  // 使用 CSS 动画初始状态而不是返回 null，避免阻塞子元素渲染
+  const initialStyles: React.CSSProperties = !isMounted 
+    ? { opacity: 0, transform: directions[direction] }
+    : {
         opacity: isVisible ? 1 : 0,
         transform: isVisible ? 'none' : directions[direction],
         transitionDuration: `${duration}ms`,
         transitionDelay: `${delay}ms`,
         transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-      }}
+      };
+
+  return (
+    <div
+      className={cn('transition-all h-full', className)}
+      style={initialStyles}
       {...props}
     >
       {children}

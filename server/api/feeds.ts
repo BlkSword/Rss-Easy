@@ -39,7 +39,9 @@ export const feedsRouter = router({
           include: {
             category: true,
             _count: {
-              select: { entries: { where: { isRead: false } } },
+              select: { 
+                entries: true,
+              },
             },
           },
         }),
@@ -51,8 +53,24 @@ export const feedsRouter = router({
         }),
       ]);
 
+      // 获取每个订阅源的未读数量
+      const feedsWithUnreadCount = await Promise.all(
+        feeds.map(async (feed) => {
+          const unreadCount = await ctx.db.entry.count({
+            where: {
+              feedId: feed.id,
+              isRead: false,
+            },
+          });
+          return {
+            ...feed,
+            unreadCount,
+          };
+        })
+      );
+
       return {
-        items: feeds,
+        items: feedsWithUnreadCount,
         pagination: {
           page,
           limit,
@@ -375,39 +393,106 @@ export const feedsRouter = router({
 
   /**
    * 自动发现订阅源信息
+   * 优先从 RSS feed 中提取，如果失败则从网页提取
    */
   discover: protectedProcedure
     .input(z.object({ url: z.string().url() }))
     .mutation(async ({ input }) => {
       try {
-        const response = await fetch(input.url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; Rss-Easy/1.0)',
-          },
-        });
-        
-        if (!response.ok) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: '无法获取网站内容',
-          });
+        // 首先尝试直接解析 RSS feed
+        let title: string | null = null;
+        let description: string | null = null;
+        let siteUrl: string | null = null;
+        let iconUrl: string | null = null;
+
+        try {
+          const parsed = await parseFeed(input.url);
+          title = parsed.title || null;
+          description = parsed.description || null;
+          siteUrl = parsed.link || input.url;
+        } catch (feedError) {
+          // RSS feed 解析失败，尝试从网页提取
+          console.warn('Failed to parse RSS feed, trying to extract from webpage:', feedError);
         }
 
-        const html = await response.text();
-        
-        // 解析标题
-        const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-        const title = titleMatch?.[1]?.trim();
-        
-        // 解析描述
-        const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
-        const description = descMatch?.[1]?.trim();
+        // 如果 RSS feed 中没有描述或标题，尝试从 HTML 网页提取
+        if (!title || !description) {
+          const response = await fetch(input.url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; Rss-Easy/1.0)',
+            },
+          });
+
+          if (!response.ok) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: '无法获取网站内容',
+            });
+          }
+
+          const html = await response.text();
+
+          // 提取标题（如果还没有）
+          if (!title) {
+            const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+            title = titleMatch?.[1]?.trim() || null;
+          }
+
+          // 提取描述（如果还没有）
+          if (!description) {
+            // 尝试多种 meta 标签
+            const descPatterns = [
+              /<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i,
+              /<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i,
+              /<meta[^>]*name=["']twitter:description["'][^>]*content=["']([^"']*)["']/i,
+            ];
+
+            for (const pattern of descPatterns) {
+              const match = html.match(pattern);
+              if (match?.[1]) {
+                description = match[1].trim();
+                break;
+              }
+            }
+
+            // 如果还是没找到，尝试从第一个段落提取
+            if (!description) {
+              const pMatch = html.match(/<p[^>]*>([^<]{20,200})<\/p>/i);
+              description = pMatch?.[1]?.trim() || null;
+            }
+          }
+
+          // 提取 favicon（如果还没有）
+          if (!iconUrl) {
+            const iconPatterns = [
+              /<link[^>]*rel=["']icon["'][^>]*href=["']([^"']+)["']/i,
+              /<link[^>]*rel=["']shortcut icon["'][^>]*href=["']([^"']+)["']/i,
+            ];
+
+            for (const pattern of iconPatterns) {
+              const match = html.match(pattern);
+              if (match?.[1]) {
+                iconUrl = match[1].trim();
+                // 处理相对路径
+                if (iconUrl && !iconUrl.startsWith('http')) {
+                  try {
+                    iconUrl = new URL(iconUrl, input.url).href;
+                  } catch {
+                    iconUrl = null;
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
 
         return {
           feed: {
             title: title || null,
             description: description || null,
-            siteUrl: input.url,
+            siteUrl: siteUrl || input.url,
+            iconUrl: iconUrl || null,
           },
         };
       } catch (error) {

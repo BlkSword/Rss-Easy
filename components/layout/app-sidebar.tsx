@@ -29,6 +29,7 @@ import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
 import { SidebarSkeleton } from '@/components/ui/skeleton';
 import { useUserPreferences } from '@/hooks/use-local-storage';
+import { useLanguage } from '@/components/providers/language-provider';
 
 export interface AppSidebarProps {
   collapsed?: boolean;
@@ -37,6 +38,7 @@ export interface AppSidebarProps {
 export function AppSidebar({ collapsed = false }: AppSidebarProps) {
   const pathname = usePathname();
   const { addToast } = useToast();
+  const { t } = useLanguage();
   const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -145,11 +147,11 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
   };
 
   const navItems = [
-    { icon: Inbox, label: '全部文章', href: '/', count: stats?.unreadCount },
-    { icon: Clock, label: '未读', href: '/unread', count: stats?.unreadCount },
-    { icon: Star, label: '星标', href: '/starred' },
-    { icon: Archive, label: '归档', href: '/archive' },
-    { icon: Sparkles, label: 'AI 报告', href: '/reports' },
+    { icon: Inbox, label: t('nav.all'), href: '/', count: stats?.unreadCount },
+    { icon: Clock, label: t('nav.unread'), href: '/unread', count: stats?.unreadCount },
+    { icon: Star, label: t('nav.starred'), href: '/starred' },
+    { icon: Archive, label: t('nav.archive'), href: '/archive' },
+    { icon: Sparkles, label: t('nav.ai_reports'), href: '/reports' },
   ];
 
   if (isCollapsed) {
@@ -229,7 +231,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
         <div>
           <div className="flex items-center justify-between mb-2 px-3">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              分组
+              {t('nav.categories')}
             </span>
             <Tooltip content="新建分组">
               <Button
@@ -349,7 +351,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
         <div>
           <div className="flex items-center justify-between mb-2 px-3">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              订阅源
+              {t('nav.feeds')}
             </span>
             <Tooltip content="管理订阅源">
               <Link href="/feeds/manage">
@@ -405,7 +407,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-all duration-200 hover:translate-x-0.5 group"
                 >
                   <Plus className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-                  <span>查看全部</span>
+                  <span>{t('action.see_all')}</span>
                 </Link>
               )}
             </nav>
@@ -417,7 +419,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="新建分组"
+        title={t('category.new')}
         footer={
           <>
             <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
@@ -434,7 +436,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">分组名称</label>
+            <label className="block text-sm font-medium mb-2">{t('category.name')}</label>
             <input
               type="text"
               placeholder="输入分组名称"
@@ -456,7 +458,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
           setEditingCategoryId(null);
           setNewCategoryName('');
         }}
-        title="编辑分组"
+        title={t('category.edit')}
         footer={
           <>
             <Button variant="ghost" onClick={() => {

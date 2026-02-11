@@ -1,12 +1,12 @@
 /**
  * 报告详情页面 - 全屏布局
- * 增强版：添加动画效果和视觉优化
+ * 优化版：支持显示生成进度和步骤
  */
 
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { zhCN } from 'date-fns/locale';
@@ -26,13 +26,19 @@ import {
   Star,
   FolderOpen,
   Lightbulb,
+  Loader2,
+  AlertCircle,
+  Check,
+  Clock,
+  X,
+  RefreshCw,
 } from 'lucide-react';
-import { Button, Card, Row, Col, Select, Space, Modal, Typography, Tag, Progress } from 'antd';
+import { Button, Card, Row, Col, Select, Space, Modal, Typography, Tag, Progress, Steps, Tooltip } from 'antd';
 import { useToast } from '@/components/ui/toast';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
-import { handleApiSuccess, handleApiError } from '@/lib/feedback';
+import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
 
 // 动画组件
 import { Fade, StaggerContainer, ListItemFade, HoverLift } from '@/components/animation/fade';
@@ -46,6 +52,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePageLoadAnimation } from '@/hooks/use-animation';
 
 const { Title, Text, Paragraph } = Typography;
+const { Step } = Steps;
 
 // 报告类型配置
 const reportTypeConfig = {
@@ -65,6 +72,17 @@ const reportTypeConfig = {
     borderColor: 'border-purple-500/20',
     gradient: 'from-purple-500/5 to-purple-500/0',
   },
+};
+
+// 生成步骤映射
+const STEP_LABELS: Record<string, string> = {
+  init: '初始化',
+  collect_data: '收集数据',
+  analyze_entries: '分析文章',
+  generate_summary: '生成摘要',
+  extract_topics: '提取主题',
+  select_highlights: '精选内容',
+  finalize: '完成报告',
 };
 
 // 页面加载骨架屏
@@ -92,6 +110,86 @@ function ReportDetailSkeleton() {
         <Skeleton className="h-64 rounded-xl" />
       </Card>
     </div>
+  );
+}
+
+// 生成中状态组件
+function GeneratingState({ 
+  progress, 
+  currentStep, 
+  steps,
+  errorMessage,
+  onCancel 
+}: { 
+  progress: number; 
+  currentStep: string;
+  steps: any[];
+  errorMessage?: string;
+  onCancel: () => void;
+}) {
+  // 转换步骤为Steps组件格式
+  const stepItems = steps.map((s, index) => {
+    const isDone = s.status === 'done';
+    const isDoing = s.status === 'doing';
+    const isError = s.status === 'error';
+    
+    return {
+      title: s.label || STEP_LABELS[s.step] || s.step,
+      description: s.message || (isDoing ? '进行中...' : ''),
+      status: isError ? 'error' : isDone ? 'finish' : isDoing ? 'process' : 'wait' as const,
+      icon: isDoing ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined,
+    };
+  });
+
+  const currentStepIndex = steps.findIndex((s) => s.status === 'doing');
+
+  return (
+    <Card className="border-border/60 mb-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center animate-pulse">
+          <Loader2 className="h-6 w-6 text-amber-500 animate-spin" />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-lg font-semibold">正在生成报告</h3>
+          <p className="text-sm text-muted-foreground">
+            {currentStep || '准备中...'} · {progress}%
+          </p>
+        </div>
+        <Button 
+          icon={<X className="h-4 w-4" />} 
+          onClick={onCancel}
+        >
+          取消
+        </Button>
+      </div>
+
+      <div className="mb-6">
+        <Progress 
+          percent={progress} 
+          strokeColor="#ea580c"
+          showInfo={false}
+          className="mb-2"
+        />
+      </div>
+
+      <Steps
+        direction="horizontal"
+        size="small"
+        current={currentStepIndex}
+        items={stepItems}
+        className="overflow-x-auto"
+      />
+
+      {errorMessage && (
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2 text-red-600">
+            <AlertCircle className="h-5 w-5" />
+            <span className="font-medium">生成失败</span>
+          </div>
+          <p className="text-sm text-red-600/80 mt-1">{errorMessage}</p>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -246,7 +344,17 @@ export default function ReportDetailPage() {
   const isPageLoaded = usePageLoadAnimation(100);
 
   const { data: report, isLoading, refetch } = trpc.reports.byId.useQuery({ id: reportId });
+  const { data: progressData } = trpc.reports.getProgress.useQuery(
+    { id: reportId },
+    {
+      enabled: report?.status === 'generating' || report?.status === 'pending',
+      refetchInterval: (data) => 
+        data?.status === 'generating' || data?.status === 'pending' ? 2000 : false,
+    }
+  );
+  
   const deleteReport = trpc.reports.delete.useMutation();
+  const cancelGeneration = trpc.reports.cancelGeneration.useMutation();
 
   const handleDownload = () => {
     const blob = new Blob([report?.content || ''], { type: 'text/markdown' });
@@ -286,6 +394,16 @@ export default function ReportDetailPage() {
         }
       },
     });
+  };
+
+  const handleCancel = async () => {
+    try {
+      await cancelGeneration.mutateAsync({ id: reportId });
+      notifySuccess('已取消生成');
+      refetch();
+    } catch (error) {
+      handleApiError(error, '取消失败');
+    }
   };
 
   // 计算统计数据
@@ -352,6 +470,10 @@ export default function ReportDetailPage() {
     );
   }
 
+  // 检查是否是生成中状态
+  const isGenerating = report.status === 'generating' || report.status === 'pending';
+  const isFailed = report.status === 'failed';
+
   // 获取主题数据并计算最大值
   const topics = (report.topics as any)?.topTopics || [];
   const maxTopicCount = topics.length > 0 ? Math.max(...topics.map((t: any) => t.count)) : 0;
@@ -386,140 +508,157 @@ export default function ReportDetailPage() {
               </Button>
             </Fade>
 
+            {/* 生成中状态 */}
+            {(isGenerating || isFailed) && progressData && (
+              <Fade in direction="up" distance={20} duration={500}>
+                <GeneratingState
+                  progress={progressData.progress}
+                  currentStep={progressData.currentStep}
+                  steps={progressData.steps || []}
+                  errorMessage={isFailed ? report.errorMessage || undefined : undefined}
+                  onCancel={handleCancel}
+                />
+              </Fade>
+            )}
+
             {/* 头部 */}
-            <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={100}>
-              <Card
-                className={cn(
-                  'mb-6 border-border/60 overflow-hidden relative',
-                  'bg-gradient-to-br',
-                  typeConfig.gradient
-                )}
-              >
-                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div
-                        className={cn(
-                          'w-14 h-14 rounded-2xl flex items-center justify-center',
-                          typeConfig.bgColor,
-                          typeConfig.borderColor,
-                          'border-2'
+            {!isGenerating && (
+              <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={100}>
+                <Card
+                  className={cn(
+                    'mb-6 border-border/60 overflow-hidden relative',
+                    'bg-gradient-to-br',
+                    typeConfig.gradient
+                  )}
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div
+                          className={cn(
+                            'w-14 h-14 rounded-2xl flex items-center justify-center',
+                            typeConfig.bgColor,
+                            typeConfig.borderColor,
+                            'border-2'
+                          )}
+                        >
+                          <TypeIcon className={cn('h-7 w-7', typeConfig.textColor)} />
+                        </div>
+                        <div>
+                          <Title level={2} className="!mb-0 !text-2xl">
+                            {report.title}
+                          </Title>
+                          <Text type="secondary" className="text-sm">
+                            生成于 {format(new Date(report.createdAt), 'yyyy年MM月dd日 HH:mm', { locale: zhCN })}
+                          </Text>
+                        </div>
+                        {report.aiGenerated && (
+                          <StatusBadge status="processing" pulse className="ml-2">
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            AI 生成
+                          </StatusBadge>
                         )}
-                      >
-                        <TypeIcon className={cn('h-7 w-7', typeConfig.textColor)} />
                       </div>
-                      <div>
-                        <Title level={2} className="!mb-0 !text-2xl">
-                          {report.title}
-                        </Title>
-                        <Text type="secondary" className="text-sm">
-                          生成于 {format(new Date(report.createdAt), 'yyyy年MM月dd日 HH:mm', { locale: zhCN })}
-                        </Text>
-                      </div>
-                      {report.aiGenerated && (
-                        <StatusBadge status="processing" pulse className="ml-2">
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          AI 生成
-                        </StatusBadge>
-                      )}
+                      <Paragraph className="text-muted-foreground !mb-0 max-w-2xl">
+                        {report.summary || '暂无摘要'}
+                      </Paragraph>
                     </div>
-                    <Paragraph className="text-muted-foreground !mb-0 max-w-2xl">
-                      {report.summary}
-                    </Paragraph>
+
+                    <Space className="flex-shrink-0">
+                      <Select
+                        value={selectedFormat}
+                        onChange={(value) => setSelectedFormat(value as any)}
+                        className="w-32"
+                        dropdownStyle={{ animation: 'fadeIn 0.2s' }}
+                      >
+                        <Select.Option value="markdown">Markdown</Select.Option>
+                        <Select.Option value="html">HTML</Select.Option>
+                        <Select.Option value="json">JSON</Select.Option>
+                      </Select>
+                      <Button
+                        onClick={handleDownload}
+                        icon={<Download className="h-4 w-4" />}
+                        className="hover:scale-105 transition-transform duration-200"
+                      >
+                        下载
+                      </Button>
+                      <Button
+                        onClick={handleShare}
+                        icon={<Share2 className="h-4 w-4" />}
+                        className="hover:scale-105 transition-transform duration-200"
+                      >
+                        分享
+                      </Button>
+                      <Button
+                        danger
+                        onClick={handleDelete}
+                        icon={<Trash2 className="h-4 w-4" />}
+                        className="hover:scale-105 transition-transform duration-200"
+                      >
+                        删除
+                      </Button>
+                    </Space>
                   </div>
 
-                  <Space className="flex-shrink-0">
-                    <Select
-                      value={selectedFormat}
-                      onChange={(value) => setSelectedFormat(value as any)}
-                      className="w-32"
-                      dropdownStyle={{ animation: 'fadeIn 0.2s' }}
-                    >
-                      <Select.Option value="markdown">Markdown</Select.Option>
-                      <Select.Option value="html">HTML</Select.Option>
-                      <Select.Option value="json">JSON</Select.Option>
-                    </Select>
-                    <Button
-                      onClick={handleDownload}
-                      icon={<Download className="h-4 w-4" />}
-                      className="hover:scale-105 transition-transform duration-200"
-                    >
-                      下载
-                    </Button>
-                    <Button
-                      onClick={handleShare}
-                      icon={<Share2 className="h-4 w-4" />}
-                      className="hover:scale-105 transition-transform duration-200"
-                    >
-                      分享
-                    </Button>
-                    <Button
-                      danger
-                      onClick={handleDelete}
-                      icon={<Trash2 className="h-4 w-4" />}
-                      className="hover:scale-105 transition-transform duration-200"
-                    >
-                      删除
-                    </Button>
-                  </Space>
-                </div>
-
-                {/* 统计信息 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <StatCard
-                    value={report.totalEntries}
-                    label="新增文章"
-                    icon={<FileText className="h-5 w-5" />}
-                    color={report.reportType === 'daily' ? 'blue' : 'purple'}
-                    delay={0}
-                  />
-                  <StatCard
-                    value={report.totalRead}
-                    label="已阅读"
-                    icon={<CheckCircle2 className="h-5 w-5" />}
-                    color="green"
-                    delay={50}
-                  />
-                  <StatCard
-                    value={report.totalFeeds}
-                    label="订阅源"
-                    icon={<BookOpen className="h-5 w-5" />}
-                    color="orange"
-                    delay={100}
-                  />
-                  <StatCard
-                    value={readRate}
-                    suffix="%"
-                    label="阅读率"
-                    icon={<BarChart3 className="h-5 w-5" />}
-                    color={readRate >= 50 ? 'green' : readRate >= 20 ? 'orange' : 'blue'}
-                    delay={150}
-                  />
-                </div>
-              </Card>
-            </Fade>
-
-            {/* 报告内容 */}
-            <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={200}>
-              <Card
-                className="mb-6 border-border/60 overflow-hidden"
-                title={
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    <span>报告内容</span>
+                  {/* 统计信息 */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatCard
+                      value={report.totalEntries}
+                      label="新增文章"
+                      icon={<FileText className="h-5 w-5" />}
+                      color={report.reportType === 'daily' ? 'blue' : 'purple'}
+                      delay={0}
+                    />
+                    <StatCard
+                      value={report.totalRead}
+                      label="已阅读"
+                      icon={<CheckCircle2 className="h-5 w-5" />}
+                      color="green"
+                      delay={50}
+                    />
+                    <StatCard
+                      value={report.totalFeeds}
+                      label="订阅源"
+                      icon={<BookOpen className="h-5 w-5" />}
+                      color="orange"
+                      delay={100}
+                    />
+                    <StatCard
+                      value={readRate}
+                      suffix="%"
+                      label="阅读率"
+                      icon={<BarChart3 className="h-5 w-5" />}
+                      color={readRate >= 50 ? 'green' : readRate >= 20 ? 'orange' : 'blue'}
+                      delay={150}
+                    />
                   </div>
-                }
-              >
-                <div className="prose prose-sm max-w-none dark:prose-invert">
-                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed bg-transparent p-0 text-foreground/90">
-                    {report.content}
-                  </pre>
-                </div>
-              </Card>
-            </Fade>
+                </Card>
+              </Fade>
+            )}
 
-            {/* 主题分析 */}
-            {topics.length > 0 && (
+            {/* 报告内容 - 只在生成完成时显示 */}
+            {report.status === 'completed' && (
+              <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={200}>
+                <Card
+                  className="mb-6 border-border/60 overflow-hidden"
+                  title={
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
+                      <span>报告内容</span>
+                    </div>
+                  }
+                >
+                  <div className="prose prose-sm max-w-none dark:prose-invert">
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed bg-transparent p-0 text-foreground/90">
+                      {report.content || '暂无内容'}
+                    </pre>
+                  </div>
+                </Card>
+              </Fade>
+            )}
+
+            {/* 主题分析 - 只在生成完成时显示 */}
+            {report.status === 'completed' && topics.length > 0 && (
               <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={300}>
                 <Card
                   className="mb-6 border-border/60"
@@ -548,8 +687,8 @@ export default function ReportDetailPage() {
               </Fade>
             )}
 
-            {/* 精选文章 */}
-            {report.entries && report.entries.length > 0 && (
+            {/* 精选文章 - 只在生成完成时显示 */}
+            {report.status === 'completed' && report.entries && report.entries.length > 0 && (
               <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={400}>
                 <Card
                   className="border-border/60"

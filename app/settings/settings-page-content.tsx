@@ -39,7 +39,7 @@ const tabs = [
   { key: 'profile' as TabKey, label: '个人资料', icon: User },
   { key: 'preferences' as TabKey, label: '偏好设置', icon: Palette },
   { key: 'security' as TabKey, label: '安全设置', icon: Shield },
-  { key: 'api' as TabKey, label: 'API密钥', icon: Key },
+  { key: 'api' as TabKey, label: 'API配置', icon: Key },
   { key: 'email' as TabKey, label: '邮件配置', icon: Mail },
   { key: 'notifications' as TabKey, label: '通知设置', icon: Bell },
   { key: 'ai' as TabKey, label: 'AI配置', icon: Sparkles },

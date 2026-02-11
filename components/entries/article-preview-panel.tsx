@@ -11,8 +11,9 @@ import { Star, ExternalLink, Bookmark, Clock, Calendar, ArrowLeft, ArrowRight } 
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { Button, Divider, Skeleton, Tag } from 'antd';
-import { Sparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
+import { AIAnalysisPanel } from '@/components/entries/ai-analysis-panel';
 
 interface ArticlePreviewPanelProps {
   entryId?: string | null;
@@ -262,12 +263,14 @@ export function ArticlePreviewPanel({
 
           <Divider className="my-6 bg-border/40" />
 
-          {/* AI摘要 */}
+          {/* AI 摘要显示 */}
           {entry.aiSummary && (
             <div className="mb-8 p-4 rounded-xl bg-gradient-to-br from-primary/5 to-purple-500/5 border border-primary/10">
-              <div className="flex items-center gap-2 mb-2 text-sm font-medium text-primary">
-                <Sparkles className="h-4 w-4" />
-                <span>AI 摘要</span>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <span className="text-sm font-medium text-primary">AI 摘要</span>
               </div>
               <p className="text-sm text-foreground/80 leading-relaxed">
                 {entry.aiSummary}
@@ -275,13 +278,18 @@ export function ArticlePreviewPanel({
             </div>
           )}
 
+          {/* AI 分析面板 */}
+          <AIAnalysisPanel
+            entryId={entry.id}
+            hasSummary={!!entry.aiSummary}
+            onComplete={(summary) => {
+              // 当分析完成时，刷新数据
+              window.location.reload();
+            }}
+          />
+
           {/* 文章正文 */}
-          <div className="prose prose-sm max-w-none dark:prose-invert">
-            <div
-              className="text-foreground/90 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: content }}
-            />
-          </div>
+          <RichContentRenderer html={content} />
 
           {/* 原文链接 */}
           <div className="mt-12 pt-8 border-t border-border/60">

@@ -152,16 +152,30 @@ export class AIAnalysisQueue {
         }
       );
 
+      // 验证结果：确保至少有一个分析成功
+      const hasValidResult =
+        result.summary ||
+        (result.keywords && result.keywords.length > 0) ||
+        result.category ||
+        result.sentiment !== undefined ||
+        result.importanceScore !== undefined;
+
+      if (!hasValidResult) {
+        throw new Error('AI analysis returned no valid results');
+      }
+
+      // 只更新成功的字段
+      const updateData: any = {};
+      if (result.summary) updateData.aiSummary = result.summary;
+      if (result.keywords && result.keywords.length > 0) updateData.aiKeywords = result.keywords;
+      if (result.category) updateData.aiCategory = result.category;
+      if (result.sentiment) updateData.aiSentiment = result.sentiment;
+      if (result.importanceScore !== undefined) updateData.aiImportanceScore = result.importanceScore;
+
       // 更新文章
       await db.entry.update({
         where: { id: task.entryId },
-        data: {
-          aiSummary: result.summary,
-          aiKeywords: result.keywords || [],
-          aiCategory: result.category,
-          aiSentiment: result.sentiment,
-          aiImportanceScore: result.importanceScore || 0,
-        },
+        data: updateData,
       });
 
       // 标记任务完成

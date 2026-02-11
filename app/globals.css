@@ -1350,4 +1350,167 @@
   .tab-indicator {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
+  /* ==================== 富文本内容样式 ==================== */
+  /* 用于渲染 RSS 抓取的富文本内容（微信公众号等） */
+
+  /* 富文本容器 */
+  .rich-content-container {
+    font-size: 16px;
+    line-height: 1.8;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* 段落样式 - 保留内联样式 */
+  .rich-content-container p {
+    margin: 1em 0;
+    line-height: 1.8;
+  }
+
+  /* 标题样式 */
+  .rich-content-container h1,
+  .rich-content-container h2,
+  .rich-content-container h3,
+  .rich-content-container h4,
+  .rich-content-container h5,
+  .rich-content-container h6 {
+    font-weight: 600;
+    margin-top: 1.5em;
+    margin-bottom: 0.75em;
+    line-height: 1.4;
+  }
+
+  .rich-content-container h1 {
+    font-size: 2em;
+  }
+
+  .rich-content-container h2 {
+    font-size: 1.5em;
+  }
+
+  .rich-content-container h3 {
+    font-size: 1.25em;
+  }
+
+  /* 图片样式 */
+  .rich-content-container img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1.5em auto;
+    border-radius: 8px;
+  }
+
+  /* 微信公众号图片特殊样式 */
+  .rich-content-container .rich_pages,
+  .rich-content-container .wxw-img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* 链接样式 */
+  .rich-content-container a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: opacity 0.2s ease;
+  }
+
+  .rich-content-container a:hover {
+    opacity: 0.8;
+  }
+
+  /* 列表样式 */
+  .rich-content-container ul,
+  .rich-content-container ol {
+    padding-left: 2em;
+    margin: 1em 0;
+  }
+
+  .rich-content-container li {
+    margin: 0.5em 0;
+  }
+
+  /* 引用样式 */
+  .rich-content-container blockquote {
+    border-left: 4px solid hsl(var(--primary) / 0.3);
+    padding-left: 1em;
+    margin: 1.5em 0;
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+  }
+
+  /* 代码样式 */
+  .rich-content-container code {
+    background-color: hsl(var(--muted));
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  }
+
+  .rich-content-container pre {
+    background-color: hsl(var(--muted) / 0.8);
+    padding: 1em;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 1.5em 0;
+  }
+
+  .rich-content-container pre code {
+    background-color: transparent;
+    padding: 0;
+  }
+
+  /* 表格样式 */
+  .rich-content-container table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5em 0;
+  }
+
+  .rich-content-container th,
+  .rich-content-container td {
+    border: 1px solid hsl(var(--border));
+    padding: 0.75em 1em;
+    text-align: left;
+  }
+
+  .rich-content-container th {
+    background-color: hsl(var(--muted));
+    font-weight: 600;
+  }
+
+  /* 分隔线样式 */
+  .rich-content-container hr {
+    border: none;
+    border-top: 1px solid hsl(var(--border) / 0.5);
+    margin: 2em 0;
+  }
+
+  /* 视频容器 */
+  .rich-content-container iframe {
+    max-width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+    margin: 1.5em auto;
+    display: block;
+  }
+
+  /* 移除微信公众号特定元素的默认样式问题 */
+  .rich-content-container mp-common-profile,
+  .rich-content-container mp-style-type {
+    display: none;
+  }
+
+  /* 文本对齐样式保留 */
+  .rich-content-container [style*="text-align"] {
+    text-align: inherit !important;
+  }
+
+  /* 保留内联样式（针对微信公众号内容） */
+  .rich-content-container [style] {
+    max-width: 100% !important;
+  }
 }

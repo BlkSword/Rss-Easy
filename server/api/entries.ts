@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { AIAnalysisQueue } from '@/lib/ai/queue';
 import { addDeepAnalysisJob } from '@/lib/queue/deep-analysis-processor';
+import { getDefaultAIService } from '@/lib/ai/client';
 import { info } from '@/lib/logger';
 
 export const entriesRouter = router({
@@ -482,6 +483,18 @@ export const entriesRouter = router({
         };
       }
 
+      // 验证 AI 配置是否有效（在添加任务到队列之前）
+      try {
+        // 尝试创建 AI 服务来验证配置
+        getDefaultAIService();
+      } catch (configError) {
+        // 配置无效，直接返回错误给用户
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: configError instanceof Error ? configError.message : 'AI 服务未配置',
+        });
+      }
+
       // 添加到AI分析队列
       await AIAnalysisQueue.addTask(entry.id, input.analysisType, 5);
 
@@ -543,6 +556,16 @@ export const entriesRouter = router({
           message: '文章已进行过深度分析',
           entryId: entry.id,
         };
+      }
+
+      // 验证 AI 配置是否有效（在添加任务到队列之前）
+      try {
+        getDefaultAIService();
+      } catch (configError) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: configError instanceof Error ? configError.message : 'AI 服务未配置',
+        });
       }
 
       // 添加到深度分析队列

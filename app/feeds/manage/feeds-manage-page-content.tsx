@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { Button, Input, Card, Space, Modal, Badge, Tag, Tooltip, Switch, Select, Empty, Tabs, Progress } from 'antd';
 import type { MenuProps } from 'antd';
-import { cn } from '@/lib/utils';
+import { cn, formatDate, formatRelativeTime } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
 import { Fade, StaggerContainer, ListItemFade } from '@/components/animation/fade';
@@ -311,7 +311,9 @@ export function FeedsManagePageContent() {
                 </Tooltip>
                 <div>
                   <h1 className="font-semibold text-sm">订阅源管理</h1>
-                  <p className="text-xs text-muted-foreground">{feeds.length} 个订阅源</p>
+                  <p className="text-xs text-muted-foreground">
+                    {feeds.length} 个订阅源 · {feeds.reduce((acc, f) => acc + (f._count?.entries || 0), 0)} 篇文章
+                  </p>
                 </div>
               </div>
               <Space>
@@ -336,7 +338,7 @@ export function FeedsManagePageContent() {
 
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
             {/* 统计卡片 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
                   value={feeds.length}
@@ -360,9 +362,16 @@ export function FeedsManagePageContent() {
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
+                  value={feeds.reduce((acc, f) => acc + (f._count?.entries || 0), 0)}
+                  label="文章总数"
+                  icon={<FolderOpen className="h-4 w-4 text-blue-500" />}
+                />
+              </Card>
+              <Card className="border-border/60" size="small">
+                <AnimatedCounter
                   value={feeds.reduce((acc, f) => acc + (f.unreadCount || 0), 0)}
                   label="未读文章"
-                  icon={<FolderOpen className="h-4 w-4 text-blue-500" />}
+                  icon={<FolderOpen className="h-4 w-4 text-orange-500" />}
                 />
               </Card>
             </div>
@@ -385,15 +394,9 @@ export function FeedsManagePageContent() {
               <Fade in direction="down" duration={200}>
                 <Card className="mb-4 border-primary/20 bg-primary/5" size="small">
                   <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <CheckSquare
-                        className="h-4 w-4 cursor-pointer text-primary"
-                        onClick={toggleSelectAll}
-                      />
-                      <span className="text-sm">
-                        已选择 <span className="font-semibold text-primary">{selectedIds.size}</span> / {feeds.length} 个订阅源
-                      </span>
-                    </div>
+                    <span className="text-sm font-medium">
+                      已选择 <span className="font-semibold text-primary">{selectedIds.size}</span> 个订阅源
+                    </span>
                     <div className="flex-1" />
                     <Space size="small">
                       <Button
@@ -446,61 +449,84 @@ export function FeedsManagePageContent() {
                 action={!search ? { label: '添加订阅源', onClick: goToAdd } : undefined}
               />
             ) : (
-              <Card className="divide-y divide-border/60 overflow-hidden" styles={{ body: { padding: 0 } }}>
+              <Card className="overflow-hidden" styles={{ body: { padding: 0 } }}>
                 {/* 表头 */}
-                <div className="grid grid-cols-12 gap-3 px-4 py-3 bg-muted/30 font-medium text-xs">
+                <div className="grid grid-cols-12 gap-3 px-4 py-3 bg-muted/30 font-medium text-xs border-b border-border/60">
                   <div className="col-span-1 flex items-center">
-                    {selectedIds.size === feeds.length ? (
-                      <div
-                        className="w-4 h-4 rounded bg-primary border-primary border flex items-center justify-center cursor-pointer"
-                        onClick={toggleSelectAll}
-                      >
-                        <Check className="h-3 w-3 text-white" strokeWidth={3} />
-                      </div>
-                    ) : (
-                      <div
-                        className="w-4 h-4 rounded border-2 border-muted-foreground/30 cursor-pointer hover:border-primary/50 transition-colors"
-                        onClick={toggleSelectAll}
-                      />
-                    )}
+                    {(() => {
+                      const allSelected = selectedIds.size === feeds.length;
+                      const someSelected = selectedIds.size > 0;
+                      return (
+                        <div
+                          key={allSelected ? 'all' : someSelected ? 'some' : 'none'}
+                          className={cn(
+                            'w-4 h-4 rounded flex items-center justify-center cursor-pointer transition-all',
+                            allSelected 
+                              ? 'bg-primary border-2 border-primary' 
+                              : someSelected
+                                ? 'bg-primary/20 border-2 border-primary'
+                                : 'border-2 border-muted-foreground/30 hover:border-primary/50'
+                          )}
+                          onClick={toggleSelectAll}
+                        >
+                          {allSelected && (
+                            <Check className="h-3 w-3 text-black" strokeWidth={3} />
+                          )}
+                          {someSelected && !allSelected && (
+                            <div className="w-2 h-2 rounded-sm bg-primary" />
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
-                  <div className="col-span-5">订阅源</div>
-                  <div className="col-span-3">分类</div>
-                  <div className="col-span-2">状态</div>
-                  <div className="col-span-1">操作</div>
+                  <div className="col-span-4">订阅源</div>
+                  <div className="col-span-2">分类</div>
+                  <div className="col-span-2">上次获取</div>
+                  <div className="col-span-1 text-center">文章</div>
+                  <div className="col-span-1 text-center">状态</div>
+                  <div className="col-span-1 text-right">操作</div>
                 </div>
 
                 {/* 列表项 */}
                 {feeds.map((feed, index) => {
                   const category = categories?.find((c) => c.id === feed.categoryId);
+                  const isSelected = selectedIds.has(feed.id);
 
                   return (
                     <ListItemFade key={feed.id} index={index} baseDelay={30}>
                       <div
                         className={cn(
-                          'grid grid-cols-12 gap-3 px-4 py-3 items-center hover:bg-primary/[0.02] transition-colors border-b border-border/40 last:border-0',
+                          'grid grid-cols-12 gap-3 px-4 py-3 items-center hover:bg-primary/[0.02] transition-colors border-b border-border/40 last:border-0 cursor-pointer',
                           !feed.isActive && 'opacity-60 bg-muted/10'
                         )}
+                        onClick={() => toggleSelect(feed.id)}
                       >
-                        {/* 复选框 */}
-                        <div className="col-span-1 flex items-center">
+                        {/* 复选框 - 阻止冒泡避免重复触发 */}
+                        <div 
+                          className="col-span-1 flex items-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div
+                            key={isSelected ? 'selected' : 'unselected'}
                             className={cn(
-                              'w-4 h-4 rounded border-2 cursor-pointer flex items-center justify-center transition-all duration-200',
-                              selectedIds.has(feed.id)
-                                ? 'bg-primary border-primary scale-105'
-                                : 'border-muted-foreground/30 hover:border-primary/50 hover:scale-105'
+                              'w-4 h-4 rounded flex items-center justify-center cursor-pointer transition-all',
+                              isSelected 
+                                ? 'bg-primary border-2 border-primary' 
+                                : 'border-2 border-muted-foreground/30 hover:border-primary/50'
                             )}
                             onClick={() => toggleSelect(feed.id)}
                           >
-                            {selectedIds.has(feed.id) && (
-                              <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                            {isSelected && (
+                              <Check className="h-3 w-3 text-black" strokeWidth={3} />
                             )}
                           </div>
                         </div>
 
-                        {/* 订阅源信息 */}
-                        <div className="col-span-5 flex items-center gap-2.5 min-w-0">
+                        {/* 订阅源信息 - 阻止冒泡 */}
+                        <div 
+                          className="col-span-4 flex items-center gap-2.5 min-w-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {feed.iconUrl ? (
                             <img src={feed.iconUrl} alt="" className="w-8 h-8 rounded-lg shadow-sm flex-shrink-0" />
                           ) : (
@@ -513,16 +539,14 @@ export function FeedsManagePageContent() {
                             <div className="text-xs text-muted-foreground truncate">
                               {feed.feedUrl}
                             </div>
-                            {feed.unreadCount > 0 && (
-                              <Badge size="small" className="mt-1">
-                                {feed.unreadCount} 篇未读
-                              </Badge>
-                            )}
                           </div>
                         </div>
 
-                        {/* 分类 */}
-                        <div className="col-span-3 flex items-center">
+                        {/* 分类 - 阻止冒泡 */}
+                        <div 
+                          className="col-span-2 flex items-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {category ? (
                             <div className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium" style={{
                               backgroundColor: `${category.color || '#94a3b8'}15`,
@@ -536,8 +560,40 @@ export function FeedsManagePageContent() {
                           )}
                         </div>
 
-                        {/* 状态 */}
-                        <div className="col-span-2 flex items-center">
+                        {/* 上次获取时间 - 阻止冒泡 */}
+                        <div 
+                          className="col-span-2 flex items-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Tooltip title={feed.lastFetchedAt ? formatDate(feed.lastFetchedAt) : '从未获取'}>
+                            <span className="text-xs text-muted-foreground">
+                              {feed.lastFetchedAt 
+                                ? formatRelativeTime(feed.lastFetchedAt) 
+                                : '从未'}
+                            </span>
+                          </Tooltip>
+                        </div>
+
+                        {/* 文章数量 - 阻止冒泡 */}
+                        <div 
+                          className="col-span-1 flex items-center justify-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Tooltip title={`总文章: ${feed._count?.entries || 0}${feed.unreadCount > 0 ? `, 未读: ${feed.unreadCount}` : ''}`}>
+                            <div className="text-center">
+                              <span className="text-sm font-medium">{feed._count?.entries || 0}</span>
+                              {feed.unreadCount > 0 && (
+                                <span className="text-xs text-primary ml-1">({feed.unreadCount})</span>
+                              )}
+                            </div>
+                          </Tooltip>
+                        </div>
+
+                        {/* 状态 - 阻止冒泡 */}
+                        <div 
+                          className="col-span-1 flex items-center justify-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {feed.isActive ? (
                             <StatusBadge status="success" pulse>
                               启用
@@ -549,8 +605,11 @@ export function FeedsManagePageContent() {
                           )}
                         </div>
 
-                        {/* 操作按钮 */}
-                        <div className="col-span-1 flex items-center justify-end gap-1">
+                        {/* 操作按钮 - 阻止冒泡 */}
+                        <div 
+                          className="col-span-1 flex items-center justify-end gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <Tooltip title="编辑">
                             <Button
                               type="text"

@@ -6,10 +6,103 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { getReportGenerator } from '@/lib/reports/generator';
+import { asyncReportGenerator } from '@/lib/reports/async-generator';
+import { checkAIConfig, getUserAIConfig } from '@/lib/ai/health-check';
 
 export const reportsRouter = router({
   /**
-   * 生成日报
+   * 检查AI配置
+   */
+  checkAIConfig: protectedProcedure
+    .query(async ({ ctx }) => {
+      const aiConfig = await getUserAIConfig(ctx.userId, ctx.db);
+      const result = await checkAIConfig(aiConfig);
+      return result;
+    }),
+
+  /**
+   * 启动异步生成日报
+   */
+  startGenerateDaily: protectedProcedure
+    .input(
+      z.object({
+        reportDate: z.date().default(() => new Date()),
+        aiGenerated: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const result = await asyncReportGenerator.startGeneration(
+        ctx.userId,
+        'daily',
+        input.reportDate,
+        input.aiGenerated
+      );
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: result.error || '启动生成失败',
+        });
+      }
+
+      return result.report;
+    }),
+
+  /**
+   * 启动异步生成周报
+   */
+  startGenerateWeekly: protectedProcedure
+    .input(
+      z.object({
+        reportDate: z.date().default(() => new Date()),
+        aiGenerated: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const result = await asyncReportGenerator.startGeneration(
+        ctx.userId,
+        'weekly',
+        input.reportDate,
+        input.aiGenerated
+      );
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: result.error || '启动生成失败',
+        });
+      }
+
+      return result.report;
+    }),
+
+  /**
+   * 获取报告生成进度
+   */
+  getProgress: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ input, ctx }) => {
+      const progress = await asyncReportGenerator.getProgress(input.id, ctx.userId);
+      
+      if (!progress) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '报告不存在' });
+      }
+
+      return progress;
+    }),
+
+  /**
+   * 取消报告生成
+   */
+  cancelGeneration: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      await asyncReportGenerator.cancelGeneration(input.id, ctx.userId);
+      return { success: true };
+    }),
+
+  /**
+   * 生成日报（同步，兼容旧版）
    */
   generateDaily: protectedProcedure
     .input(
@@ -29,7 +122,7 @@ export const reportsRouter = router({
     }),
 
   /**
-   * 生成周报
+   * 生成周报（同步，兼容旧版）
    */
   generateWeekly: protectedProcedure
     .input(

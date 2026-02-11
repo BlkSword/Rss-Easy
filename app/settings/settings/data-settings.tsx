@@ -181,7 +181,7 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
       </Card>
 
       {/* 数据清理 */}
-      <Card className="border-red-200 dark:border-red-900/30">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
             <Database className="h-5 w-5" />
@@ -230,7 +230,7 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
       </Card>
 
       {/* 警告提示 */}
-      <Card className="border-amber-200 dark:border-amber-900/30 bg-amber-50 dark:bg-amber-950/20">
+      <Card>
         <CardContent className="pt-6">
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">

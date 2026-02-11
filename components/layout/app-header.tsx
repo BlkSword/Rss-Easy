@@ -15,12 +15,17 @@ import {
   Command,
   Plus,
   Keyboard,
+  Sun,
+  Moon,
+  Languages,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { useToast } from '@/components/ui/toast';
 import { useUserPreferences } from '@/hooks/use-local-storage';
 import { useIsMobile } from '@/hooks/use-media-query';
+import { useTheme } from '@/components/providers/theme-provider';
+import { useLanguage } from '@/components/providers/language-provider';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/animation/loading';
@@ -44,6 +49,8 @@ export function AppHeader({
   const { addToast } = useToast();
   const isMobile = useIsMobile();
   const { sidebarCollapsed, setSidebarCollapsed } = useUserPreferences();
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const { language, setLanguage, t } = useLanguage();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -152,7 +159,7 @@ export function AppHeader({
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="搜索文章... (Cmd+K)"
+              placeholder={`${t('nav.search')}... (Cmd+K)`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setIsSearchOpen(true)}
@@ -188,7 +195,7 @@ export function AppHeader({
 
         {/* 右侧：操作按钮 */}
         <div className="flex items-center gap-1">
-          <Tooltip content="刷新" position="bottom">
+          <Tooltip content={t('action.refresh')} position="bottom">
             <Button
               variant="ghost"
               size="icon"
@@ -206,7 +213,32 @@ export function AppHeader({
             </Button>
           </Tooltip>
 
-          <Tooltip content="快捷键" position="bottom">
+          <Tooltip content={t('settings.language')} position="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setLanguage(language === 'zh-CN' ? 'en' : 'zh-CN')}
+              className="font-medium text-sm"
+            >
+              {language === 'zh-CN' ? 'EN' : '中'}
+            </Button>
+          </Tooltip>
+
+          <Tooltip content={t('settings.theme')} position="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+            >
+              {resolvedTheme === 'dark' ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </Button>
+          </Tooltip>
+
+          <Tooltip content={t('nav.shortcuts')} position="bottom">
             <Button
               variant="ghost"
               size="icon"
@@ -216,7 +248,7 @@ export function AppHeader({
             </Button>
           </Tooltip>
 
-          <Tooltip content="设置" position="bottom">
+          <Tooltip content={t('nav.settings')} position="bottom">
             <Button
               variant="ghost"
               size="icon"
@@ -226,7 +258,7 @@ export function AppHeader({
             </Button>
           </Tooltip>
 
-          <Tooltip content="通知" position="bottom">
+          <Tooltip content={t('nav.notifications')} position="bottom">
             <Button
               variant="ghost"
               size="icon"
@@ -242,7 +274,7 @@ export function AppHeader({
 
           <div className="w-px h-6 bg-border/60 mx-1" />
 
-          <Tooltip content="添加订阅" position="bottom">
+          <Tooltip content={t('nav.add_feed')} position="bottom">
             <Button
               variant="primary"
               size="sm"
@@ -250,11 +282,11 @@ export function AppHeader({
               leftIcon={<Plus className="h-4 w-4" />}
               className="hidden sm:flex"
             >
-              订阅
+              {t('nav.feeds')}
             </Button>
           </Tooltip>
 
-          <Tooltip content="登出" position="bottom">
+          <Tooltip content={t('nav.logout')} position="bottom">
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
             </Button>

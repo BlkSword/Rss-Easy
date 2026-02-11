@@ -3,6 +3,9 @@ import './globals.css';
 import { TRPCProvider } from '@/lib/trpc/provider';
 import { ToastProvider } from '@/components/ui/toast';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { ThemeProvider } from '@/components/providers/theme-provider';
+import { AntdThemeProvider } from '@/components/providers/antd-theme-provider';
+import { LanguageProvider } from '@/components/providers/language-provider';
 
 export const metadata: Metadata = {
   title: 'Rss-Easy - 智能RSS资讯聚合平台',
@@ -28,6 +31,22 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const theme = localStorage.getItem('rss-easy-theme') || 'system';
+                const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const isDark = theme === 'dark' || (theme === 'system' && systemDark);
+                if (isDark) {
+                  document.documentElement.classList.add('dark');
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className="font-sans antialiased bg-background text-foreground min-h-screen">
         {/* 全局背景装饰 */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
@@ -36,9 +55,15 @@ export default function RootLayout({
         </div>
 
         <ErrorBoundary>
-          <ToastProvider>
-            <TRPCProvider>{children}</TRPCProvider>
-          </ToastProvider>
+          <LanguageProvider>
+            <ThemeProvider>
+              <AntdThemeProvider>
+                <ToastProvider>
+                  <TRPCProvider>{children}</TRPCProvider>
+                </ToastProvider>
+              </AntdThemeProvider>
+            </ThemeProvider>
+          </LanguageProvider>
         </ErrorBoundary>
       </body>
     </html>

@@ -11,7 +11,7 @@ import { getNotificationService } from '@/lib/notifications/service';
 export class TaskScheduler {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
-  private readonly fetchInterval = 5 * 60 * 1000; // 5分钟
+  private readonly fetchInterval = 60 * 60 * 1000; // 1小时
   private readonly aiProcessInterval = 2 * 60 * 1000; // 2分钟
 
   /**

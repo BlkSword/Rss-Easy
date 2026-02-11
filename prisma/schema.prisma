@@ -344,6 +344,15 @@ model Report {
   reportType      String    @map("report_type") // 'daily', 'weekly'
   reportDate      DateTime  @map("report_date") @db.Date
 
+  // 报告状态
+  status          String    @default("pending") // 'pending', 'generating', 'completed', 'failed'
+  progress        Int       @default(0) @map("progress") // 0-100
+  currentStep     String?   @map("current_step") // 当前步骤描述
+  errorMessage    String?   @map("error_message") // 错误信息
+
+  // 生成步骤记录
+  steps           Json?     @map("steps") // [{step: string, status: 'pending'|'doing'|'done'|'error', message?: string, timestamp: Date}]
+
   // 报告内容
   title           String
   summary         String?   @db.Text

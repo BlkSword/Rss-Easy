@@ -1,11 +1,11 @@
 /**
  * 报告列表页面 - 全屏布局
- * 增强版：添加动画效果和交互优化
+ * 优化版：支持异步生成，显示生成中状态
  */
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -21,19 +21,24 @@ import {
   BarChart3,
   BookOpen,
   Clock,
+  Loader2,
+  AlertCircle,
+  Sparkles,
+  RefreshCw,
+  X,
 } from 'lucide-react';
-import { Button, Card, Tag, Space, Modal, Dropdown } from 'antd';
+import { Button, Card, Tag, Space, Modal, Dropdown, Progress, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
-import { handleApiSuccess, handleApiError } from '@/lib/feedback';
+import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
 
 // 动画组件
 import { Fade, StaggerContainer, ListItemFade, HoverLift } from '@/components/animation/fade';
 import { AnimatedCounter } from '@/components/animation/animated-counter';
-import { LoadingOverlay, Spinner } from '@/components/animation/loading';
+import { Spinner, LoadingDots } from '@/components/animation/loading';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -134,6 +139,66 @@ function FilterButton({
   );
 }
 
+// 生成中报告卡片
+function GeneratingReportCard({
+  report,
+  onCancel,
+}: {
+  report: any;
+  onCancel: (id: string) => void;
+}) {
+  return (
+    <ListItemFade index={0} baseDelay={80}>
+      <Card className="border-border/60 border-dashed border-2 bg-muted/20">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center animate-pulse">
+            <Loader2 className="h-5 w-5 text-amber-500 animate-spin" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <h3 className="text-lg font-semibold text-foreground/70">{report.title}</h3>
+              <Tag color="processing" icon={<Loader2 className="animate-spin" />}>
+                生成中
+              </Tag>
+            </div>
+            
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-sm mb-1">
+                <span className="text-muted-foreground">{report.currentStep || '准备中...'}</span>
+                <span className="text-primary font-medium">{report.progress || 0}%</span>
+              </div>
+              <Progress 
+                percent={report.progress || 0} 
+                size="small" 
+                strokeColor="#ea580c"
+                showInfo={false}
+              />
+            </div>
+
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5" />
+                {formatDistanceToNow(new Date(report.createdAt), {
+                  addSuffix: true,
+                  locale: zhCN,
+                })}
+              </span>
+            </div>
+          </div>
+
+          <Tooltip title="取消生成">
+            <Button 
+              type="text" 
+              icon={<X className="h-4 w-4" />} 
+              onClick={() => onCancel(report.id)}
+            />
+          </Tooltip>
+        </div>
+      </Card>
+    </ListItemFade>
+  );
+}
+
 // 报告卡片
 function ReportCard({
   report,
@@ -146,6 +211,51 @@ function ReportCard({
   onDelete: (id: string) => void;
   getActionItems: (id: string) => MenuProps['items'];
 }) {
+  // 生成中的报告使用特殊卡片
+  if (report.status === 'generating' || report.status === 'pending') {
+    return <GeneratingReportCard report={report} onCancel={onDelete} />;
+  }
+
+  // 生成失败的报告
+  if (report.status === 'failed') {
+    return (
+      <ListItemFade index={index} baseDelay={80}>
+        <Card className="border-red-200 bg-red-50/30">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                <h3 className="text-lg font-semibold text-foreground/70">{report.title}</h3>
+                <Tag color="error">生成失败</Tag>
+              </div>
+              <p className="text-sm text-red-600/80 mb-2">{report.errorMessage || '未知错误'}</p>
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  {formatDistanceToNow(new Date(report.createdAt), {
+                    addSuffix: true,
+                    locale: zhCN,
+                  })}
+                </span>
+              </div>
+            </div>
+            <Button 
+              type="text" 
+              danger
+              icon={<Trash2 className="h-4 w-4" />} 
+              onClick={() => onDelete(report.id)}
+            >
+              删除
+            </Button>
+          </div>
+        </Card>
+      </ListItemFade>
+    );
+  }
+
+  // 正常完成的报告
   return (
     <ListItemFade index={index} baseDelay={80}>
       <HoverLift lift={4} shadow={false}>
@@ -161,12 +271,13 @@ function ReportCard({
                     </h3>
                     {report.aiGenerated && (
                       <StatusBadge status="processing" pulse>
+                        <Sparkles className="h-3 w-3 mr-1" />
                         AI 生成
                       </StatusBadge>
                     )}
                   </div>
                   <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                    {report.summary}
+                    {report.summary || '暂无摘要'}
                   </p>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                     <span className="flex items-center gap-1">
@@ -234,6 +345,7 @@ export default function ReportsPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
   const [filter, setFilter] = useState<'all' | 'daily' | 'weekly'>('all');
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
 
   // 页面加载动画
   const isPageLoaded = usePageLoadAnimation(100);
@@ -244,32 +356,76 @@ export default function ReportsPage() {
 
   const reports = reportsData?.items;
 
+  // 轮询生成中的报告
+  useEffect(() => {
+    if (!reports) return;
+
+    const pendingReports = reports.filter(
+      r => r.status === 'generating' || r.status === 'pending'
+    );
+
+    if (pendingReports.length === 0) return;
+
+    // 更新生成中ID集合
+    setGeneratingIds(new Set(pendingReports.map(r => r.id)));
+
+    // 每3秒刷新一次
+    const interval = setInterval(() => {
+      refetch();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [reports, refetch]);
+
   // 计算统计数据
   const stats = {
-    total: reports?.length || 0,
-    daily: reports?.filter((r) => r.reportType === 'daily').length || 0,
-    weekly: reports?.filter((r) => r.reportType === 'weekly').length || 0,
-    totalEntries: reports?.reduce((sum, r) => sum + r.totalEntries, 0) || 0,
+    total: reports?.filter(r => r.status === 'completed').length || 0,
+    daily: reports?.filter((r) => r.reportType === 'daily' && r.status === 'completed').length || 0,
+    weekly: reports?.filter((r) => r.reportType === 'weekly' && r.status === 'completed').length || 0,
+    totalEntries: reports?.filter(r => r.status === 'completed').reduce((sum, r) => sum + r.totalEntries, 0) || 0,
+    generating: reports?.filter(r => r.status === 'generating' || r.status === 'pending').length || 0,
   };
 
-  const generateDaily = trpc.reports.generateDaily.useMutation();
-  const generateWeekly = trpc.reports.generateWeekly.useMutation();
+  const startGenerateDaily = trpc.reports.startGenerateDaily.useMutation();
+  const startGenerateWeekly = trpc.reports.startGenerateWeekly.useMutation();
+  const cancelGeneration = trpc.reports.cancelGeneration.useMutation();
   const deleteReport = trpc.reports.delete.useMutation();
-
-  const isGenerating = generateDaily.isPending || generateWeekly.isPending;
+  const checkAIConfig = trpc.reports.checkAIConfig.useQuery(undefined, {
+    enabled: false, // 手动触发
+  });
 
   const handleGenerate = async (type: 'daily' | 'weekly') => {
     const date = new Date();
+    
+    // 1. 先检查AI配置
+    const configResult = await checkAIConfig.refetch();
+    if (configResult.data && !configResult.data.success) {
+      notifyError(configResult.data.error || 'AI配置检查失败', configResult.data.message);
+      return;
+    }
+    
     try {
+      // 2. 启动异步生成
       if (type === 'daily') {
-        await generateDaily.mutateAsync({ reportDate: date });
+        await startGenerateDaily.mutateAsync({ reportDate: date });
       } else {
-        await generateWeekly.mutateAsync({ reportDate: date });
+        await startGenerateWeekly.mutateAsync({ reportDate: date });
       }
-      handleApiSuccess('报告生成成功');
+      
+      notifySuccess('已开始生成报告', '请稍候，报告生成完成后会自动刷新');
+      refetch();
+    } catch (error: any) {
+      handleApiError(error, '启动生成失败');
+    }
+  };
+
+  const handleCancel = async (id: string) => {
+    try {
+      await cancelGeneration.mutateAsync({ id });
+      notifySuccess('已取消生成');
       refetch();
     } catch (error) {
-      handleApiError(error, '生成报告失败');
+      handleApiError(error, '取消失败');
     }
   };
 
@@ -332,22 +488,8 @@ export default function ReportsPage() {
 
         {/* 主内容区 */}
         <main className="flex-1 overflow-y-auto bg-background/30 relative">
-          {/* 生成报告加载遮罩 */}
-          {isGenerating && (
-            <div className="fixed inset-0 bg-background/60 backdrop-blur-[2px] z-50 flex items-center justify-center">
-              <div className="bg-card border border-border/60 rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-4">
-                <div className="relative">
-                  <Spinner size="lg" variant="primary" />
-                  <div className="absolute inset-0 animate-ping opacity-20">
-                    <Spinner size="lg" variant="primary" />
-                  </div>
-                </div>
-                <p className="text-lg font-medium">正在生成报告...</p>
-                <p className="text-sm text-muted-foreground">AI 正在分析您的阅读数据</p>
-              </div>
-            </div>
-          )}
-
+          {/* 移除遮罩，改为非阻塞式 */}
+          
           <div className="max-w-5xl mx-auto px-6 py-8">
             {/* 头部 */}
             <Fade in={isPageLoaded} direction="up" distance={20} duration={500}>
@@ -361,7 +503,7 @@ export default function ReportsPage() {
                     type="primary"
                     icon={<Plus className="h-4 w-4" />}
                     onClick={() => handleGenerate('daily')}
-                    loading={generateDaily.isPending}
+                    loading={startGenerateDaily.isPending}
                     className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-shadow"
                   >
                     生成日报
@@ -369,7 +511,7 @@ export default function ReportsPage() {
                   <Button
                     icon={<Plus className="h-4 w-4" />}
                     onClick={() => handleGenerate('weekly')}
-                    loading={generateWeekly.isPending}
+                    loading={startGenerateWeekly.isPending}
                   >
                     生成周报
                   </Button>
@@ -379,7 +521,7 @@ export default function ReportsPage() {
 
             {/* 统计概览 */}
             {!isLoading && reports && reports.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
                 <StatCard
                   value={stats.total}
                   label="总报告数"
@@ -404,6 +546,14 @@ export default function ReportsPage() {
                   icon={<BookOpen className="h-5 w-5 text-green-500" />}
                   delay={400}
                 />
+                {stats.generating > 0 && (
+                  <StatCard
+                    value={stats.generating}
+                    label="生成中"
+                    icon={<Loader2 className="h-5 w-5 text-amber-500 animate-spin" />}
+                    delay={500}
+                  />
+                )}
               </div>
             )}
 
@@ -431,40 +581,40 @@ export default function ReportsPage() {
             </div>
 
             {/* 报告列表 */}
-            <LoadingOverlay isLoading={isLoading && !isGenerating}>
-              {!reports || reports.length === 0 ? (
-                <Fade delay={300} direction="up" distance={20}>
-                  <EmptyState
-                    icon={<FileText className="h-10 w-10" />}
-                    title="暂无报告"
-                    description="生成您的第一份报告来查看阅读统计和分析"
-                    action={{
-                      label: '生成日报',
-                      onClick: () => handleGenerate('daily'),
-                    }}
-                    secondaryAction={{
-                      label: '生成周报',
-                      onClick: () => handleGenerate('weekly'),
-                    }}
-                    variant="card"
-                  />
-                </Fade>
-              ) : (
-                <StaggerContainer staggerDelay={80} initialDelay={200}>
-                  <div className="space-y-4">
-                    {reports.map((report, index) => (
-                      <ReportCard
-                        key={report.id}
-                        report={report}
-                        index={index}
-                        onDelete={handleDelete}
-                        getActionItems={getActionItems}
-                      />
-                    ))}
-                  </div>
-                </StaggerContainer>
-              )}
-            </LoadingOverlay>
+            {isLoading ? (
+              <ReportsListSkeleton />
+            ) : !reports || reports.length === 0 ? (
+              <Fade delay={300} direction="up" distance={20}>
+                <EmptyState
+                  icon={<FileText className="h-10 w-10" />}
+                  title="暂无报告"
+                  description="生成您的第一份报告来查看阅读统计和分析"
+                  action={{
+                    label: '生成日报',
+                    onClick: () => handleGenerate('daily'),
+                  }}
+                  secondaryAction={{
+                    label: '生成周报',
+                    onClick: () => handleGenerate('weekly'),
+                  }}
+                  variant="card"
+                />
+              </Fade>
+            ) : (
+              <StaggerContainer staggerDelay={80} initialDelay={200}>
+                <div className="space-y-4">
+                  {reports.map((report, index) => (
+                    <ReportCard
+                      key={report.id}
+                      report={report}
+                      index={index}
+                      onDelete={report.status === 'generating' || report.status === 'pending' ? handleCancel : handleDelete}
+                      getActionItems={getActionItems}
+                    />
+                  ))}
+                </div>
+              </StaggerContainer>
+            )}
           </div>
         </main>
       </div>

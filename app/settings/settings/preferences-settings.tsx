@@ -5,12 +5,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Palette, Save, Sun, Moon, Monitor, Type, List, Check } from 'lucide-react';
+import { Palette, Save, Sun, Moon, Monitor, List, Check, Languages } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { useTheme } from '@/components/providers/theme-provider';
+import { useLanguage } from '@/components/providers/language-provider';
 
 interface PreferencesSettingsProps {
   user: any;
@@ -18,14 +20,14 @@ interface PreferencesSettingsProps {
 
 type Theme = 'light' | 'dark' | 'system';
 type Language = 'zh-CN' | 'en';
-type FontSize = 'small' | 'medium' | 'large';
 
 export function PreferencesSettings({ user }: PreferencesSettingsProps) {
   const prefs = user?.preferences || {};
+  const { setTheme: setGlobalTheme } = useTheme();
+  const { setLanguage: setGlobalLanguage, t } = useLanguage();
 
-  const [theme, setTheme] = useState<Theme>(prefs.theme || 'system');
-  const [language, setLanguage] = useState<Language>(prefs.language || 'zh-CN');
-  const [fontSize, setFontSize] = useState<FontSize>(prefs.fontSize || 'medium');
+  const [theme, setThemeState] = useState<Theme>(prefs.theme || 'system');
+  const [language, setLanguageState] = useState<Language>(prefs.language || 'zh-CN');
   const [itemsPerPage, setItemsPerPage] = useState(prefs.itemsPerPage || 20);
   const [autoMarkAsRead, setAutoMarkAsRead] = useState(prefs.autoMarkAsRead ?? true);
   const [showFullContent, setShowFullContent] = useState(prefs.showFullContent ?? false);
@@ -34,10 +36,28 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
 
   const { mutate: updatePreferences } = trpc.settings.updatePreferences.useMutation();
 
+  // 同步本地状态与用户数据
+  useEffect(() => {
+    if (prefs.theme) setThemeState(prefs.theme);
+    if (prefs.language) {
+      setLanguageState(prefs.language);
+      setGlobalLanguage(prefs.language);
+    }
+  }, [prefs.theme, prefs.language, setGlobalLanguage]);
+
+  const handleThemeChange = (newTheme: Theme) => {
+    setThemeState(newTheme);
+    setGlobalTheme(newTheme);
+  };
+
+  const handleLanguageChange = (newLanguage: Language) => {
+    setLanguageState(newLanguage);
+    setGlobalLanguage(newLanguage);
+  };
+
   const hasChanges =
     theme !== prefs.theme ||
     language !== prefs.language ||
-    fontSize !== prefs.fontSize ||
     itemsPerPage !== prefs.itemsPerPage ||
     autoMarkAsRead !== (prefs.autoMarkAsRead ?? true) ||
     showFullContent !== (prefs.showFullContent ?? false) ||
@@ -49,19 +69,29 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
       await updatePreferences({
         theme,
         language,
-        fontSize,
         itemsPerPage,
         autoMarkAsRead,
         showFullContent,
         showUnreadCount,
       });
-      notifySuccess('偏好设置已更新');
+      notifySuccess(t('toast.saved'));
     } catch (error) {
-      notifyError(error instanceof Error ? error.message : '更新失败');
+      notifyError(error instanceof Error ? error.message : t('toast.error'));
     } finally {
       setIsSaving(false);
     }
   };
+
+  const themeOptions = [
+    { value: 'light' as const, icon: Sun, label: t('theme.light') },
+    { value: 'dark' as const, icon: Moon, label: t('theme.dark') },
+    { value: 'system' as const, icon: Monitor, label: t('theme.system') },
+  ];
+
+  const languageOptions = [
+    { value: 'zh-CN' as const, label: '简体中文' },
+    { value: 'en' as const, label: 'English' },
+  ];
 
   return (
     <div className="space-y-6">
@@ -70,28 +100,22 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Palette className="h-5 w-5 text-primary" />
-            外观设置
+            {t('settings.appearance')}
           </CardTitle>
-          <CardDescription>自定义应用的外观和显示方式</CardDescription>
+          <CardDescription>{t('settings.appearance_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* 主题选择 */}
           <div className="space-y-3">
-            <label className="text-sm font-medium">主题</label>
+            <label className="text-sm font-medium">{t('settings.theme')}</label>
             <div className="grid grid-cols-3 gap-3">
-              {(
-                [
-                  { value: 'light', icon: Sun, label: '浅色' },
-                  { value: 'dark', icon: Moon, label: '深色' },
-                  { value: 'system', icon: Monitor, label: '跟随系统' },
-                ] as const
-              ).map((item) => {
+              {themeOptions.map((item) => {
                 const Icon = item.icon;
                 const isActive = theme === item.value;
                 return (
                   <button
                     key={item.value}
-                    onClick={() => setTheme(item.value)}
+                    onClick={() => handleThemeChange(item.value)}
                     className={cn(
                       'option-item group relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-250',
                       isActive
@@ -122,67 +146,19 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
             </div>
           </div>
 
-          {/* 字体大小 */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <Type className="h-4 w-4 text-muted-foreground" />
-              字体大小
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              {(
-                [
-                  { value: 'small', label: '小', desc: '14px' },
-                  { value: 'medium', label: '中', desc: '16px' },
-                  { value: 'large', label: '大', desc: '18px' },
-                ] as const
-              ).map((item) => {
-                const isActive = fontSize === item.value;
-                return (
-                  <button
-                    key={item.value}
-                    onClick={() => setFontSize(item.value)}
-                    className={cn(
-                      'option-item group relative flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all duration-250',
-                      isActive
-                        ? 'border-primary/60 bg-gradient-to-br from-primary/15 to-primary/5 shadow-md ring-2 ring-primary/10'
-                        : 'border-border hover:border-primary/25'
-                    )}
-                  >
-                    <span className={cn(
-                      'absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-transparent opacity-0 transition-opacity duration-300',
-                      !isActive && 'group-hover:opacity-100'
-                    )} />
-                    <span className={cn(
-                      'relative text-base font-medium transition-all duration-200',
-                      isActive ? 'text-primary scale-110' : 'group-hover:text-foreground'
-                    )}>
-                      {item.label}
-                    </span>
-                    <span className="relative text-xs text-muted-foreground">{item.desc}</span>
-                    {isActive && (
-                      <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* 语言 */}
           <div className="space-y-3">
-            <label className="text-sm font-medium">语言</label>
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Languages className="h-4 w-4 text-muted-foreground" />
+              {t('settings.language')}
+            </label>
             <div className="grid grid-cols-2 gap-3">
-              {(
-                [
-                  { value: 'zh-CN', label: '简体中文' },
-                  { value: 'en', label: 'English' },
-                ] as const
-              ).map((item) => {
+              {languageOptions.map((item) => {
                 const isActive = language === item.value;
                 return (
                   <button
                     key={item.value}
-                    onClick={() => setLanguage(item.value)}
+                    onClick={() => handleLanguageChange(item.value)}
                     className={cn(
                       'option-item group relative p-4 rounded-xl border-2 text-center transition-all duration-250 flex items-center justify-center gap-2',
                       isActive
@@ -209,14 +185,14 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <List className="h-5 w-5 text-primary" />
-            阅读设置
+            {t('settings.reading')}
           </CardTitle>
-          <CardDescription>配置阅读和文章显示行为</CardDescription>
+          <CardDescription>{t('settings.reading_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* 每页显示文章数 */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">每页显示文章数</label>
+            <label className="text-sm font-medium">{t('settings.items_per_page')}</label>
             <select
               value={itemsPerPage}
               onChange={(e) => setItemsPerPage(Number(e.target.value))}
@@ -321,7 +297,7 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
           disabled={!hasChanges || isSaving}
           leftIcon={<Save className="h-4 w-4" />}
         >
-          保存更改
+          {t('action.save')}
         </Button>
       </div>
     </div>

@@ -480,9 +480,41 @@ class DeepSeekProvider extends AIProvider {
 }
 
 /**
+ * 验证 AI 配置
+ */
+function validateAIConfig(config: AIConfig): void {
+  const getEnvKey = (provider: string): string | undefined => {
+    switch (provider) {
+      case 'openai': return process.env.OPENAI_API_KEY;
+      case 'anthropic': return process.env.ANTHROPIC_API_KEY;
+      case 'deepseek': return process.env.DEEPSEEK_API_KEY;
+      case 'gemini': return process.env.GEMINI_API_KEY;
+      default: return undefined;
+    }
+  };
+
+  const envKey = getEnvKey(config.provider);
+  const hasConfigKey = config.apiKey || envKey;
+
+  // 对于需要 API key 的提供商，检查是否配置
+  if (['openai', 'anthropic', 'deepseek', 'gemini', 'custom'].includes(config.provider)) {
+    if (!hasConfigKey) {
+      throw new Error(
+        `AI provider '${config.provider}' requires an API key. ` +
+        `Please set ${config.provider.toUpperCase()}_API_KEY environment variable ` +
+        `or configure it in your user settings.`
+      );
+    }
+  }
+}
+
+/**
  * AI服务工厂
  */
 export function createAIProvider(config: AIConfig): AIProvider {
+  // 验证配置
+  validateAIConfig(config);
+
   switch (config.provider) {
     case 'openai':
       return new OpenAIProvider(config);
@@ -534,36 +566,63 @@ export class AIService {
     } = options;
 
     const result: AIAnalysisResult = {};
+    const errors: string[] = [];
 
     try {
       if (summary) {
         result.summary = await this.provider.generateSummary(content);
       }
-    } catch {}
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Summary: ${message}`);
+    }
 
     try {
       if (keywords) {
         result.keywords = await this.provider.extractKeywords(content);
       }
-    } catch {}
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Keywords: ${message}`);
+    }
 
     try {
       if (category) {
         result.category = await this.provider.categorize(content);
       }
-    } catch {}
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Category: ${message}`);
+    }
 
     try {
       if (sentiment) {
         result.sentiment = await this.provider.analyzeSentiment(content);
       }
-    } catch {}
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Sentiment: ${message}`);
+    }
 
     try {
       if (importance) {
         result.importanceScore = await this.provider.calculateImportance(content);
       }
-    } catch {}
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Importance: ${message}`);
+    }
+
+    // 如果所有请求的分析都失败了，抛出错误
+    const hasSuccessfulResult = Object.keys(result).length > 0;
+    if (!hasSuccessfulResult) {
+      throw new Error(`AI analysis failed: ${errors.join('; ')}`);
+    }
+
+    // 将错误信息附加到结果中
+    if (errors.length > 0) {
+      (result as any).partialErrors = errors;
+    }
 
     return result;
   }
@@ -591,22 +650,27 @@ export function getDefaultAIService(): AIService {
 
   // 自定义 API 配置
   if (provider === 'custom') {
-    return new AIService({
+    const config: AIConfig = {
       provider: 'custom',
       model: process.env.CUSTOM_API_MODEL || defaultModel,
       apiKey: process.env.CUSTOM_API_KEY,
       baseURL: process.env.CUSTOM_API_BASE_URL,
       maxTokens: 2000,
       temperature: 0.7,
-    });
+    };
+    // 验证配置会在这里自动执行
+    return new AIService(config);
   }
 
-  return new AIService({
+  const config: AIConfig = {
     provider,
     model: defaultModel,
     maxTokens: 2000,
     temperature: 0.7,
-  });
+  };
+
+  // 验证配置会在这里自动执行
+  return new AIService(config);
 }
 
 export * from './client';

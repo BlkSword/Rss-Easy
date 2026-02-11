@@ -45,6 +45,7 @@ import { Typewriter } from '@/components/animation/typewriter';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Spinner, LoadingDots } from '@/components/animation/loading';
 import { usePageLoadAnimation, useScrollProgress, useRipple } from '@/hooks/use-animation';
+import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -643,22 +644,7 @@ export default function EntryPage() {
                 )}
               >
                 {displayEntry.content ? (
-                  <div
-                    className={cn(
-                      'prose prose-sm max-w-none dark:prose-invert',
-                      'prose-headings:font-semibold prose-headings:text-foreground',
-                      'prose-p:text-foreground/80 prose-p:leading-relaxed',
-                      'prose-a:text-primary prose-a:no-underline hover:prose-a:underline',
-                      'prose-strong:text-foreground prose-strong:font-semibold',
-                      'prose-code:text-primary prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded',
-                      'prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50',
-                      'prose-blockquote:border-l-primary prose-blockquote:bg-muted/30 prose-blockquote:py-1 prose-blockquote:rounded-r',
-                      'prose-img:rounded-lg prose-img:shadow-md',
-                      'prose-ul:list-disc prose-ol:list-decimal',
-                      'animate-fadeIn animation-delay-200'
-                    )}
-                    dangerouslySetInnerHTML={{ __html: displayEntry.content }}
-                  />
+                  <RichContentRenderer html={displayEntry.content} />
                 ) : displayEntry.summary ? (
                   <Paragraph className="text-muted-foreground mb-0 leading-relaxed">
                     {displayEntry.summary}
