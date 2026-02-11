@@ -10,6 +10,13 @@ import { getNotificationService } from '../notifications/service';
 import { info, error } from '../logger';
 import type { Report, ReportEntry } from '@prisma/client';
 
+// 收集的文章条目（用于AI生成）
+interface CollectedEntry {
+  entryId: string;
+  section: string;
+  rank: number;
+}
+
 export interface ReportStep {
   step: string;
   label: string;
@@ -185,11 +192,12 @@ export class AsyncReportGenerator {
       let summary: string;
       let highlights: string[] = [];
       let topics: any;
+      let aiConfig: any = null;  // 在外部声明，以便后续使用
 
       if (aiGenerated) {
         await this.updateStepStatus(reportId, 'generate_summary', 'doing', 'AI正在生成摘要...');
-        
-        const aiConfig = await getUserAIConfig(userId, db);
+
+        aiConfig = await getUserAIConfig(userId, db);
         const aiService = new AIService({
           provider: (aiConfig?.provider as any) || 'openai',
           model: aiConfig?.model || 'gpt-4o',
@@ -206,6 +214,7 @@ export class AsyncReportGenerator {
           reportType,
           reportDate,
           reportId,
+          aiConfig,
           async (step, message, progress) => {
             await this.updateReportStatus(reportId, 'generating', progress, message, step);
           }
@@ -226,7 +235,7 @@ export class AsyncReportGenerator {
         summary = templateContent.summary;
         highlights = templateContent.highlights;
         topics = templateContent.topics;
-        
+
         await this.updateStepStatus(reportId, 'generate_summary', 'done', '摘要生成完成');
         await this.updateStepStatus(reportId, 'extract_topics', 'done', '主题提取完成');
         await this.updateStepStatus(reportId, 'select_highlights', 'done', `精选 ${highlights.length} 条内容`);
@@ -246,7 +255,7 @@ export class AsyncReportGenerator {
           summary,
           highlights,
           topics: topics as any,
-          aiModel: aiGenerated ? (await getUserAIConfig(userId, db))?.model || 'gpt-4o' : null,
+          aiModel: aiGenerated ? aiConfig?.model || 'gpt-4o' : null,
           steps: {
             set: GENERATION_STEPS.map(s => ({
               ...s,
@@ -269,7 +278,7 @@ export class AsyncReportGenerator {
         this.generateTitle(reportType, reportDate)
       );
 
-      await info('report', '报告生成完成', { reportId, userId, reportType });
+      await info('system', '报告生成完成', { reportId, userId, reportType });
 
     } catch (err: any) {
       console.error('报告生成失败:', err);
@@ -284,7 +293,7 @@ export class AsyncReportGenerator {
         },
       });
 
-      await error('report', '报告生成失败', err, { reportId, userId });
+      await error('system', '报告生成失败', err, { reportId, userId });
     } finally {
       this.generatingReports.delete(reportId);
     }
@@ -324,7 +333,7 @@ export class AsyncReportGenerator {
       select: { steps: true }
     });
 
-    const steps = (report?.steps as ReportStep[] || GENERATION_STEPS.map(s => ({ ...s, status: 'pending' })));
+    const steps = ((report?.steps as any) as ReportStep[]) || GENERATION_STEPS.map(s => ({ ...s, status: 'pending' }));
     const stepIndex = steps.findIndex((s: ReportStep) => s.step === stepKey);
     
     if (stepIndex !== -1) {
@@ -404,7 +413,7 @@ export class AsyncReportGenerator {
   /**
    * 收集文章
    */
-  private async collectEntries(userId: string, startDate: Date, endDate: Date, limit: number) {
+  private async collectEntries(userId: string, startDate: Date, endDate: Date, limit: number): Promise<CollectedEntry[]> {
     const entries = await db.entry.findMany({
       where: {
         feed: { userId },
@@ -425,7 +434,7 @@ export class AsyncReportGenerator {
   /**
    * 关联文章到报告
    */
-  private async linkEntriesToReport(reportId: string, entries: ReportEntry[]): Promise<void> {
+  private async linkEntriesToReport(reportId: string, entries: CollectedEntry[]): Promise<void> {
     await db.reportEntry.createMany({
       data: entries.map(e => ({
         reportId,
@@ -442,11 +451,12 @@ export class AsyncReportGenerator {
    */
   private async generateAIContent(
     aiService: AIService,
-    entries: ReportEntry[],
+    entries: CollectedEntry[],
     stats: any,
     reportType: 'daily' | 'weekly',
     reportDate: Date,
     reportId: string,
+    aiConfig: any,
     onProgress: (step: string, message: string, progress: number) => Promise<void>
   ): Promise<{ content: string; summary: string; highlights: string[]; topics: any }> {
     // 获取文章详情
@@ -460,7 +470,7 @@ export class AsyncReportGenerator {
     // 生成摘要和主题
     const prompt = this.buildAIPrompt(entryDetails, stats, reportType, reportDate);
     const response = await aiService.chat({
-      model: 'gpt-4o',
+      model: aiConfig?.model || 'gpt-4o',  // 使用用户配置的模型
       messages: [
         { role: 'system', content: '你是一个专业的阅读报告生成助手。请用中文生成报告。' },
         { role: 'user', content: prompt }
@@ -593,7 +603,7 @@ ${entries.slice(0, 5).map((e, i) => `${i + 1}. ${e.title}`).join('\n')}
       progress: report.progress,
       currentStep: report.currentStep || '',
       status: report.status as any,
-      steps: (report.steps as ReportStep[]) || [],
+      steps: ((report.steps as any) as ReportStep[]) || [],
       errorMessage: report.errorMessage || undefined,
     };
   }

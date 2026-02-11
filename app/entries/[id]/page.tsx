@@ -46,6 +46,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Spinner, LoadingDots } from '@/components/animation/loading';
 import { usePageLoadAnimation, useScrollProgress, useRipple } from '@/hooks/use-animation';
 import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
+import { AdvancedAIPanel } from '@/components/entries/advanced-ai-panel';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -626,6 +627,11 @@ export default function EntryPage() {
                 </Card>
               </Fade>
             )}
+
+            {/* 高级AI分析面板 */}
+            <Fade in={isLoaded} direction="up" distance={20} duration={500} className="mb-6">
+              <AdvancedAIPanel entry={displayEntry} />
+            </Fade>
 
             {/* 文章内容 */}
             <Fade in={isLoaded} delay={300} direction="up" distance={20} duration={500}>

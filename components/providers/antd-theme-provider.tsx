@@ -56,7 +56,7 @@ export function AntdThemeProvider({ children }: AntdThemeProviderProps) {
         headerBg: isDark ? '#292524' : '#fafaf9',
       },
       Tooltip: {
-        colorBgDefault: isDark ? '#44403c' : '#1c1917',
+        colorBgElevated: isDark ? '#44403c' : '#1c1917',
       },
       Popover: {
         colorBgElevated: isDark ? '#1c1917' : '#ffffff',

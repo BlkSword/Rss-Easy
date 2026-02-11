@@ -52,7 +52,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePageLoadAnimation } from '@/hooks/use-animation';
 
 const { Title, Text, Paragraph } = Typography;
-const { Step } = Steps;
 
 // 报告类型配置
 const reportTypeConfig = {
@@ -132,11 +131,11 @@ function GeneratingState({
     const isDone = s.status === 'done';
     const isDoing = s.status === 'doing';
     const isError = s.status === 'error';
-    
+
     return {
       title: s.label || STEP_LABELS[s.step] || s.step,
       description: s.message || (isDoing ? '进行中...' : ''),
-      status: isError ? 'error' : isDone ? 'finish' : isDoing ? 'process' : 'wait' as const,
+      status: (isError ? 'error' : isDone ? 'finish' : isDoing ? 'process' : 'wait') as 'error' | 'wait' | 'finish' | 'process',
       icon: isDoing ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined,
     };
   });
@@ -155,8 +154,8 @@ function GeneratingState({
             {currentStep || '准备中...'} · {progress}%
           </p>
         </div>
-        <Button 
-          icon={<X className="h-4 w-4" />} 
+        <Button
+          icon={<X className="h-4 w-4" />}
           onClick={onCancel}
         >
           取消
@@ -348,7 +347,7 @@ export default function ReportDetailPage() {
     { id: reportId },
     {
       enabled: report?.status === 'generating' || report?.status === 'pending',
-      refetchInterval: (data) => 
+      refetchInterval: (data: any) =>
         data?.status === 'generating' || data?.status === 'pending' ? 2000 : false,
     }
   );
@@ -704,9 +703,17 @@ export default function ReportDetailPage() {
                 >
                   <StaggerContainer staggerDelay={50} initialDelay={100}>
                     <div className="space-y-2">
-                      {report.entries.slice(0, 10).map((entry: any, index: number) => (
-                        <EntryItem key={entry.id} entry={entry} index={index} />
-                      ))}
+                      {report.entries && report.entries.length > 0 ? (
+                        report.entries.slice(0, 10).map((entry: any, index: number) => (
+                          <EntryItem key={entry.id} entry={entry} index={index} />
+                        ))
+                      ) : (
+                        <EmptyState
+                          title="暂无相关文章"
+                          icon={<FileText className="w-10 h-10" />}
+                          className="py-8"
+                        />
+                      )}
                     </div>
                   </StaggerContainer>
                 </Card>

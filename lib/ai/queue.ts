@@ -7,7 +7,7 @@ import { db } from '../db';
 import { AIService, type AIConfig } from './client';
 import { sleep } from '../utils';
 import { getNotificationService } from '../notifications/service';
-import { info, warn, error } from '../logger';
+import { info, warn, error as logError } from '../logger';
 import type { Entry, Feed, User } from '@prisma/client';
 import type { AIAnalysisQueue as AIAnalysisQueueModel } from '@prisma/client';
 
@@ -68,7 +68,7 @@ export class AIAnalysisQueue {
           tasks.map((task) => this.processTask(task))
         );
       } catch (err) {
-        await error('queue', '队列处理器错误', err instanceof Error ? err : undefined);
+        await logError('queue', '队列处理器错误', err instanceof Error ? err : undefined);
         await sleep(10000); // 出错后等待10秒
       }
     }
@@ -119,6 +119,8 @@ export class AIAnalysisQueue {
    * 处理单个任务
    */
   private async processTask(task: TaskWithRelations): Promise<void> {
+    const startTime = Date.now();
+
     // 标记为处理中
     await db.aIAnalysisQueue.update({
       where: { id: task.id },
@@ -126,6 +128,13 @@ export class AIAnalysisQueue {
         status: 'processing',
         startedAt: new Date(),
       },
+    });
+
+    await info('ai', 'AI分析任务开始', {
+      taskId: task.id,
+      entryId: task.entryId,
+      analysisType: task.analysisType,
+      entryTitle: task.entry.title
     });
 
     try {
@@ -178,6 +187,8 @@ export class AIAnalysisQueue {
         data: updateData,
       });
 
+      const duration = Date.now() - startTime;
+
       // 标记任务完成
       await db.aIAnalysisQueue.update({
         where: { id: task.id },
@@ -191,6 +202,23 @@ export class AIAnalysisQueue {
         },
       });
 
+      // 记录详细日志
+      await info('ai', '文章AI分析完成', {
+        taskId: task.id,
+        entryId: task.entryId,
+        analysisType: task.analysisType,
+        provider,
+        model,
+        tokensUsed: result.tokensUsed,
+        cost: result.cost,
+        duration: duration,
+        hasSummary: !!result.summary,
+        hasKeywords: !!(result.keywords && result.keywords.length > 0),
+        hasCategory: !!result.category,
+        hasSentiment: !!result.sentiment,
+        hasImportance: result.importanceScore !== undefined
+      });
+
       // 发送AI分析完成通知
       const notificationService = getNotificationService();
       await notificationService.notifyAIComplete(
@@ -199,8 +227,22 @@ export class AIAnalysisQueue {
         task.entry.title
       );
     } catch (error) {
+      const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const retryCount = task.retryCount + 1;
+      const errorObj = error instanceof Error ? error : undefined;
+
+      await logError('ai', 'AI分析任务失败', errorObj, {
+        taskId: task.id,
+        entryId: task.entryId,
+        entryTitle: task.entry.title,
+        analysisType: task.analysisType,
+        errorMessage,
+        errorStack: error instanceof Error ? error.stack : undefined,
+        duration,
+        retryCount,
+        willRetry: retryCount < this.maxRetries
+      });
 
       if (retryCount < this.maxRetries) {
         // 计算下次重试时间（指数退避）

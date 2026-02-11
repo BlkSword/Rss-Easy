@@ -560,7 +560,7 @@ function EntryItem({
             </h3>
 
             {/* 元信息 */}
-            <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground flex-wrap">
               <span className="font-medium">{entry.feed.title}</span>
               <span>·</span>
               <span>
@@ -575,6 +575,41 @@ function EntryItem({
                   <Badge variant="info" size="sm">
                     {entry.aiCategory}
                   </Badge>
+                </>
+              )}
+              {/* 情感倾向 */}
+              {entry.aiSentiment && (
+                <>
+                  <span>·</span>
+                  <Badge
+                    variant="default"
+                    size="sm"
+                    className={cn(
+                      entry.aiSentiment === 'positive' && "bg-green-500/10 text-green-500 border-green-500/20",
+                      entry.aiSentiment === 'negative' && "bg-red-500/10 text-red-500 border-red-500/20",
+                      entry.aiSentiment === 'neutral' && "bg-gray-500/10 text-gray-500 border-gray-500/20"
+                    )}
+                  >
+                    {entry.aiSentiment === 'positive' && '积极'}
+                    {entry.aiSentiment === 'negative' && '消极'}
+                    {entry.aiSentiment === 'neutral' && '中性'}
+                  </Badge>
+                </>
+              )}
+              {/* 重要性评分 */}
+              {entry.aiImportanceScore > 0 && (
+                <>
+                  <span>·</span>
+                  <span className={cn(
+                    "font-medium",
+                    entry.aiImportanceScore >= 0.8 ? "text-orange-500" :
+                    entry.aiImportanceScore >= 0.5 ? "text-blue-500" :
+                    "text-gray-500"
+                  )}>
+                    {entry.aiImportanceScore >= 0.8 && '⭐⭐⭐' }
+                    {entry.aiImportanceScore >= 0.5 && entry.aiImportanceScore < 0.8 && '⭐⭐'}
+                    {entry.aiImportanceScore < 0.5 && '⭐'}
+                  </span>
                 </>
               )}
             </div>

@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, Save, AlertCircle, Zap, Check, Copy } from 'lucide-react';
+import { Sparkles, Save, AlertCircle, Zap, Check, Copy, TestTube, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
@@ -35,9 +35,15 @@ export function AISettings({ user }: AISettingsProps) {
   const [baseURL, setBaseURL] = useState(aiConfig.baseURL || '');
   const [autoSummary, setAutoSummary] = useState(aiConfig.autoSummary ?? true);
   const [autoCategorize, setAutoCategorize] = useState(aiConfig.autoCategorize ?? true);
+  const [aiQueueEnabled, setAiQueueEnabled] = useState(aiConfig.aiQueueEnabled ?? true);  // AI分析队列启用状态
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [hasApiKeyInDb, setHasApiKeyInDb] = useState(!!aiConfig.apiKey);  // 追踪数据库中是否有密钥
+
+  const utils = trpc.useUtils();  // 获取 utils 用于刷新查询
 
   const { mutate: updateAIConfig } = trpc.settings.updateAIConfig.useMutation();
+  const { mutate: testAIConfig } = trpc.settings.testAIConfig.useMutation();
 
   // 当提供商改变时，设置默认模型
   useEffect(() => {
@@ -64,31 +70,115 @@ export function AISettings({ user }: AISettingsProps) {
     }
   }, [provider]);
 
+  // 检查是否有变化：apiKey 只有在用户输入新内容时才算变化
+  const hasNewApiKey = apiKey.trim() !== '';
   const hasChanges =
     provider !== aiConfig.provider ||
     model !== aiConfig.model ||
     baseURL !== aiConfig.baseURL ||
-    apiKey !== '' ||
+    hasNewApiKey ||  // 只有当用户输入了新密钥时才算变化
     autoSummary !== (aiConfig.autoSummary ?? true) ||
-    autoCategorize !== (aiConfig.autoCategorize ?? true);
+    autoCategorize !== (aiConfig.autoCategorize ?? true) ||
+    aiQueueEnabled !== (aiConfig.aiQueueEnabled ?? true);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await updateAIConfig({
+      // 构建更新数据：只有当用户输入了新密钥时才更新 apiKey
+      const updateData: any = {
         provider,
         model,
-        apiKey: apiKey || undefined,
         baseURL: baseURL || undefined,
         autoSummary,
         autoCategorize,
-      });
+        aiQueueEnabled,
+      };
+
+      // 只有当用户输入了新密钥时才更新 apiKey
+      if (apiKey.trim() !== '') {
+        updateData.apiKey = apiKey.trim();
+      }
+
+      await updateAIConfig(updateData);
+
+      // 如果保存了新密钥，更新状态标记
+      if (apiKey.trim() !== '') {
+        setHasApiKeyInDb(true);
+      }
+
+      // 清空输入框（但不清空数据库中的密钥）
       setApiKey('');
+
+      // 刷新用户数据，确保父组件的 user 对象更新
+      await utils.auth.me.invalidate();
+
       notifySuccess('AI配置已更新');
     } catch (error) {
       notifyError(error instanceof Error ? error.message : '更新失败');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    try {
+      // 构建测试配置（使用当前表单的值）
+      const testConfig: any = {
+        provider,
+        model,
+        baseURL: baseURL || undefined,
+      };
+
+      // 只有当用户输入了新密钥时才在测试配置中包含 apiKey
+      // 否则不传 apiKey，让后端从数据库读取
+      if (apiKey.trim() !== '') {
+        testConfig.apiKey = apiKey.trim();
+      }
+      // 如果输入框为空，不要添加 apiKey 字段（即使是 undefined）
+      // 这样后端会从数据库读取已有的密钥
+
+      // 先保存配置
+      const updateData: any = {
+        provider,
+        model,
+        baseURL: baseURL || undefined,
+        autoSummary,
+        autoCategorize,
+      };
+
+      // 只有当用户输入了新密钥时才更新 apiKey
+      if (apiKey.trim() !== '') {
+        updateData.apiKey = apiKey.trim();
+      }
+
+      await updateAIConfig(updateData);
+
+      // 如果保存了新密钥，更新状态标记
+      if (apiKey.trim() !== '') {
+        setHasApiKeyInDb(true);
+      }
+
+      // 刷新用户数据
+      await utils.auth.me.invalidate();
+
+      // 使用当前配置测试连接
+      const result = await new Promise<any>((resolve, reject) => {
+        testAIConfig(testConfig, {
+          onSuccess: resolve,
+          onError: reject,
+        });
+      });
+
+      if (result.success) {
+        notifySuccess('连接测试成功', `已成功连接到 ${result.provider || provider} API`);
+      } else {
+        notifyError('连接测试失败', result.error || result.message);
+      }
+    } catch (error: any) {
+      notifyError('测试失败', error.message || '无法连接到AI服务');
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -176,7 +266,7 @@ export function AISettings({ user }: AISettingsProps) {
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={aiConfig.apiKey ? '••••••••••••••••（已配置）' : '输入API密钥'}
+                  placeholder={hasApiKeyInDb ? '••••••••••••••••（已配置）' : '输入API密钥'}
                   className={cn(
                     'w-full px-4 py-3 pr-24 rounded-xl border-2 border-border bg-background',
                     'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50',
@@ -184,7 +274,7 @@ export function AISettings({ user }: AISettingsProps) {
                     'placeholder:text-muted-foreground/50'
                   )}
                 />
-                {aiConfig.apiKey && !apiKey && (
+                {hasApiKeyInDb && !apiKey && (
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     <Check className="h-4 w-4 text-green-500" />
                     <span className="text-xs text-muted-foreground">已配置</span>
@@ -192,7 +282,7 @@ export function AISettings({ user }: AISettingsProps) {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                {aiConfig.apiKey ? '留空保持现有密钥不变' : '请输入您的API密钥'}
+                {hasApiKeyInDb ? '留空保持现有密钥不变，输入新密钥将替换' : '请输入您的API密钥'}
               </p>
             </div>
           )}
@@ -220,8 +310,23 @@ export function AISettings({ user }: AISettingsProps) {
               <p className="text-xs text-muted-foreground">
                 {provider === 'ollama'
                   ? 'Ollama服务地址，默认为 http://localhost:11434'
-                  : '自定义API的基础URL'}
+                  : 'OpenAI兼容API的基础URL（注意：通常需要包含 /v1 后缀）'}
               </p>
+              {provider === 'custom' && (
+                <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-border/50">
+                  <p className="text-xs font-medium text-foreground mb-1">常用API示例：</p>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li>• 月之暗面(Moonshot): https://api.moonshot.cn/v1</li>
+                    <li>• 通义千问: https://dashscope.aliyuncs.com/compatible-mode/v1</li>
+                    <li>• 智谱GLM: https://open.bigmodel.cn/api/paas/v4</li>
+                    <li>• DeepSeek: https://api.deepseek.com</li>
+                    <li>• LongCat: https://api.longcat.chat/openai</li>
+                  </ul>
+                  <p className="text-xs text-muted-foreground mt-2 italic">
+                    注意：不同服务使用的路径后缀不同，请参考各服务的官方文档。
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -250,6 +355,14 @@ export function AISettings({ user }: AISettingsProps) {
               title: '自动分类',
               description: '使用AI自动为文章分配分类和标签',
               icon: Check,
+            },
+            {
+              key: 'aiQueueEnabled',
+              value: aiQueueEnabled,
+              onChange: setAiQueueEnabled,
+              title: 'AI分析队列',
+              description: '启用后台AI分析队列，自动处理文章深度分析',
+              icon: Zap,
             },
           ].map(({ key, value, onChange, title, description, icon: Icon }) => (
             <div
@@ -336,13 +449,22 @@ export function AISettings({ user }: AISettingsProps) {
       </Card>
 
       {/* 保存按钮 */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-3">
+        <Button
+          variant="outline"
+          onClick={handleTestConnection}
+          isLoading={isTesting}
+          disabled={isTesting || isSaving}
+          leftIcon={isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
+        >
+          {isTesting ? '测试中...' : '测试连接'}
+        </Button>
         <Button
           variant="primary"
           onClick={handleSave}
           isLoading={isSaving}
-          disabled={!hasChanges || isSaving}
-          leftIcon={<Save className="h-4 w-4" />}
+          disabled={!hasChanges || isSaving || isTesting}
+          leftIcon={isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         >
           保存更改
         </Button>

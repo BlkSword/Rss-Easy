@@ -90,12 +90,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const newTheme = prev === 'light' ? 'dark' : prev === 'dark' ? 'system' : 'light';
-      localStorage.setItem(STORAGE_KEY, newTheme);
-      return newTheme;
-    });
-  }, []);
+    const newTheme = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light';
+    setTheme(newTheme);
+  }, [theme, setTheme]);
 
   // 默认值，在 mounted 前使用
   const defaultValue: ThemeContextType = {

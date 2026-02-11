@@ -7,6 +7,7 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { getRuleEngine } from '@/lib/rules/engine';
+import { info, warn, error } from '@/lib/logger';
 
 export const rulesRouter = router({
   /**
@@ -74,8 +75,20 @@ export const rulesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      await info('api', '用户创建订阅规则', {
+        userId: ctx.userId,
+        name: input.name,
+        conditionsCount: input.conditions.length,
+        actionsCount: input.actions.length,
+        actions: input.actions.map(a => a.type)
+      });
+
       // 验证至少有一个条件和动作
       if (input.conditions.length === 0) {
+        await warn('api', '创建订阅规则失败：无条件', {
+          userId: ctx.userId,
+          name: input.name
+        });
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: '至少需要一个条件',
@@ -83,6 +96,10 @@ export const rulesRouter = router({
       }
 
       if (input.actions.length === 0) {
+        await warn('api', '创建订阅规则失败：无动作', {
+          userId: ctx.userId,
+          name: input.name
+        });
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: '至少需要一个动作',
@@ -112,6 +129,12 @@ export const rulesRouter = router({
           conditions: input.conditions as any,
           actions: input.actions as any,
         },
+      });
+
+      await info('api', '订阅规则创建成功', {
+        userId: ctx.userId,
+        ruleId: rule.id,
+        name: rule.name
       });
 
       return rule;
@@ -157,6 +180,12 @@ export const rulesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      await info('api', '用户更新订阅规则', {
+        userId: ctx.userId,
+        ruleId: input.id,
+        updatedFields: Object.keys(input).filter(k => k !== 'id')
+      });
+
       const { id, ...data } = input;
 
       // 验证动作参数
@@ -179,6 +208,12 @@ export const rulesRouter = router({
         data,
       });
 
+      await info('api', '订阅规则更新成功', {
+        userId: ctx.userId,
+        ruleId: rule.id,
+        name: rule.name
+      });
+
       return rule;
     }),
 
@@ -188,6 +223,33 @@ export const rulesRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
+      // 先获取规则信息用于日志
+      const rule = await ctx.db.subscriptionRule.findFirst({
+        where: {
+          id: input.id,
+          userId: ctx.userId,
+        },
+        select: {
+          id: true,
+          name: true,
+          isEnabled: true
+        }
+      });
+
+      if (!rule) {
+        await warn('api', '删除订阅规则失败：不存在', {
+          userId: ctx.userId,
+          ruleId: input.id
+        });
+        throw new TRPCError({ code: 'NOT_FOUND', message: '规则不存在' });
+      }
+
+      await info('api', '用户删除订阅规则', {
+        userId: ctx.userId,
+        ruleId: input.id,
+        ruleName: rule.name
+      });
+
       await ctx.db.subscriptionRule.delete({
         where: {
           id: input.id,
@@ -210,15 +272,29 @@ export const rulesRouter = router({
           userId: ctx.userId,
         },
         select: {
+          id: true,
+          name: true,
           isEnabled: true,
         },
       });
 
       if (!rule) {
+        await warn('api', '切换订阅规则状态失败：不存在', {
+          userId: ctx.userId,
+          ruleId: input.id
+        });
         throw new TRPCError({ code: 'NOT_FOUND', message: '规则不存在' });
       }
 
       const newEnabled = input.enabled !== undefined ? input.enabled : !rule.isEnabled;
+
+      await info('api', '用户切换订阅规则状态', {
+        userId: ctx.userId,
+        ruleId: rule.id,
+        ruleName: rule.name,
+        from: rule.isEnabled ? 'enabled' : 'disabled',
+        to: newEnabled ? 'enabled' : 'disabled'
+      });
 
       const updated = await ctx.db.subscriptionRule.update({
         where: { id: input.id },

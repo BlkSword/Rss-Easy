@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Star, ExternalLink, Bookmark, Clock, Calendar, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Star, ExternalLink, Bookmark, Clock, Calendar, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { Button, Divider, Skeleton, Tag } from 'antd';
@@ -282,7 +282,7 @@ export function ArticlePreviewPanel({
           <AIAnalysisPanel
             entryId={entry.id}
             hasSummary={!!entry.aiSummary}
-            onComplete={(summary) => {
+            onComplete={() => {
               // 当分析完成时，刷新数据
               window.location.reload();
             }}

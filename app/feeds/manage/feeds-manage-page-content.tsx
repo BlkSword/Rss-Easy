@@ -675,7 +675,7 @@ export function FeedsManagePageContent() {
               </div>
             }
           >
-            <Space direction="vertical" size="large" className="w-full">
+            <Space orientation="vertical" size="large" className="w-full">
               {/* RSS 订阅地址 */}
               <div>
                 <div className="mb-2 flex items-center justify-between">

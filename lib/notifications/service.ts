@@ -4,6 +4,7 @@
  */
 
 import { db } from '@/lib/db';
+import { info, warn, error } from '@/lib/logger';
 
 export type NotificationType = 'new_entry' | 'report_ready' | 'feed_error' | 'ai_complete' | 'system';
 
@@ -34,6 +35,13 @@ export class NotificationService {
    * 创建通知
    */
   async create(options: CreateNotificationOptions): Promise<void> {
+    await info('email', '创建通知', {
+      userId: options.userId,
+      type: options.type,
+      title: options.title,
+      hasData: !!options.data
+    });
+
     await db.notification.create({
       data: {
         userId: options.userId,
@@ -50,6 +58,11 @@ export class NotificationService {
    */
   async createBulk(options: CreateNotificationOptions[]): Promise<void> {
     if (options.length === 0) return;
+
+    await info('email', '批量创建通知', {
+      userCount: options.length,
+      types: [...new Set(options.map(o => o.type))]
+    });
 
     await db.notification.createMany({
       data: options.map((opt) => ({
@@ -180,6 +193,13 @@ export class NotificationService {
     reportType: 'daily' | 'weekly',
     reportTitle: string
   ): Promise<void> {
+    await info('email', '报告就绪通知已创建', {
+      userId,
+      reportId,
+      reportType,
+      reportTitle
+    });
+
     await this.create({
       userId,
       type: 'report_ready',
@@ -202,6 +222,14 @@ export class NotificationService {
     errorMessage: string,
     errorCount: number
   ): Promise<void> {
+    await warn('email', 'Feed错误通知已创建', {
+      userId,
+      feedId,
+      feedTitle,
+      errorMessage,
+      errorCount
+    });
+
     await this.create({
       userId,
       type: 'feed_error',
@@ -225,6 +253,12 @@ export class NotificationService {
     entryId: string,
     entryTitle: string
   ): Promise<void> {
+    await info('email', 'AI分析完成通知已创建', {
+      userId,
+      entryId,
+      entryTitle
+    });
+
     await this.create({
       userId,
       type: 'ai_complete',

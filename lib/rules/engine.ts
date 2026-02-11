@@ -4,6 +4,7 @@
  */
 
 import { db } from '@/lib/db';
+import { info, warn } from '@/lib/logger';
 import type { Prisma } from '@prisma/client';
 
 /**
@@ -283,8 +284,18 @@ export class RuleEngine {
       },
     });
 
+    if (rules.length === 0) {
+      return { matched: [], actions: 0 };
+    }
+
     const matchedRules: string[] = [];
     let totalActions = 0;
+
+    // 获取文章标题用于日志
+    const entry = await db.entry.findUnique({
+      where: { id: entryId },
+      select: { title: true, feedId: true }
+    });
 
     for (const rule of rules) {
       const isMatch = await this.matchRule(entryId, rule as unknown as SubscriptionRule);
@@ -305,6 +316,18 @@ export class RuleEngine {
         await this.executeActions(entryId, rule.actions as unknown as RuleAction[]);
         totalActions += (rule.actions as unknown as RuleAction[]).length;
       }
+    }
+
+    // 记录规则执行结果
+    if (matchedRules.length > 0) {
+      await info('api', '订阅规则执行完成', {
+        entryId,
+        entryTitle: entry?.title || 'unknown',
+        matchedRules,
+        matchedCount: matchedRules.length,
+        totalActions,
+        actions: rules.flatMap(r => (r.actions || []) as any[]).map((a: any) => a?.type).filter(Boolean)
+      });
     }
 
     return {

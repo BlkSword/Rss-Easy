@@ -6,6 +6,7 @@
 import { db } from '../db';
 import { AIService } from '../ai/client';
 import { getNotificationService } from '../notifications/service';
+import { getUserAIConfig } from '../ai/health-check';
 import type { Report, Entry } from '@prisma/client';
 
 export interface ReportEntry {
@@ -34,17 +35,8 @@ export interface ReportStats {
  * 报告生成服务
  */
 export class ReportGenerator {
-  private aiService: AIService;
-
-  constructor() {
-    // 默认使用 OpenAI
-    this.aiService = new AIService({
-      provider: 'openai',
-      model: 'gpt-4o',
-      maxTokens: 4000,
-      temperature: 0.7,
-    });
-  }
+  // 移除实例变量，改为按需创建
+  constructor() {}
 
   /**
    * 生成日报
@@ -63,6 +55,9 @@ export class ReportGenerator {
       return existing;
     }
 
+    // 获取用户 AI 配置
+    const aiConfig = await getUserAIConfig(userId, db);
+
     // 计算日期范围（当天）
     const startDate = new Date(reportDate);
     startDate.setHours(0, 0, 0, 0);
@@ -80,10 +75,21 @@ export class ReportGenerator {
     let summary: string;
     let highlights: string[] = [];
     let topics: any;
+    let aiModel: string | null = null;
 
     if (aiGenerated) {
-      // AI生成
-      const aiContent = await this.generateAIContent(entries, stats, 'daily', reportDate);
+      // AI生成 - 使用用户配置
+      const aiService = new AIService({
+        provider: (aiConfig?.provider as any) || 'openai',
+        model: aiConfig?.model || 'gpt-4o',
+        apiKey: aiConfig?.apiKey,
+        baseURL: aiConfig?.baseURL,
+        maxTokens: 4000,
+        temperature: 0.7,
+      });
+      aiModel = aiConfig?.model || 'gpt-4o';
+
+      const aiContent = await this.generateAIContent(aiService, entries, stats, 'daily', reportDate);
       content = aiContent.content;
       summary = aiContent.summary;
       highlights = aiContent.highlights;
@@ -113,7 +119,7 @@ export class ReportGenerator {
         format: 'markdown',
         content,
         aiGenerated,
-        aiModel: aiGenerated ? 'gpt-4o' : null,
+        aiModel,
       },
     });
 
@@ -149,6 +155,9 @@ export class ReportGenerator {
       return existing;
     }
 
+    // 获取用户 AI 配置
+    const aiConfig = await getUserAIConfig(userId, db);
+
     // 计算日期范围（本周）
     const startDate = new Date(reportDate);
     startDate.setDate(startDate.getDate() - startDate.getDay()); // 周一
@@ -168,10 +177,21 @@ export class ReportGenerator {
     let summary: string;
     let highlights: string[] = [];
     let topics: any;
+    let aiModel: string | null = null;
 
     if (aiGenerated) {
-      // AI生成
-      const aiContent = await this.generateAIContent(entries, stats, 'weekly', reportDate);
+      // AI生成 - 使用用户配置
+      const aiService = new AIService({
+        provider: (aiConfig?.provider as any) || 'openai',
+        model: aiConfig?.model || 'gpt-4o',
+        apiKey: aiConfig?.apiKey,
+        baseURL: aiConfig?.baseURL,
+        maxTokens: 4000,
+        temperature: 0.7,
+      });
+      aiModel = aiConfig?.model || 'gpt-4o';
+
+      const aiContent = await this.generateAIContent(aiService, entries, stats, 'weekly', reportDate);
       content = aiContent.content;
       summary = aiContent.summary;
       highlights = aiContent.highlights;
@@ -201,7 +221,7 @@ export class ReportGenerator {
         format: 'markdown',
         content,
         aiGenerated,
-        aiModel: aiGenerated ? 'gpt-4o' : null,
+        aiModel,
       },
     });
 
@@ -323,6 +343,7 @@ export class ReportGenerator {
    * AI生成内容
    */
   private async generateAIContent(
+    aiService: AIService,
     entries: Entry[],
     stats: ReportStats,
     reportType: 'daily' | 'weekly',
@@ -337,7 +358,7 @@ export class ReportGenerator {
     const prompt = this.buildPrompt(entries, stats, reportType, reportDate);
 
     // 调用AI生成
-    const result = await this.aiService.analyzeArticle(prompt, {
+    const result = await aiService.analyzeArticle(prompt, {
       summary: true,
       keywords: true,
       category: false,

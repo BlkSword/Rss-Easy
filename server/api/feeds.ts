@@ -134,6 +134,12 @@ export const feedsRouter = router({
       siteUrl: z.string().url().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      await info('rss', '用户尝试创建订阅源', {
+        userId: ctx.userId,
+        url: input.url,
+        title: input.title
+      });
+
       // 检查是否已存在
       const existing = await ctx.db.feed.findFirst({
         where: {
@@ -143,6 +149,11 @@ export const feedsRouter = router({
       });
 
       if (existing) {
+        await warn('rss', '创建订阅源失败：已存在', {
+          userId: ctx.userId,
+          url: input.url,
+          existingFeedId: existing.id
+        });
         throw new TRPCError({ code: 'CONFLICT', message: '订阅源已存在' });
       }
 
@@ -150,7 +161,7 @@ export const feedsRouter = router({
       let title = input.title;
       let description = input.description;
       let siteUrl = input.siteUrl;
-      
+
       if (!title || !description || !siteUrl) {
         try {
           const parsed = await parseFeed(input.url);
@@ -181,11 +192,13 @@ export const feedsRouter = router({
       // 异步抓取
       feedManager.fetchFeed(feed.id).catch(console.error);
 
-      await info('rss', '添加订阅源', { 
-        userId: ctx.userId, 
-        feedId: feed.id, 
+      await info('rss', '订阅源创建成功', {
+        userId: ctx.userId,
+        feedId: feed.id,
         title: feed.title,
-        url: input.url 
+        url: input.url,
+        categoryId: input.categoryId,
+        tags: input.tags
       });
 
       return feed;
@@ -208,6 +221,12 @@ export const feedsRouter = router({
       isActive: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      await info('rss', '用户更新订阅源', {
+        userId: ctx.userId,
+        feedId: input.id,
+        updates: Object.keys(input).filter(k => k !== 'id')
+      });
+
       const { id, url, ...data } = input;
 
       const feed = await ctx.db.feed.update({
@@ -221,6 +240,13 @@ export const feedsRouter = router({
         },
       });
 
+      await info('rss', '订阅源更新成功', {
+        userId: ctx.userId,
+        feedId: feed.id,
+        title: feed.title,
+        updatedFields: Object.keys(input).filter(k => k !== 'id')
+      });
+
       return feed;
     }),
 
@@ -230,17 +256,40 @@ export const feedsRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
-      const feed = await ctx.db.feed.delete({
+      // 先获取feed信息用于日志
+      const feed = await ctx.db.feed.findFirst({
         where: {
           id: input.id,
           userId: ctx.userId,
         },
+        select: {
+          id: true,
+          title: true,
+          feedUrl: true,
+          totalEntries: true
+        }
       });
 
-      await info('rss', '删除订阅源', { 
-        userId: ctx.userId, 
-        feedId: input.id,
-        title: feed.title 
+      if (!feed) {
+        await warn('rss', '删除订阅源失败：不存在', {
+          userId: ctx.userId,
+          feedId: input.id
+        });
+        throw new TRPCError({ code: 'NOT_FOUND', message: '订阅源不存在' });
+      }
+
+      await info('rss', '用户删除订阅源', {
+        userId: ctx.userId,
+        feedId: feed.id,
+        title: feed.title,
+        totalEntries: feed.totalEntries
+      });
+
+      await ctx.db.feed.delete({
+        where: {
+          id: input.id,
+          userId: ctx.userId,
+        },
       });
 
       return { success: true };
@@ -252,6 +301,11 @@ export const feedsRouter = router({
   refresh: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
+      await info('rss', '用户手动刷新订阅源', {
+        userId: ctx.userId,
+        feedId: input.id
+      });
+
       const feed = await ctx.db.feed.findFirst({
         where: {
           id: input.id,
@@ -260,16 +314,20 @@ export const feedsRouter = router({
       });
 
       if (!feed) {
+        await warn('rss', '刷新订阅源失败：不存在', {
+          userId: ctx.userId,
+          feedId: input.id
+        });
         throw new TRPCError({ code: 'NOT_FOUND', message: '订阅源不存在' });
       }
 
       // 异步抓取
       feedManager.fetchFeed(feed.id).catch(console.error);
 
-      await info('rss', '手动刷新订阅源', { 
-        userId: ctx.userId, 
+      await info('rss', '订阅源刷新任务已提交', {
+        userId: ctx.userId,
         feedId: feed.id,
-        title: feed.title 
+        title: feed.title
       });
 
       return { success: true };
@@ -286,6 +344,12 @@ export const feedsRouter = router({
     .mutation(async ({ input, ctx }) => {
       const { feedIds, action } = input;
 
+      await info('rss', '用户批量操作订阅源', {
+        userId: ctx.userId,
+        action,
+        feedCount: feedIds.length
+      });
+
       switch (action) {
         case 'activate':
           await ctx.db.feed.updateMany({
@@ -294,6 +358,10 @@ export const feedsRouter = router({
               userId: ctx.userId,
             },
             data: { isActive: true },
+          });
+          await info('rss', '批量启用订阅源完成', {
+            userId: ctx.userId,
+            feedCount: feedIds.length
           });
           break;
 
@@ -305,6 +373,10 @@ export const feedsRouter = router({
             },
             data: { isActive: false },
           });
+          await info('rss', '批量禁用订阅源完成', {
+            userId: ctx.userId,
+            feedCount: feedIds.length
+          });
           break;
 
         case 'delete':
@@ -314,12 +386,20 @@ export const feedsRouter = router({
               userId: ctx.userId,
             },
           });
+          await info('rss', '批量删除订阅源完成', {
+            userId: ctx.userId,
+            feedCount: feedIds.length
+          });
           break;
 
         case 'refresh':
           for (const feedId of feedIds) {
             feedManager.fetchFeed(feedId).catch(console.error);
           }
+          await info('rss', '批量刷新订阅源任务已提交', {
+            userId: ctx.userId,
+            feedCount: feedIds.length
+          });
           break;
       }
 

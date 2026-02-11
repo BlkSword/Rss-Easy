@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Select, Space } from 'antd';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
@@ -200,53 +201,43 @@ export function LogsSettings() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索日志内容..."
                 className={cn(
-                  'w-full pl-9 pr-4 py-2 rounded-lg border-2 border-border bg-background',
+                  'w-full pl-9 pr-4 py-2 rounded-xl border-2 border-border bg-background',
                   'focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20',
-                  'transition-all text-sm'
+                  'transition-all text-sm placeholder:text-muted-foreground/50'
                 )}
               />
             </div>
 
             {/* 级别筛选 */}
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <select
-                value={selectedLevel || ''}
-                onChange={(e) => setSelectedLevel(e.target.value || null)}
-                className={cn(
-                  'px-3 py-2 rounded-lg border-2 border-border bg-background text-sm',
-                  'focus:outline-none focus:border-primary/50',
-                  'transition-all cursor-pointer'
-                )}
-              >
-                <option value="">全部级别</option>
-                <option value="info">INFO</option>
-                <option value="warn">WARN</option>
-                <option value="error">ERROR</option>
-                <option value="debug">DEBUG</option>
-                <option value="fatal">FATAL</option>
-              </select>
-            </div>
+            <Select
+              value={selectedLevel}
+              onChange={(value) => setSelectedLevel(value)}
+              placeholder="全部级别"
+              allowClear
+              className="min-w-[140px]"
+              variant="outlined"
+              options={[
+                { value: 'info', label: 'INFO' },
+                { value: 'warn', label: 'WARN' },
+                { value: 'error', label: 'ERROR' },
+                { value: 'debug', label: 'DEBUG' },
+                { value: 'fatal', label: 'FATAL' },
+              ]}
+            />
 
             {/* 分类筛选 */}
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedCategory || ''}
-                onChange={(e) => setSelectedCategory(e.target.value || null)}
-                className={cn(
-                  'px-3 py-2 rounded-lg border-2 border-border bg-background text-sm',
-                  'focus:outline-none focus:border-primary/50',
-                  'transition-all cursor-pointer'
-                )}
-              >
-                <option value="">全部分类</option>
-                {Object.entries(categoryLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              value={selectedCategory}
+              onChange={(value) => setSelectedCategory(value)}
+              placeholder="全部分类"
+              allowClear
+              className="min-w-[140px]"
+              variant="outlined"
+              options={Object.entries(categoryLabels).map(([value, label]) => ({
+                value,
+                label,
+              }))}
+            />
           </div>
         </CardHeader>
 

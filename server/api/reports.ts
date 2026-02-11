@@ -8,6 +8,7 @@ import { protectedProcedure, router } from '../trpc/init';
 import { getReportGenerator } from '@/lib/reports/generator';
 import { asyncReportGenerator } from '@/lib/reports/async-generator';
 import { checkAIConfig, getUserAIConfig } from '@/lib/ai/health-check';
+import { info, warn, error } from '@/lib/logger';
 
 export const reportsRouter = router({
   /**
@@ -31,6 +32,12 @@ export const reportsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      await info('system', '用户请求生成日报', {
+        userId: ctx.userId,
+        reportDate: input.reportDate.toISOString(),
+        aiGenerated: input.aiGenerated
+      });
+
       const result = await asyncReportGenerator.startGeneration(
         ctx.userId,
         'daily',
@@ -39,11 +46,20 @@ export const reportsRouter = router({
       );
 
       if (!result.success) {
+        await error('system', '日报生成启动失败', undefined, {
+          userId: ctx.userId,
+          error: result.error
+        });
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: result.error || '启动生成失败',
         });
       }
+
+      await info('system', '日报生成启动成功', {
+        userId: ctx.userId,
+        reportId: result.report?.id
+      });
 
       return result.report;
     }),
@@ -59,6 +75,12 @@ export const reportsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      await info('system', '用户请求生成周报', {
+        userId: ctx.userId,
+        reportDate: input.reportDate.toISOString(),
+        aiGenerated: input.aiGenerated
+      });
+
       const result = await asyncReportGenerator.startGeneration(
         ctx.userId,
         'weekly',
@@ -67,11 +89,20 @@ export const reportsRouter = router({
       );
 
       if (!result.success) {
+        await error('system', '周报生成启动失败', undefined, {
+          userId: ctx.userId,
+          error: result.error
+        });
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: result.error || '启动生成失败',
         });
       }
+
+      await info('system', '周报生成启动成功', {
+        userId: ctx.userId,
+        reportId: result.report?.id
+      });
 
       return result.report;
     }),
@@ -83,8 +114,12 @@ export const reportsRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input, ctx }) => {
       const progress = await asyncReportGenerator.getProgress(input.id, ctx.userId);
-      
+
       if (!progress) {
+        await warn('system', '查询报告进度失败，报告不存在', {
+          userId: ctx.userId,
+          reportId: input.id
+        });
         throw new TRPCError({ code: 'NOT_FOUND', message: '报告不存在' });
       }
 
@@ -97,7 +132,18 @@ export const reportsRouter = router({
   cancelGeneration: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
+      await info('system', '用户取消报告生成', {
+        userId: ctx.userId,
+        reportId: input.id
+      });
+
       await asyncReportGenerator.cancelGeneration(input.id, ctx.userId);
+
+      await info('system', '报告生成已取消', {
+        userId: ctx.userId,
+        reportId: input.id
+      });
+
       return { success: true };
     }),
 

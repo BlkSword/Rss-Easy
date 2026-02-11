@@ -104,6 +104,7 @@ export const settingsRouter = router({
         baseURL: z.string().optional(),
         autoSummary: z.boolean().optional(),
         autoCategorize: z.boolean().optional(),
+        aiQueueEnabled: z.boolean().optional(),
       })
     )
     .output(
@@ -119,10 +120,17 @@ export const settingsRouter = router({
         select: { aiConfig: true },
       });
 
-      const updatedConfig = {
-        ...((current?.aiConfig as any) || {}),
-        ...input,
-      };
+      // 合并配置：只更新明确提供的字段（过滤掉 undefined）
+      const currentConfig = (current?.aiConfig as any) || {};
+      const updatedConfig = { ...currentConfig };
+
+      // 只复制非 undefined 的字段
+      Object.keys(input).forEach(key => {
+        const value = input[key as keyof typeof input];
+        if (value !== undefined) {
+          (updatedConfig as any)[key] = value;
+        }
+      });
 
       const user = await ctx.db.user.update({
         where: { id: ctx.userId },
@@ -131,9 +139,9 @@ export const settingsRouter = router({
         },
       });
 
-      await info('ai', '更新AI配置', { 
-        userId: ctx.userId, 
-        provider: updatedConfig.provider 
+      await info('ai', '更新AI配置', {
+        userId: ctx.userId,
+        provider: updatedConfig.provider
       });
 
       return user;
@@ -524,6 +532,52 @@ export const settingsRouter = router({
       });
 
       return { success: true };
+    }),
+
+  /**
+   * 测试AI配置
+   */
+  testAIConfig: protectedProcedure
+    .input(z.object({
+      provider: z.enum(['openai', 'anthropic', 'deepseek', 'ollama', 'custom']).optional(),
+      model: z.string().optional(),
+      apiKey: z.string().optional(),
+      baseURL: z.string().optional(),
+    }).optional())
+    .output(z.object({
+      success: z.boolean(),
+      message: z.string(),
+      provider: z.string().optional(),
+      model: z.string().optional(),
+      error: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        // 获取数据库中的配置
+        const user = await ctx.db.user.findUnique({
+          where: { id: ctx.userId },
+          select: { aiConfig: true },
+        });
+
+        if (!user) {
+          return { success: false, message: '用户不存在' };
+        }
+
+        // 合并配置：数据库配置 + 传入的测试配置
+        const dbConfig = (user.aiConfig as any) || {};
+        const testConfig = input ? { ...dbConfig, ...input } : dbConfig;
+
+        const { checkAIConfig } = await import('@/lib/ai/health-check');
+        const result = await checkAIConfig(testConfig);
+
+        return result;
+      } catch (err: any) {
+        return {
+          success: false,
+          message: 'AI配置测试失败',
+          error: err.message || '未知错误',
+        };
+      }
     }),
 
   /**

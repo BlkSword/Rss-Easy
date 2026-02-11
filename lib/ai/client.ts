@@ -630,6 +630,10 @@ export class AIService {
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
     return this.provider.generateEmbedding(text);
   }
+
+  async chat(options: ChatOptions): Promise<ChatResponse> {
+    return this.provider.chat(options);
+  }
 }
 
 /**
