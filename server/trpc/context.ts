@@ -18,15 +18,37 @@ export async function createContext(opts?: CreateNextContextOptions) {
 
   try {
     session = await getSession();
+
+    // 验证用户是否仍然存在（防止已删除用户的 token 继续使用）
+    if (session?.userId) {
+      const user = await db.user.findUnique({
+        where: { id: session.userId },
+        select: { id: true },
+      });
+
+      // 如果用户不存在，清除 session
+      if (!user) {
+        session = null;
+      }
+    }
   } catch {
     // Session 无效或过期
     session = null;
   }
 
+  // 从 headers 中获取 CSRF Token
+  const headers = opts?.req?.headers;
+  const csrfToken = headers?.['x-csrf-token'] as string | null ?? null;
+  const authorizationHeader = headers?.['authorization'] as string | null ?? null;
+  const sessionToken = authorizationHeader?.replace('Bearer ', '') ?? null;
+
   return {
     db,
     userId: session?.userId || null,
     session,
+    requestId: null as string | null,
+    csrfToken,
+    sessionToken,
   };
 }
 

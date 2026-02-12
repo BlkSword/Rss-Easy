@@ -4,10 +4,10 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, Eye, EyeOff, Loader2, ArrowRight, User, Mail, Lock, CheckCircle, Sparkles, Shield } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, Sparkles, Check, X } from 'lucide-react';
 import { Button, Input, Form, Progress } from 'antd';
 import { MailOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { handleApiError, handleApiSuccess } from '@/lib/feedback';
@@ -16,13 +16,25 @@ import { useShakeAnimation, usePageLoadAnimation } from '@/hooks/use-animation';
 import { MorphingShape } from '@/components/animation/morphing-shape';
 import { cn } from '@/lib/utils';
 
+// 密码要求检查
+interface PasswordRequirement {
+  label: string;
+  check: (password: string) => boolean;
+}
+
+const passwordRequirements: PasswordRequirement[] = [
+  { label: '至少8位字符', check: (p) => p.length >= 8 },
+  { label: '包含字母', check: (p) => /[a-zA-Z]/.test(p) },
+  { label: '包含数字', check: (p) => /\d/.test(p) },
+];
+
 // 密码强度计算
 function calculatePasswordStrength(password: string): number {
   let strength = 0;
-  if (password.length >= 6) strength += 25;
-  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 25;
+  if (password.length >= 8) strength += 25;
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 20;
   if (/\d/.test(password)) strength += 25;
-  if (/[^a-zA-Z0-9]/.test(password)) strength += 25;
+  if (/[^a-zA-Z0-9]/.test(password)) strength += 30;
   return strength;
 }
 
@@ -39,13 +51,14 @@ export default function RegisterPage() {
   const [form] = Form.useForm();
   const [isLoading, setIsLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
   const [passwordStrength, setPasswordStrength] = useState(0);
   const { isShaking, shake } = useShakeAnimation();
   const isLoaded = usePageLoadAnimation(100);
 
   // 背景粒子效果
   const [particles, setParticles] = useState<{ x: number; y: number; size: number; delay: number }[]>([]);
-  
+
   useEffect(() => {
     const newParticles = Array.from({ length: 20 }, () => ({
       x: Math.random() * 100,
@@ -57,9 +70,23 @@ export default function RegisterPage() {
   }, []);
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const strength = calculatePasswordStrength(e.target.value);
+    const newPassword = e.target.value;
+    setPassword(newPassword);
+    const strength = calculatePasswordStrength(newPassword);
     setPasswordStrength(strength);
   };
+
+  // 检查密码是否满足所有要求
+  const passwordChecks = useMemo(() => {
+    return passwordRequirements.map((req) => ({
+      ...req,
+      met: req.check(password),
+    }));
+  }, [password]);
+
+  const allRequirementsMet = useMemo(() => {
+    return passwordChecks.every((check) => check.met);
+  }, [passwordChecks]);
 
   const handleSubmit = async (values: { username: string; email: string; password: string; confirmPassword: string }) => {
     setIsLoading(true);
@@ -202,7 +229,19 @@ export default function RegisterPage() {
                 label={<span className="text-sm font-medium">密码</span>}
                 rules={[
                   { required: true, message: '请输入密码' },
-                  { min: 6, message: '密码长度至少为6个字符' },
+                  { min: 8, message: '密码长度至少为8个字符' },
+                  {
+                    validator: (_, value) => {
+                      if (!value) return Promise.resolve();
+                      if (!/[a-zA-Z]/.test(value)) {
+                        return Promise.reject(new Error('密码必须包含字母'));
+                      }
+                      if (!/\d/.test(value)) {
+                        return Promise.reject(new Error('密码必须包含数字'));
+                      }
+                      return Promise.resolve();
+                    },
+                  },
                 ]}
               >
                 <Input.Password
@@ -221,8 +260,30 @@ export default function RegisterPage() {
                 />
               </Form.Item>
 
+              {/* 密码要求提示 */}
+              {password && (
+                <div className="mb-4 -mt-2 p-3 rounded-lg bg-muted/30 border border-border/40">
+                  <div className="text-xs font-medium text-foreground mb-2">密码要求：</div>
+                  <div className="space-y-1.5">
+                    {passwordChecks.map((check, index) => (
+                      <div key={index} className={cn(
+                        'flex items-center gap-2 text-xs transition-colors',
+                        check.met ? 'text-green-600' : 'text-muted-foreground'
+                      )}>
+                        {check.met ? (
+                          <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                        ) : (
+                          <X className="w-3.5 h-3.5 flex-shrink-0" />
+                        )}
+                        <span>{check.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* 密码强度指示器 */}
-              {passwordStrength > 0 && (
+              {passwordStrength > 0 && allRequirementsMet && (
                 <div className="mb-4 -mt-2">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-muted-foreground">密码强度</span>
@@ -234,7 +295,7 @@ export default function RegisterPage() {
                     percent={passwordStrength}
                     showInfo={false}
                     strokeColor={strengthInfo.color}
-                    trailColor="hsl(var(--muted))"
+                    railColor="hsl(var(--muted))"
                     size="small"
                   />
                 </div>
@@ -319,25 +380,6 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {/* 服务条款 */}
-          <Fade delay={400}>
-            <div className="mt-6 p-4 rounded-xl bg-muted/30 border border-border/40 text-xs text-center">
-              <div className="flex items-center justify-center gap-2 mb-2 text-muted-foreground">
-                <Shield className="w-3 h-3" />
-                <span>安全注册，保护您的隐私</span>
-              </div>
-              <p className="text-muted-foreground/70">
-                注册即表示您同意我们的{' '}
-                <Link href="/terms" className="text-primary hover:underline">
-                  服务条款
-                </Link>{' '}
-                和{' '}
-                <Link href="/privacy" className="text-primary hover:underline">
-                  隐私政策
-                </Link>
-              </p>
-            </div>
-          </Fade>
         </StaggerContainer>
       </Fade>
     </div>

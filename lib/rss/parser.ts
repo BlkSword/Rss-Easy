@@ -15,6 +15,16 @@ export type ParsedFeed = {
   language?: string;
   lastBuildDate?: Date;
   items: ParsedEntry[];
+  // 增强字段
+  image?: {
+    url?: string;
+    title?: string;
+    link?: string;
+  };
+  icon?: string;
+  managingEditor?: string;
+  webMaster?: string;
+  pubDate?: Date;
 };
 
 export type ParsedEntry = {
@@ -27,6 +37,24 @@ export type ParsedEntry = {
   categories?: string[];
   guid?: string;
   isoDate?: string;
+  // 增强字段
+  creator?: string;
+  description?: string;
+  summary?: string;
+  updatedDate?: Date;
+  publishedDate?: Date;
+  tags?: string[];
+  image?: string;
+  enclosure?: {
+    url: string;
+    type?: string;
+    length?: number;
+  };
+  // 从内容提取的元数据
+  source?: string;
+  extractedDate?: string;
+  // 原始数据，用于调试
+  raw?: any;
 };
 
 /**
@@ -41,8 +69,47 @@ export class RSSParser {
     this.parser = new Parser({
       timeout: this.timeout,
       customFields: {
-        feed: ['language', 'lastBuildDate'],
-        item: ['author', 'guid'],
+        feed: [
+          'language',
+          'lastBuildDate',
+          'managingEditor',
+          'webMaster',
+          'image',
+          'icon',
+        ],
+        item: [
+          // 标准 RSS/Atom 字段
+          'author',
+          'creator',
+          'guid',
+          'description',
+          'summary',
+          'published',
+          'updated',
+          'created',
+          'modified',
+          'expirationDate',
+          // 内容字段
+          'content:encoded',
+          'content',
+          // Media RSS 字段
+          'media:content',
+          'media:thumbnail',
+          'media:group',
+          'enclosure',
+          'enclosures',
+          // 其他扩展字段
+          'category',
+          'categories',
+          'tags',
+          'dc:creator',
+          'dc:date',
+          'dc:subject',
+          'wfw:commentRss',
+          'comments',
+          'slash:comments',
+          'feedburner:origLink',
+        ],
       },
     });
   }
@@ -57,9 +124,10 @@ export class RSSParser {
 
         // 处理每个条目，提取完整内容
         const items = await Promise.all(
-          (feed.items || []).map(async (item) => {
+          (feed.items || []).map(async (item: any) => {
             try {
-              let content = item['content:encoded'] || item.content || item.contentSnippet;
+              // 提取内容 - 按优先级尝试多个字段
+              let content = item['content:encoded'] || item.content || item['content:html'] || item.summary || item.description || '';
 
               // 如果没有内容，尝试从链接抓取
               if (!content && item.link) {
@@ -67,36 +135,76 @@ export class RSSParser {
                   content = await this.fetchContent(item.link);
                 } catch {
                   // 静默失败，使用空内容
-                  content = null;
+                  content = '';
                 }
               }
 
               // 清理HTML标签，获取纯文本摘要
               const contentSnippet = this.extractSnippet(content || '');
 
+              // 提取作者 - 多个可能的字段
+              let author = item.author ||
+                          item.creator ||
+                          item['dc:creator'] ||
+                          undefined;
+
+              // 提取分类/标签
+              const categories = this.extractCategories(item);
+
+              // 从 HTML 内容中提取元数据（微信等特殊格式）
+              const contentMetadata = this.extractMetadataFromContent(content || '');
+
+              // 如果没有从 XML 字段中找到作者，尝试从内容中提取
+              if (!author && contentMetadata.author) {
+                author = contentMetadata.author;
+              }
+
+              // 提取图片
+              const image = this.extractImage(item, content);
+
+              // 提取 enclosure 信息
+              const enclosure = this.extractEnclosure(item);
+
+              // 提取各种日期
+              const pubDate = this.parseDate(item.pubDate || item.published || item.created || item['dc:date']);
+              const updatedDate = this.parseDate(item.updated || item.modified);
+
               return {
                 title: item.title || 'Untitled',
-                link: item.link || '',
-                pubDate: item.pubDate ? new Date(item.pubDate) : undefined,
+                link: item.link || item['feedburner:origLink'] || '',
+                pubDate,
                 content: content || undefined,
                 contentSnippet,
-                author: item.author || item.creator || undefined,
-                categories: item.categories || [],
-                guid: item.guid,
+                author,
+                categories,
+                guid: item.guid || item.id,
                 isoDate: item.isoDate,
+                // 新增字段
+                creator: item.creator,
+                description: item.description,
+                summary: item.summary,
+                updatedDate,
+                publishedDate: pubDate,
+                tags: item.tags || categories,
+                image,
+                enclosure,
+                // 从内容中提取的元数据
+                source: contentMetadata.source,
+                ...(contentMetadata.date && { extractedDate: contentMetadata.date }),
+                raw: process.env.NODE_ENV === 'development' ? item : undefined,
               } as ParsedEntry;
             } catch (error) {
               // 如果单个条目处理失败，返回基本条目
+              console.error('Error parsing RSS item:', error);
               return {
-                title: item.title || 'Untitled',
-                link: item.link || '',
-                pubDate: item.pubDate ? new Date(item.pubDate) : undefined,
-                content: item.content || undefined,
-                contentSnippet: item.contentSnippet || '',
-                author: item.author || item.creator || undefined,
-                categories: item.categories || [],
-                guid: item.guid,
-                isoDate: item.isoDate,
+                title: (item as any).title || 'Untitled',
+                link: (item as any).link || '',
+                pubDate: (item as any).pubDate ? new Date((item as any).pubDate) : undefined,
+                content: (item as any).content || (item as any)['content:encoded'] || undefined,
+                contentSnippet: (item as any).contentSnippet || '',
+                author: (item as any).author || (item as any).creator || undefined,
+                categories: this.extractCategories(item),
+                guid: (item as any).guid,
               } as ParsedEntry;
             }
           })
@@ -109,6 +217,18 @@ export class RSSParser {
           language: feed.language,
           lastBuildDate: feed.lastBuildDate ? new Date(feed.lastBuildDate) : undefined,
           items,
+          // 额外的 feed 元数据
+          ...(feed.image && {
+            image: {
+              url: feed.image.url || feed.image.link,
+              title: feed.image.title,
+              link: feed.image.link,
+            },
+          }),
+          ...(feed.icon && { icon: feed.icon }),
+          ...(feed.managingEditor && { managingEditor: feed.managingEditor }),
+          ...(feed.webMaster && { webMaster: feed.webMaster }),
+          ...(feed.pubDate && { pubDate: new Date(feed.pubDate) }),
         };
       },
       { maxAttempts: 3, delay: 1000 }
@@ -190,6 +310,236 @@ export class RSSParser {
     }
 
     return truncated + '...';
+  }
+
+  /**
+   * 从 HTML 内容中提取元数据（如作者、来源等）
+   * 专门处理微信公众号等富文本内容
+   */
+  private extractMetadataFromContent(content: string): { author?: string; source?: string; date?: string } {
+    const metadata: { author?: string; source?: string; date?: string } = {};
+    const $ = load(content);
+
+    // 提取作者 - 微信公众号常见格式
+    // 格式1: <span>作者名</span> <span>日期</span> <span>地点</span>
+    const firstPSpans = $('p').first().find('span');
+    if (firstPSpans.length >= 1) {
+      const firstSpan = $(firstPSpans[0]).text().trim();
+      // 检查是否是作者名（通常不是日期格式）
+      if (!firstSpan.match(/^\d{4}-\d{2}-\d{2}/) && !firstSpan.match(/^\d+:\d{2}/)) {
+        metadata.author = firstSpan;
+      }
+    }
+
+    // 格式2: 查找"原创"标识后的作者
+    const originalSpan = $('p').filter((i, el) => {
+      const text = $(el).text();
+      return text.includes('原创') || text.includes('作者');
+    });
+    if (originalSpan.length > 0) {
+      const text = originalSpan.first().text();
+      const authorMatch = text.match(/(?:原创|作者)[：:]\s*([^\s]+)/);
+      if (authorMatch && authorMatch[1]) {
+        metadata.author = authorMatch[1];
+      }
+    }
+
+    // 格式3: 查找来源信息
+    const sourceText = $('body').text();
+    const sourceMatch = sourceText.match(/以下文章来源于[：:]\s*([^\n]+)/);
+    if (sourceMatch && sourceMatch[1]) {
+      metadata.source = sourceMatch[1].trim();
+    }
+
+    // 格式4: 查找 <strong> 标签作为来源（微信常见）
+    const strongTag = $('strong').first();
+    if (strongTag.length > 0) {
+      const strongText = strongTag.text().trim();
+      if (strongText && !strongText.includes('AI') && strongText.length < 50) {
+        metadata.source = strongText;
+      }
+    }
+
+    // 提取日期 - 各种格式
+    const datePatterns = [
+      /(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/,
+      /(\d{4})年(\d{1,2})月(\d{1,2})日/,
+      /(\d{1,2})月(\d{1,2})日/,
+    ];
+
+    for (const pattern of datePatterns) {
+      const match = sourceText.match(pattern);
+      if (match) {
+        metadata.date = match[0];
+        break;
+      }
+    }
+
+    return metadata;
+  }
+
+  /**
+   * 提取分类/标签
+   */
+  private extractCategories(item: any): string[] {
+    const categories: string[] = [];
+
+    // 处理 category 数组（每个可能是字符串或对象）
+    if (Array.isArray(item.categories)) {
+      item.categories.forEach((cat: any) => {
+        if (typeof cat === 'string') {
+          categories.push(cat);
+        } else if (cat && typeof cat === 'object') {
+          if (cat._) categories.push(cat._);
+          if (cat.$) categories.push(cat.$);
+          if (cat.name) categories.push(cat.name);
+          if (cat.term) categories.push(cat.term);
+        }
+      });
+    }
+
+    // 处理单个 category
+    if (item.category) {
+      if (Array.isArray(item.category)) {
+        item.category.forEach((cat: any) => {
+          if (typeof cat === 'string') categories.push(cat);
+          else if (cat && (cat._ || cat.name || cat.term)) {
+            categories.push(cat._ || cat.name || cat.term);
+          }
+        });
+      } else if (typeof item.category === 'string') {
+        categories.push(item.category);
+      } else if (item.category._ || item.category.name) {
+        categories.push(item.category._ || item.category.name);
+      }
+    }
+
+    // 处理 tags
+    if (Array.isArray(item.tags)) {
+      categories.push(...item.tags.filter((t: any) => typeof t === 'string'));
+    }
+
+    // 处理 dc:subject
+    if (item['dc:subject']) {
+      if (Array.isArray(item['dc:subject'])) {
+        categories.push(...item['dc:subject']);
+      } else {
+        categories.push(item['dc:subject']);
+      }
+    }
+
+    return [...new Set(categories)].filter(Boolean); // 去重并过滤空值
+  }
+
+  /**
+   * 提取图片 URL
+   */
+  private extractImage(item: any, content: string): string | undefined {
+    // 1. 检查 media:thumbnail
+    if (item['media:thumbnail']?.['$']?.url) {
+      return item['media:thumbnail']['$'].url;
+    }
+
+    // 2. 检查 media:content
+    if (item['media:content']?.['$']?.url) {
+      return item['media:content']['$'].url;
+    }
+
+    // 3. 检查 media:group 中的内容
+    if (item['media:group']) {
+      const group = item['media:group'];
+      if (Array.isArray(group['media:content'])) {
+        const firstImage = group['media:content'].find((m: any) => m['$']?.url);
+        if (firstImage) return firstImage['$'].url;
+      }
+      if (group['media:content']?.['$']?.url) {
+        return group['media:content']['$'].url;
+      }
+      if (group['media:thumbnail']?.['$']?.url) {
+        return group['media:thumbnail']['$'].url;
+      }
+    }
+
+    // 4. 检查 enclosure（如果是图片）
+    if (item.enclosure?.url && this.isImageMimeType(item.enclosure.type)) {
+      return item.enclosure.url;
+    }
+
+    // 5. 从内容中提取第一张图片
+    if (content) {
+      const $ = load(content);
+      const firstImg = $('img').first();
+      if (firstImg.length > 0) {
+        let src = firstImg.attr('src');
+        if (src) {
+          // 处理相对路径
+          if (src.startsWith('//')) {
+            src = 'https:' + src;
+          } else if (src.startsWith('/')) {
+            const linkUrl = new URL(item.link || 'https://example.com');
+            src = linkUrl.origin + src;
+          }
+          return src;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 提取 enclosure 信息
+   */
+  private extractEnclosure(item: any): { url: string; type?: string; length?: number } | undefined {
+    const enclosure = item.enclosure || item.enclosures?.[0];
+
+    if (!enclosure) return undefined;
+
+    if (typeof enclosure === 'string') {
+      return { url: enclosure };
+    }
+
+    if (enclosure.url) {
+      return {
+        url: enclosure.url,
+        type: enclosure.type || enclosure.mimeType,
+        length: enclosure.length || parseInt(enclosure.length || '0'),
+      };
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 解析日期
+   */
+  private parseDate(dateStr: any): Date | undefined {
+    if (!dateStr) return undefined;
+
+    try {
+      if (dateStr instanceof Date) {
+        return dateStr;
+      }
+
+      if (typeof dateStr === 'string') {
+        const parsed = new Date(dateStr);
+        if (!isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      }
+    } catch {
+      // 忽略解析错误
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 判断是否为图片 MIME 类型
+   */
+  private isImageMimeType(mimeType?: string): boolean {
+    if (!mimeType) return false;
+    return mimeType.startsWith('image/');
   }
 
   /**

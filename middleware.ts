@@ -13,6 +13,7 @@ const publicRoutes = new Set([
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/me',
+  '/api/health', // 健康检查，用于启动AI队列
 ]);
 
 // 静态资源

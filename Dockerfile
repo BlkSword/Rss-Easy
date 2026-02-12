@@ -38,11 +38,11 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV NODE_OPTIONS="--max-old-space-size=2048 --optimize-for-size --gc-global"
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # 创建非 root 用户和组
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 --gid 1001 nextjs
+RUN addgroup -g 1001 nodejs && \
+    adduser -D -u 1001 -G nodejs nextjs
 
 # 复制必要文件
 COPY --from=builder /app/prisma ./prisma

@@ -10,6 +10,7 @@ import { getNotificationService } from '../notifications/service';
 import { info, warn, error as logError } from '../logger';
 import type { Entry, Feed, User } from '@prisma/client';
 import type { AIAnalysisQueue as AIAnalysisQueueModel } from '@prisma/client';
+import { safeDecrypt } from '../crypto/encryption';
 
 // 任务类型，包含嵌套的关系
 type TaskWithRelations = AIAnalysisQueueModel & {
@@ -50,6 +51,7 @@ export class AIAnalysisQueue {
     }
 
     this.processing = true;
+    console.log('🔧 [Queue] AI分析队列启动, concurrency:', this.concurrency);
     await info('queue', 'AI分析队列启动', { concurrency: this.concurrency });
 
     while (this.processing) {
@@ -57,10 +59,12 @@ export class AIAnalysisQueue {
         const tasks = await this.getPendingTasks(this.concurrency);
 
         if (tasks.length === 0) {
+          console.log('⏳ [Queue] 暂无待处理任务，等待中...');
           await sleep(5000); // 没有任务时等待5秒
           continue;
         }
 
+        console.log(`🚀 [Queue] 发现 ${tasks.length} 个待处理任务，开始处理...`);
         await info('queue', '开始批量处理AI任务', { count: tasks.length });
 
         // 并发处理任务
@@ -68,6 +72,7 @@ export class AIAnalysisQueue {
           tasks.map((task) => this.processTask(task))
         );
       } catch (err) {
+        console.error('❌ [Queue] 队列处理器错误:', err);
         await logError('queue', '队列处理器错误', err instanceof Error ? err : undefined);
         await sleep(10000); // 出错后等待10秒
       }
@@ -137,17 +142,41 @@ export class AIAnalysisQueue {
       entryTitle: task.entry.title
     });
 
+    console.log(`🔧 [Queue] 开始处理任务 ${task.id}, 文章: ${task.entry.title}`);
+
     try {
       // 获取AI配置
-      const aiConfig = task.entry.feed.user?.aiConfig as AIConfig | undefined;
+      const aiConfig = (task.entry.feed.user?.aiConfig as any) as AIConfig | undefined;
+      const configValid = (task.entry.feed.user?.aiConfig as any)?.configValid === true;
+
+      if (!aiConfig || !configValid) {
+        throw new Error('AI configuration not found or invalid');
+      }
+
       const provider = aiConfig?.provider || 'openai';
       const model = aiConfig?.model || 'gpt-4o';
-      const service = new AIService({
+
+      // 解密 apiKey（如果存在）
+      let decryptedApiKey: string | undefined;
+      if (aiConfig.apiKey) {
+        decryptedApiKey = safeDecrypt(aiConfig.apiKey);
+      }
+
+      // 创建 AI 服务
+      const serviceConfig: AIConfig = {
         provider,
         model,
         maxTokens: aiConfig?.maxTokens || 2000,
         temperature: aiConfig?.temperature || 0.7,
-      });
+        baseURL: aiConfig?.baseURL,
+      };
+
+      // 只有当有 apiKey 时才添加（Ollama 不需要）
+      if (decryptedApiKey && provider !== 'ollama') {
+        serviceConfig.apiKey = decryptedApiKey;
+      }
+
+      const service = new AIService(serviceConfig);
 
       // 执行分析
       const result = await service.analyzeArticle(
@@ -188,6 +217,7 @@ export class AIAnalysisQueue {
       });
 
       const duration = Date.now() - startTime;
+      console.log(`✅ [Queue] 任务 ${task.id} 完成, 耗时: ${duration}ms`);
 
       // 标记任务完成
       await db.aIAnalysisQueue.update({

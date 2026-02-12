@@ -130,18 +130,32 @@ export const settingsRouter = router({
       const currentConfig = (current?.aiConfig as any) || {};
       const updatedConfig = { ...currentConfig };
 
+      // 检查是否修改了敏感配置（provider, model, apiKey, baseURL）
+      const sensitiveFields = ['provider', 'model', 'apiKey', 'baseURL'];
+      const modifiedSensitiveField = sensitiveFields.some(field =>
+        input[field as keyof typeof input] !== undefined &&
+        input[field as keyof typeof input] !== currentConfig[field]
+      );
+
       // 只复制非 undefined 的字段
       Object.keys(input).forEach(key => {
         const value = input[key as keyof typeof input];
         if (value !== undefined) {
           // 如果是 apiKey，加密后再存储
-          if (key === 'apiKey' && value) {
+          if (key === 'apiKey' && typeof value === 'string' && value) {
             (updatedConfig as any)[key] = encrypt(value);
           } else {
             (updatedConfig as any)[key] = value;
           }
         }
       });
+
+      // 如果修改了敏感配置，清除验证标志并禁用功能
+      if (modifiedSensitiveField) {
+        (updatedConfig as any).configValid = false;
+        // 保留用户的功能开关设置，但清空验证标志
+        // 这样用户需要重新测试才能启用功能
+      }
 
       const user = await ctx.db.user.update({
         where: { id: ctx.userId },
@@ -152,7 +166,8 @@ export const settingsRouter = router({
 
       await info('ai', '更新AI配置', {
         userId: ctx.userId,
-        provider: updatedConfig.provider
+        provider: updatedConfig.provider,
+        configValid: updatedConfig.configValid,
       });
 
       return user;
@@ -165,7 +180,11 @@ export const settingsRouter = router({
     .input(
       z.object({
         currentPassword: z.string(),
-        newPassword: z.string().min(8),
+        newPassword: z
+          .string()
+          .min(8, '密码长度至少为8个字符')
+          .regex(/[a-zA-Z]/, '密码必须包含字母')
+          .regex(/\d/, '密码必须包含数字'),
       })
     )
     .output(
@@ -576,10 +595,63 @@ export const settingsRouter = router({
 
         // 合并配置：数据库配置 + 传入的测试配置
         const dbConfig = (user.aiConfig as any) || {};
-        const testConfig = input ? { ...dbConfig, ...input } : dbConfig;
+
+        // 解密数据库中的API密钥（如果存在）
+        const decryptedDbConfig = { ...dbConfig };
+        if (dbConfig.apiKey) {
+          decryptedDbConfig.apiKey = safeDecrypt(dbConfig.apiKey);
+        }
+
+        // 如果input为空，只使用数据库配置；否则合并
+        const testConfig = input ? { ...decryptedDbConfig, ...input } : decryptedDbConfig;
 
         const { checkAIConfig } = await import('@/lib/ai/health-check');
         const result = await checkAIConfig(testConfig);
+
+        // 测试通过，保存验证标志和配置
+        if (result.success) {
+          const updatedConfig = { ...dbConfig };
+
+          // 如果有新的输入值，更新配置
+          if (input) {
+            Object.keys(input).forEach(key => {
+              const value = input[key as keyof typeof input];
+              if (value !== undefined) {
+                // 如果是 apiKey，加密后再存储
+                if (key === 'apiKey' && typeof value === 'string' && value) {
+                  (updatedConfig as any)[key] = encrypt(value);
+                } else {
+                  (updatedConfig as any)[key] = value;
+                }
+              }
+            });
+          }
+
+          // 标记配置已验证
+          (updatedConfig as any).configValid = true;
+
+          // 如果是第一次测试成功，设置默认值
+          if ((updatedConfig as any).autoSummary === undefined) {
+            (updatedConfig as any).autoSummary = false;
+          }
+          if ((updatedConfig as any).autoCategorize === undefined) {
+            (updatedConfig as any).autoCategorize = false;
+          }
+          if ((updatedConfig as any).aiQueueEnabled === undefined) {
+            (updatedConfig as any).aiQueueEnabled = false;
+          }
+
+          await ctx.db.user.update({
+            where: { id: ctx.userId },
+            data: { aiConfig: updatedConfig as any },
+          });
+
+          await info('ai', 'AI配置测试通过并保存', {
+            userId: ctx.userId,
+            provider: result.provider,
+            model: result.model,
+          });
+        }
 
         return result;
       } catch (err: any) {

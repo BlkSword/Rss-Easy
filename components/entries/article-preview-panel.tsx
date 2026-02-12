@@ -13,7 +13,6 @@ import { trpc } from '@/lib/trpc/client';
 import { Button, Divider, Skeleton, Tag } from 'antd';
 import { useToast } from '@/components/ui/toast';
 import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
-import { AIAnalysisPanel } from '@/components/entries/ai-analysis-panel';
 
 interface ArticlePreviewPanelProps {
   entryId?: string | null;
@@ -31,6 +30,7 @@ export function ArticlePreviewPanel({
   hasNext = false,
 }: ArticlePreviewPanelProps) {
   const { addToast } = useToast();
+  const utils = trpc.useUtils();
   const [content, setContent] = useState('');
   const { data: entry, isLoading } = trpc.entries.byId.useQuery(
     { id: entryId || '' },
@@ -263,45 +263,18 @@ export function ArticlePreviewPanel({
 
           <Divider className="my-6 bg-border/40" />
 
-          {/* AI 摘要显示 */}
-          {entry.aiSummary && (
-            <div className="mb-8 p-4 rounded-xl bg-gradient-to-br from-primary/5 to-purple-500/5 border border-primary/10">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-6 h-6 rounded-lg bg-primary/20 flex items-center justify-center">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <span className="text-sm font-medium text-primary">AI 摘要</span>
-              </div>
-              <p className="text-sm text-foreground/80 leading-relaxed">
-                {entry.aiSummary}
-              </p>
-            </div>
-          )}
-
-          {/* AI 分析面板 */}
-          <AIAnalysisPanel
-            entryId={entry.id}
-            hasSummary={!!entry.aiSummary}
-            onComplete={() => {
-              // 当分析完成时，刷新数据
-              window.location.reload();
-            }}
-          />
-
           {/* 文章正文 */}
           <RichContentRenderer html={content} />
 
-          {/* 原文链接 */}
+          {/* 查看完整原文链接 */}
           <div className="mt-12 pt-8 border-t border-border/60">
-            <a
-              href={entry.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-primary hover:underline font-medium"
+            <Link
+              href={`/entries/${entry.id}`}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary/5 hover:bg-primary/10 border border-primary/20 text-primary hover:border-primary/30 transition-all duration-300 hover:shadow-md hover:shadow-primary/10 group"
             >
-              <ExternalLink className="h-4 w-4" />
-              查看完整原文
-            </a>
+              <span className="font-medium group-hover:underline">查看完整原文</span>
+              <ExternalLink className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+            </Link>
           </div>
         </div>
       </div>

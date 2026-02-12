@@ -20,7 +20,11 @@ export const authRouter = router({
       z.object({
         email: z.string().email(),
         username: z.string().min(3).max(20),
-        password: z.string().min(8),
+        password: z
+          .string()
+          .min(8, '密码长度至少为8个字符')
+          .regex(/[a-zA-Z]/, '密码必须包含字母')
+          .regex(/\d/, '密码必须包含数字'),
       })
     )
     .mutation(async ({ input }) => {

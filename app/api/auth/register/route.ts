@@ -17,7 +17,11 @@ const registerSchema = z.object({
     .min(3, '用户名至少3个字符')
     .max(20, '用户名最多20个字符')
     .regex(/^[a-zA-Z0-9_-]+$/, '用户名只能包含字母、数字、下划线和连字符'),
-  password: z.string().min(8, '密码至少8个字符'),
+  password: z
+    .string()
+    .min(8, '密码长度至少为8个字符')
+    .regex(/[a-zA-Z]/, '密码必须包含字母')
+    .regex(/\d/, '密码必须包含数字'),
 });
 
 export async function POST(req: NextRequest) {

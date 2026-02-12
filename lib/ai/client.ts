@@ -167,15 +167,53 @@ AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
   }
 
   async calculateImportance(content: string): Promise<number> {
-    const factors = {
-      length: Math.min(content.length / 5000, 1),
-      hasNumbers: /\d+/.test(content) ? 0.2 : 0,
-      hasCode: /```|<code>/.test(content) ? 0.3 : 0,
-      hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.2 : 0,
-    };
+    try {
+      // 使用 AI 评估内容重要性
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
 
-    let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
-    return Math.min(Math.max(score, 0), 1);
+1. 实用性（30分）：内容是否提供有用的信息、技能或见解
+2. 独创性（25分）：内容是否独特、有新意，而非老生常谈
+3. 深度（25分）：内容是否有深度分析，而非浅层描述
+4. 时效性（20分）：内容是否具有时效价值或长期参考价值
+
+请只返回一个0-100之间的数字分数，不要其他文字。`,
+          },
+          {
+            role: 'user',
+            content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
+          },
+        ],
+        max_tokens: 10,
+        temperature: 0.3,
+      });
+
+      const scoreText = response.choices[0]?.message?.content?.trim() || '50';
+      const score = parseInt(scoreText, 10);
+
+      // 确保分数在0-100之间
+      if (isNaN(score)) {
+        return 0.5; // 默认中等重要性
+      }
+
+      return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+    } catch (error) {
+      console.error('AI importance calculation failed, using fallback:', error);
+      // 降级到简单算法
+      const factors = {
+        length: Math.min(content.length / 5000, 0.4), // 最高0.4分
+        hasNumbers: /\d+/.test(content) ? 0.15 : 0,
+        hasCode: /```|<code>/.test(content) ? 0.2 : 0,
+        hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.15 : 0,
+      };
+
+      let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
+      return Math.min(Math.max(score, 0.3), 0.9); // 最低0.3，最高0.9
+    }
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
@@ -299,15 +337,50 @@ class AnthropicProvider extends AIProvider {
   }
 
   async calculateImportance(content: string): Promise<number> {
-    const factors = {
-      length: Math.min(content.length / 5000, 1),
-      hasNumbers: /\d+/.test(content) ? 0.2 : 0,
-      hasCode: /```|<code>/.test(content) ? 0.3 : 0,
-      hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.2 : 0,
-    };
+    try {
+      // 使用 AI 评估内容重要性（Anthropic API）
+      const response = await this.client.messages.create({
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        max_tokens: 10,
+        temperature: 0.3,
+        system: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
 
-    let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
-    return Math.min(Math.max(score, 0), 1);
+1. 实用性（30分）：内容是否提供有用的信息、技能或见解
+2. 独创性（25分）：内容是否独特、有新意，而非老生常谈
+3. 深度（25分）：内容是否有深度分析，而非浅层描述
+4. 时效性（20分）：内容是否具有时效价值或长期参考价值
+
+请只返回一个0-100之间的数字分数，不要其他文字。`,
+        messages: [
+          {
+            role: 'user',
+            content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
+          },
+        ],
+      });
+
+      const scoreText = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '50';
+      const score = parseInt(scoreText, 10);
+
+      // 确保分数在0-100之间
+      if (isNaN(score)) {
+        return 0.5; // 默认中等重要性
+      }
+
+      return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+    } catch (error) {
+      console.error('AI importance calculation failed, using fallback:', error);
+      // 降级到简单算法
+      const factors = {
+        length: Math.min(content.length / 5000, 0.4), // 最高0.4分
+        hasNumbers: /\d+/.test(content) ? 0.15 : 0,
+        hasCode: /```|<code>/.test(content) ? 0.2 : 0,
+        hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.15 : 0,
+      };
+
+      let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
+      return Math.min(Math.max(score, 0.3), 0.9); // 最低0.3，最高0.9
+    }
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
@@ -436,15 +509,53 @@ class DeepSeekProvider extends AIProvider {
   }
 
   async calculateImportance(content: string): Promise<number> {
-    const factors = {
-      length: Math.min(content.length / 5000, 1),
-      hasNumbers: /\d+/.test(content) ? 0.2 : 0,
-      hasCode: /```|<code>/.test(content) ? 0.3 : 0,
-      hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.2 : 0,
-    };
+    try {
+      // 使用 AI 评估内容重要性
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
 
-    let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
-    return Math.min(Math.max(score, 0), 1);
+1. 实用性（30分）：内容是否提供有用的信息、技能或见解
+2. 独创性（25分）：内容是否独特、有新意，而非老生常谈
+3. 深度（25分）：内容是否有深度分析，而非浅层描述
+4. 时效性（20分）：内容是否具有时效价值或长期参考价值
+
+请只返回一个0-100之间的数字分数，不要其他文字。`,
+          },
+          {
+            role: 'user',
+            content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
+          },
+        ],
+        max_tokens: 10,
+        temperature: 0.3,
+      });
+
+      const scoreText = response.choices[0]?.message?.content?.trim() || '50';
+      const score = parseInt(scoreText, 10);
+
+      // 确保分数在0-100之间
+      if (isNaN(score)) {
+        return 0.5; // 默认中等重要性
+      }
+
+      return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+    } catch (error) {
+      console.error('AI importance calculation failed, using fallback:', error);
+      // 降级到简单算法
+      const factors = {
+        length: Math.min(content.length / 5000, 0.4), // 最高0.4分
+        hasNumbers: /\d+/.test(content) ? 0.15 : 0,
+        hasCode: /```|<code>/.test(content) ? 0.2 : 0,
+        hasLinks: /\[.*?\]\(.*?\)/.test(content) ? 0.15 : 0,
+      };
+
+      let score = Object.values(factors).reduce((sum, val) => sum + val, 0);
+      return Math.min(Math.max(score, 0.3), 0.9); // 最低0.3，最高0.9
+    }
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {

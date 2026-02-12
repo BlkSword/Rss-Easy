@@ -137,31 +137,29 @@ export function EntryList({
 
       // 乐观更新：更新分类未读计数
       utils.categories.list.setData(undefined, (oldData: any) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          categories: oldData.categories.map((category: any) => {
-            // 计算该分类中被标记的未读文章数
-            const affectedCount = vars.entryIds.filter((id: string) => {
-              const entry = entries.find(e => e.id === id);
-              return entry?.feed?.categoryId === category.id;
-            }).length;
-            return {
-              ...category,
-              unreadCount: Math.max(0, category.unreadCount - affectedCount),
-              feeds: category.feeds?.map((feed: any) => {
-                const feedAffectedCount = vars.entryIds.filter((id: string) => {
-                  const entry = entries.find(e => e.id === id);
-                  return entry?.feedId === feed.id;
-                }).length;
-                return {
-                  ...feed,
-                  unreadCount: Math.max(0, feed.unreadCount - feedAffectedCount),
-                };
-              }),
-            };
-          }),
-        };
+        // oldData 直接是数组，不是包含 categories 属性的对象
+        if (!oldData || !Array.isArray(oldData)) return oldData;
+        return oldData.map((category: any) => {
+          // 计算该分类中被标记的未读文章数
+          const affectedCount = vars.entryIds.filter((id: string) => {
+            const entry = entries.find(e => e.id === id);
+            return entry?.feed?.categoryId === category.id;
+          }).length;
+          return {
+            ...category,
+            unreadCount: Math.max(0, (category.unreadCount || 0) - affectedCount),
+            feeds: category.feeds?.map((feed: any) => {
+              const feedAffectedCount = vars.entryIds.filter((id: string) => {
+                const entry = entries.find(e => e.id === id);
+                return entry?.feedId === feed.id;
+              }).length;
+              return {
+                ...feed,
+                unreadCount: Math.max(0, (feed.unreadCount || 0) - feedAffectedCount),
+              };
+            }),
+          };
+        });
       });
 
       // 乐观更新：更新订阅源列表中的未读计数

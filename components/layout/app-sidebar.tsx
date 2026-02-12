@@ -147,7 +147,7 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
   };
 
   const navItems = [
-    { icon: Inbox, label: t('nav.all'), href: '/', count: stats?.unreadCount },
+    { icon: Inbox, label: t('nav.all'), href: '/' },
     { icon: Clock, label: t('nav.unread'), href: '/unread', count: stats?.unreadCount },
     { icon: Star, label: t('nav.starred'), href: '/starred' },
     { icon: Archive, label: t('nav.archive'), href: '/archive' },
@@ -396,8 +396,8 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
                     <Rss className="relative h-4 w-4 text-primary/60 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
                   )}
                   <span className="relative flex-1 truncate">{feed.title}</span>
-                  {feed._count?.entries > 0 && (
-                    <Badge size="sm" className="relative">{feed._count.entries}</Badge>
+                  {feed.unreadCount > 0 && (
+                    <Badge variant="primary" size="sm" className="relative">{feed.unreadCount}</Badge>
                   )}
                 </Link>
               ))}

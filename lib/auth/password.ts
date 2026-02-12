@@ -30,7 +30,7 @@ export type PasswordStrength = 'weak' | 'medium' | 'strong';
 
 /**
  * 验证密码强度
- * 增强版：要求至少 8 个字符，包含大小写字母、数字和特殊字符
+ * 要求：至少 8 个字符，包含字母和数字
  */
 export function validatePasswordStrength(password: string): {
   valid: boolean;
@@ -50,31 +50,27 @@ export function validatePasswordStrength(password: string): {
     strengthScore += 1;
   }
 
-  // 包含大写字母
-  if (!/[A-Z]/.test(password)) {
-    errors.push('密码必须包含至少一个大写字母');
-  } else {
-    strengthScore += 1;
-  }
-
-  // 包含小写字母
-  if (!/[a-z]/.test(password)) {
-    errors.push('密码必须包含至少一个小写字母');
+  // 包含字母（大小写均可）
+  if (!/[a-zA-Z]/.test(password)) {
+    errors.push('密码必须包含字母');
   } else {
     strengthScore += 1;
   }
 
   // 包含数字
   if (!/\d/.test(password)) {
-    errors.push('密码必须包含至少一个数字');
+    errors.push('密码必须包含数字');
   } else {
     strengthScore += 1;
   }
 
-  // 包含特殊字符
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
-    errors.push('密码必须包含至少一个特殊字符');
-  } else {
+  // 可选：包含特殊字符（加分项）
+  if (/[^a-zA-Z0-9]/.test(password)) {
+    strengthScore += 1;
+  }
+
+  // 包含大小写字母混合（加分项）
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) {
     strengthScore += 1;
   }
 

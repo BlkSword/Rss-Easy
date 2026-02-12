@@ -33,17 +33,23 @@ export function AISettings({ user }: AISettingsProps) {
   const [model, setModel] = useState(aiConfig.model || '');
   const [apiKey, setApiKey] = useState('');
   const [baseURL, setBaseURL] = useState(aiConfig.baseURL || '');
-  const [autoSummary, setAutoSummary] = useState(aiConfig.autoSummary ?? true);
-  const [autoCategorize, setAutoCategorize] = useState(aiConfig.autoCategorize ?? true);
-  const [aiQueueEnabled, setAiQueueEnabled] = useState(aiConfig.aiQueueEnabled ?? true);  // AI分析队列启用状态
+  const [autoSummary, setAutoSummary] = useState(aiConfig.autoSummary ?? false);
+  const [autoCategorize, setAutoCategorize] = useState(aiConfig.autoCategorize ?? false);
+  const [aiQueueEnabled, setAiQueueEnabled] = useState(aiConfig.aiQueueEnabled ?? false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
-  const [hasApiKeyInDb, setHasApiKeyInDb] = useState(!!aiConfig.apiKey);  // 追踪数据库中是否有密钥
+  const [hasApiKeyInDb, setHasApiKeyInDb] = useState(!!aiConfig.apiKey);
+  const [configValid, setConfigValid] = useState(aiConfig.configValid === true);
 
-  const utils = trpc.useUtils();  // 获取 utils 用于刷新查询
+  const utils = trpc.useUtils();
 
   const { mutate: updateAIConfig } = trpc.settings.updateAIConfig.useMutation();
   const { mutate: testAIConfig } = trpc.settings.testAIConfig.useMutation();
+
+  // 当user数据更新时，同步更新configValid状态
+  useEffect(() => {
+    setConfigValid(aiConfig.configValid === true);
+  }, [aiConfig.configValid]);
 
   // 当提供商改变时，设置默认模型
   useEffect(() => {
@@ -77,9 +83,9 @@ export function AISettings({ user }: AISettingsProps) {
     model !== aiConfig.model ||
     baseURL !== aiConfig.baseURL ||
     hasNewApiKey ||  // 只有当用户输入了新密钥时才算变化
-    autoSummary !== (aiConfig.autoSummary ?? true) ||
-    autoCategorize !== (aiConfig.autoCategorize ?? true) ||
-    aiQueueEnabled !== (aiConfig.aiQueueEnabled ?? true);
+    autoSummary !== (aiConfig.autoSummary ?? false) ||
+    autoCategorize !== (aiConfig.autoCategorize ?? false) ||
+    aiQueueEnabled !== (aiConfig.aiQueueEnabled ?? false);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -171,8 +177,10 @@ export function AISettings({ user }: AISettingsProps) {
       });
 
       if (result.success) {
-        notifySuccess('连接测试成功', `已成功连接到 ${result.provider || provider} API`);
+        setConfigValid(true);
+        notifySuccess('连接测试成功', `已成功连接到 ${result.provider || provider} API，现在可以启用AI功能`);
       } else {
+        setConfigValid(false);
         notifyError('连接测试失败', result.error || result.message);
       }
     } catch (error: any) {
@@ -333,10 +341,24 @@ export function AISettings({ user }: AISettingsProps) {
       </Card>
 
       {/* AI功能设置 */}
-      <Card className="overflow-hidden">
+      <Card className={cn(
+        'overflow-hidden transition-all duration-250',
+        !configValid && 'opacity-60'
+      )}>
         <CardHeader>
-          <CardTitle>AI功能</CardTitle>
-          <CardDescription>配置AI功能的自动触发行为</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            AI功能
+            {!configValid && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                需要先测试连接
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>
+            {configValid
+              ? '配置AI功能的自动触发行为'
+              : '请先配置AI提供商并点击"测试连接"按钮验证配置，验证通过后才能启用AI功能'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {[
@@ -364,59 +386,69 @@ export function AISettings({ user }: AISettingsProps) {
               description: '启用后台AI分析队列，自动处理文章深度分析',
               icon: Zap,
             },
-          ].map(({ key, value, onChange, title, description, icon: Icon }) => (
-            <div
-              key={key}
-              className={cn(
-                'flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-250 cursor-pointer group',
-                'hover:border-primary/25 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
-                value 
-                  ? 'border-primary/50 bg-gradient-to-r from-primary/[0.08] to-primary/[0.03] shadow-sm' 
-                  : 'border-border/80 bg-muted/20'
-              )}
-              onClick={() => onChange(!value)}
-            >
-              <div className="flex items-center gap-3 flex-1">
-                <div className={cn(
-                  'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-250',
-                  value ? 'bg-primary/20 shadow-sm' : 'bg-muted/60 group-hover:bg-primary/10'
-                )}>
-                  <Icon className={cn(
-                    'h-5 w-5 transition-all duration-250',
-                    value ? 'text-primary scale-110' : 'text-muted-foreground group-hover:text-primary/60'
-                  )} />
-                </div>
-                <div>
-                  <div className={cn(
-                    'font-medium transition-colors duration-200',
-                    value ? 'text-primary' : 'group-hover:text-primary/90'
-                  )}>{title}</div>
-                  <div className="text-sm text-muted-foreground">{description}</div>
-                </div>
-              </div>
-              <button
+          ].map(({ key, value, onChange, title, description, icon: Icon }) => {
+            const isDisabled = !configValid;
+            return (
+              <div
+                key={key}
                 className={cn(
-                  'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                  value
-                    ? 'bg-slate-300 dark:bg-slate-600'
-                    : 'bg-primary shadow-lg shadow-primary/30'
+                  'flex items-center justify-between p-4 rounded-xl border-2 transition-all duration-250',
+                  isDisabled
+                    ? 'opacity-50 cursor-not-allowed border-border/60 bg-muted/10'
+                    : 'cursor-pointer hover:border-primary/25 hover:bg-gradient-to-r hover:from-primary/5 hover:to-transparent',
+                  value && !isDisabled
+                    ? 'border-primary/50 bg-gradient-to-r from-primary/[0.08] to-primary/[0.03] shadow-sm'
+                    : 'border-border/80 bg-muted/20'
                 )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChange(!value);
-                }}
+                onClick={() => !isDisabled && onChange(!value)}
               >
-                <span
+                <div className="flex items-center gap-3 flex-1">
+                  <div className={cn(
+                    'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-250',
+                    value && !isDisabled ? 'bg-primary/20 shadow-sm' : 'bg-muted/60 group-hover:bg-primary/10'
+                  )}>
+                    <Icon className={cn(
+                      'h-5 w-5 transition-all duration-250',
+                      value && !isDisabled ? 'text-primary scale-110' : 'text-muted-foreground group-hover:text-primary/60'
+                    )} />
+                  </div>
+                  <div>
+                    <div className={cn(
+                      'font-medium transition-colors duration-200',
+                      value && !isDisabled ? 'text-primary' : 'group-hover:text-primary/90'
+                    )}>{title}</div>
+                    <div className="text-sm text-muted-foreground">{description}</div>
+                    {isDisabled && (
+                      <div className="text-xs text-amber-600 mt-1">需要先测试AI连接</div>
+                    )}
+                  </div>
+                </div>
+                <button
                   className={cn(
-                    'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                    value 
-                      ? 'left-8 bg-white' 
-                      : 'left-1 bg-white'
+                    'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
+                    value
+                      ? 'bg-slate-300 dark:bg-slate-600'
+                      : 'bg-primary shadow-lg shadow-primary/30'
                   )}
-                />
-              </button>
-            </div>
-          ))}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isDisabled) {
+                      onChange(!value);
+                    }
+                  }}
+                >
+                  <span
+                    className={cn(
+                      'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
+                      value
+                        ? 'left-8 bg-white'
+                        : 'left-1 bg-white'
+                    )}
+                  />
+                </button>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -447,6 +479,51 @@ export function AISettings({ user }: AISettingsProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* 测试AI分析 */}
+      {configValid && (
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 overflow-hidden">
+          <CardContent className="pt-6">
+            <div className="flex gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-medium text-sm mb-1">测试AI分析功能</h4>
+                <p className="text-xs text-muted-foreground mb-3">
+                  使用示例文本测试AI分析是否正常工作
+                </p>
+                <Button
+                  variant="primary"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/ai/test-analyze', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          text: '人工智能技术正在快速发展，深度学习、自然语言处理和计算机视觉等领域取得了重大突破。这些技术的进步为各行各业带来了新的机遇和挑战。',
+                        }),
+                      });
+                      const data = await response.json();
+                      if (data.success) {
+                        notifySuccess('AI分析测试成功', `耗时${data.duration}`);
+                        console.log('测试结果:', data.result);
+                      } else {
+                        notifyError('测试失败', data.message);
+                      }
+                    } catch (err) {
+                      notifyError('测试失败', err instanceof Error ? err.message : '未知错误');
+                    }
+                  }}
+                  disabled={!configValid}
+                >
+                  运行测试
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 保存按钮 */}
       <div className="flex justify-end gap-3">

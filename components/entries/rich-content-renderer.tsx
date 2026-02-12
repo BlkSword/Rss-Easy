@@ -53,15 +53,12 @@ function sanitizeHTML(html: string): string {
     // 保留所有标签的小写属性名
     KEEP_CONTENT: true,
     // 返回完整的 HTML 文档
+    // 返回完整的 HTML 文档
     RETURN_DOM: false,
     // 返回 DOM 节点
     RETURN_DOM_FRAGMENT: false,
-    // 返回 DOM 节点
-    RETURN_DOM_IMPORT: false,
     // 强制清理
     FORCE_BODY: false,
-    // 允许 SVG 标签
-    ALLOW_SVG: false,
   });
 
   // 清理后的 HTML 再进行微信特殊标签清理

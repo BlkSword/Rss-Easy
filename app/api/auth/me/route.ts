@@ -5,6 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+
+const SESSION_COOKIE_NAME = 'session';
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,11 +43,18 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // 用户不存在（可能已被注销），清除 session 并返回 401
     if (!user) {
-      return NextResponse.json(
-        { error: '用户不存在' },
-        { status: 404 }
+      const response = NextResponse.json(
+        { error: '用户不存在或已被注销' },
+        { status: 401 }
       );
+
+      // 清除 session cookie
+      const cookieStore = await cookies();
+      cookieStore.delete(SESSION_COOKIE_NAME);
+
+      return response;
     }
 
     return NextResponse.json({

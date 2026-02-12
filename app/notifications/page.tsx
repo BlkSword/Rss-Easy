@@ -27,54 +27,206 @@ export default function NotificationsPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const toggleSidebar = () => setIsSidebarCollapsed(prev => !prev);
 
-  const { data: notifications, refetch } = trpc.notifications.list.useQuery({
+  const utils = trpc.useUtils();
+
+  const { data: notifications } = trpc.notifications.list.useQuery({
     limit: 100,
     onlyUnread: filter === 'unread',
   });
 
   const { data: unreadCount } = trpc.notifications.unreadCount.useQuery();
 
-  const markAsReadMutation = trpc.notifications.markAsRead.useMutation();
-  const markAllAsReadMutation = trpc.notifications.markAllAsRead.useMutation();
-  const deleteMutation = trpc.notifications.delete.useMutation();
-  const clearReadMutation = trpc.notifications.clearRead.useMutation();
+  const markAsReadMutation = trpc.notifications.markAsRead.useMutation({
+    onMutate: async ({ id }) => {
+      // 取消正在进行的查询，避免覆盖我们的乐观更新
+      await utils.notifications.list.cancel();
+      await utils.notifications.unreadCount.cancel();
 
-  const handleMarkAsRead = async (id: string) => {
-    try {
-      await markAsReadMutation.mutateAsync({ id });
-      refetch();
-    } catch (error) {
-      handleApiError(error, '操作失败');
-    }
-  };
+      // 获取当前快照
+      const previousNotifications = {
+        all: utils.notifications.list.getData({ limit: 100, onlyUnread: false }),
+        unread: utils.notifications.list.getData({ limit: 100, onlyUnread: true }),
+      };
+      const previousUnreadCount = utils.notifications.unreadCount.getData();
 
-  const handleMarkAllAsRead = async () => {
-    try {
-      await markAllAsReadMutation.mutateAsync();
+      // 乐观更新：将通知标记为已读（更新两个缓存）
+      const updateCache = (old: any) => {
+        if (!old) return old;
+        return old.map((notification: any) =>
+          notification.id === id
+            ? { ...notification, isRead: true, readAt: new Date() }
+            : notification
+        );
+      };
+      utils.notifications.list.setData({ limit: 100, onlyUnread: false }, updateCache);
+      utils.notifications.list.setData({ limit: 100, onlyUnread: true }, updateCache);
+
+      // 乐观更新未读计数
+      utils.notifications.unreadCount.setData(undefined,
+        typeof previousUnreadCount === 'number' && previousUnreadCount > 0 ? previousUnreadCount - 1 : 0
+      );
+
+      // 返回上下文，用于错误恢复
+      return { previousNotifications, previousUnreadCount };
+    },
+    onError: (err, variables, context) => {
+      // 出错时回滚
+      if (context?.previousNotifications) {
+        utils.notifications.list.setData({ limit: 100, onlyUnread: false }, context.previousNotifications.all);
+        utils.notifications.list.setData({ limit: 100, onlyUnread: true }, context.previousNotifications.unread);
+      }
+      if (context?.previousUnreadCount !== undefined) {
+        utils.notifications.unreadCount.setData(undefined, context.previousUnreadCount);
+      }
+      handleApiError(err, '操作失败');
+    },
+    onSettled: () => {
+      // 无论如何都重新验证，确保数据一致性
+      utils.notifications.list.invalidate();
+      utils.notifications.unreadCount.invalidate();
+    },
+  });
+
+  const markAllAsReadMutation = trpc.notifications.markAllAsRead.useMutation({
+    onMutate: async () => {
+      await utils.notifications.list.cancel();
+      await utils.notifications.unreadCount.cancel();
+
+      const previousNotifications = {
+        all: utils.notifications.list.getData({ limit: 100, onlyUnread: false }),
+        unread: utils.notifications.list.getData({ limit: 100, onlyUnread: true }),
+      };
+      const previousUnreadCount = utils.notifications.unreadCount.getData();
+
+      // 乐观更新：将所有通知标记为已读
+      const markAllRead = (old: any) => {
+        if (!old) return old;
+        return old.map((notification: any) => ({
+          ...notification,
+          isRead: true,
+          readAt: new Date(),
+        }));
+      };
+      utils.notifications.list.setData({ limit: 100, onlyUnread: false }, markAllRead);
+      utils.notifications.list.setData({ limit: 100, onlyUnread: true }, markAllRead);
+
+      // 乐观更新未读计数为 0
+      utils.notifications.unreadCount.setData(undefined, 0);
+
+      return { previousNotifications, previousUnreadCount };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousNotifications) {
+        utils.notifications.list.setData({ limit: 100, onlyUnread: false }, context.previousNotifications.all);
+        utils.notifications.list.setData({ limit: 100, onlyUnread: true }, context.previousNotifications.unread);
+      }
+      if (context?.previousUnreadCount !== undefined) {
+        utils.notifications.unreadCount.setData(undefined, context.previousUnreadCount);
+      }
+      handleApiError(err, '操作失败');
+    },
+    onSuccess: () => {
       handleApiSuccess('已全部标记为已读');
-      refetch();
-    } catch (error) {
-      handleApiError(error, '操作失败');
-    }
-  };
+    },
+    onSettled: () => {
+      utils.notifications.list.invalidate();
+      utils.notifications.unreadCount.invalidate();
+    },
+  });
 
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteMutation.mutateAsync({ id });
-      refetch();
-    } catch (error) {
-      handleApiError(error, '操作失败');
-    }
-  };
+  const deleteMutation = trpc.notifications.delete.useMutation({
+    onMutate: async ({ id }) => {
+      await utils.notifications.list.cancel();
+      await utils.notifications.unreadCount.cancel();
 
-  const handleClearRead = async () => {
-    try {
-      await clearReadMutation.mutateAsync();
+      const previousNotifications = {
+        all: utils.notifications.list.getData({ limit: 100, onlyUnread: false }),
+        unread: utils.notifications.list.getData({ limit: 100, onlyUnread: true }),
+      };
+      const wasUnread = previousNotifications.all?.find(n => n.id === id)?.isRead === false;
+
+      // 乐观更新：从列表中移除通知
+      const removeNotification = (old: any) => {
+        if (!old) return old;
+        return old.filter((notification: any) => notification.id !== id);
+      };
+      utils.notifications.list.setData({ limit: 100, onlyUnread: false }, removeNotification);
+      utils.notifications.list.setData({ limit: 100, onlyUnread: true }, removeNotification);
+
+      // 如果删除的是未读通知，更新未读计数
+      const previousUnreadCount = utils.notifications.unreadCount.getData();
+      if (wasUnread) {
+        utils.notifications.unreadCount.setData(undefined,
+          typeof previousUnreadCount === 'number' && previousUnreadCount > 0 ? previousUnreadCount - 1 : 0
+        );
+      }
+
+      return { previousNotifications, previousUnreadCount, wasUnread };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousNotifications) {
+        utils.notifications.list.setData({ limit: 100, onlyUnread: false }, context.previousNotifications.all);
+        utils.notifications.list.setData({ limit: 100, onlyUnread: true }, context.previousNotifications.unread);
+      }
+      if (context?.previousUnreadCount !== undefined) {
+        utils.notifications.unreadCount.setData(undefined, context.previousUnreadCount);
+      }
+      handleApiError(err, '操作失败');
+    },
+    onSettled: () => {
+      utils.notifications.list.invalidate();
+      utils.notifications.unreadCount.invalidate();
+    },
+  });
+
+  const clearReadMutation = trpc.notifications.clearRead.useMutation({
+    onMutate: async () => {
+      await utils.notifications.list.cancel();
+
+      const previousNotifications = {
+        all: utils.notifications.list.getData({ limit: 100, onlyUnread: false }),
+        unread: utils.notifications.list.getData({ limit: 100, onlyUnread: true }),
+      };
+
+      // 乐观更新：移除所有已读通知
+      const filterRead = (old: any) => {
+        if (!old) return old;
+        return old.filter((notification: any) => !notification.isRead);
+      };
+      utils.notifications.list.setData({ limit: 100, onlyUnread: false }, filterRead);
+      // 已读通知在"仅未读"列表中本就不存在，不需要过滤
+
+      return { previousNotifications };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousNotifications) {
+        utils.notifications.list.setData({ limit: 100, onlyUnread: false }, context.previousNotifications.all);
+        utils.notifications.list.setData({ limit: 100, onlyUnread: true }, context.previousNotifications.unread);
+      }
+      handleApiError(err, '操作失败');
+    },
+    onSuccess: () => {
       handleApiSuccess('已清空已读通知');
-      refetch();
-    } catch (error) {
-      handleApiError(error, '操作失败');
-    }
+    },
+    onSettled: () => {
+      utils.notifications.list.invalidate();
+    },
+  });
+
+  const handleMarkAsRead = (id: string) => {
+    markAsReadMutation.mutate({ id });
+  };
+
+  const handleMarkAllAsRead = () => {
+    markAllAsReadMutation.mutate();
+  };
+
+  const handleDelete = (id: string) => {
+    deleteMutation.mutate({ id });
+  };
+
+  const handleClearRead = () => {
+    clearReadMutation.mutate();
   };
 
   const getNotificationIcon = (type: string) => {

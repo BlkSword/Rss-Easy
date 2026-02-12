@@ -202,6 +202,7 @@ export const entriesRouter = router({
               id: true,
               title: true,
               iconUrl: true,
+              siteUrl: true,
               categoryId: true,
             },
           },

@@ -8,6 +8,7 @@ import { parseFeed } from './parser';
 import { generateContentHash } from '../utils';
 import { info, warn, error } from '../logger';
 import type { Feed, Entry } from '@prisma/client';
+import { AIAnalysisQueue } from '../ai/queue';
 
 export interface FeedUpdateResult {
   success: boolean;
@@ -71,7 +72,7 @@ export class FeedManager {
           entriesUpdated++;
         } else {
           // 创建新条目
-          await db.entry.create({
+          const newEntry = await db.entry.create({
             data: {
               feedId: feed.id,
               title: item.title,
@@ -85,6 +86,55 @@ export class FeedManager {
             },
           });
           entriesAdded++;
+
+          // 自动添加到AI分析队列（需要用户启用且配置有效）
+          try {
+            // 获取用户的AI配置
+            const user = await db.user.findUnique({
+              where: { id: feed.userId },
+              select: { aiConfig: true },
+            });
+
+            const aiConfig = (user?.aiConfig as any) || {};
+            const configValid = aiConfig.configValid === true;
+            const autoSummary = aiConfig.autoSummary === true;
+            const autoCategorize = aiConfig.autoCategorize === true;
+            const aiQueueEnabled = aiConfig.aiQueueEnabled === true;
+
+            // 记录AI配置状态
+            await info('rss', '检查AI配置', {
+              entryId: newEntry.id,
+              feedId: feed.id,
+              userId: feed.userId,
+              configValid,
+              autoSummary,
+              autoCategorize,
+              aiQueueEnabled,
+            });
+
+            // 只有当配置验证通过且用户启用功能时才添加到队列
+            if (configValid && (autoSummary || autoCategorize || aiQueueEnabled)) {
+              await AIAnalysisQueue.addTask(newEntry.id, 'all', 5);
+              await info('rss', '文章已添加到AI分析队列', {
+                entryId: newEntry.id,
+                feedId: feed.id,
+              });
+            } else {
+              await info('rss', '文章未添加到AI分析队列', {
+                entryId: newEntry.id,
+                reason: !configValid ? '配置未验证' : 'AI功能未启用',
+                configValid,
+                hasEnabledFeatures: autoSummary || autoCategorize || aiQueueEnabled,
+              });
+            }
+          } catch (err) {
+            // AI分析失败不影响feed抓取
+            await error('rss', '添加AI分析任务失败', err instanceof Error ? err : undefined, {
+              entryId: newEntry.id,
+              feedId: feed.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       }
 

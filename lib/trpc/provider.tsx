@@ -10,6 +10,24 @@ import { useState } from 'react';
 import SuperJSON from 'superjson';
 import { trpc } from './client';
 
+/**
+ * 自定义 fetch 函数，处理认证错误
+ */
+const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const response = await fetch(input, init);
+
+  // 检查是否是 401 错误
+  if (response.status === 401) {
+    // 清除本地存储的用户信息并跳转到登录页面
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('userId');
+      window.location.href = '/login';
+    }
+  }
+
+  return response;
+};
+
 export function TRPCProvider({
   children,
 }: {
@@ -20,6 +38,13 @@ export function TRPCProvider({
       queries: {
         staleTime: 1000 * 30, // 30秒
         refetchOnWindowFocus: false,
+        retry: (failureCount, error) => {
+          // 如果是 UNAUTHORIZED 错误，不重试
+          if (error && (error as any).code === 'UNAUTHORIZED') {
+            return false;
+          }
+          return failureCount < 3;
+        },
       },
     },
   }));
@@ -35,6 +60,7 @@ export function TRPCProvider({
         httpBatchLink({
           transformer: SuperJSON,
           url: getBaseUrl() + '/api/trpc',
+          fetch: customFetch,
           headers() {
             return {
               // 在这里添加认证头
