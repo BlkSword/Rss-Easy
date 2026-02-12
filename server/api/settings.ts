@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { info, error } from '@/lib/logger';
 import { createEmailServiceFromUser } from '@/lib/email/service';
+import { encrypt, safeDecrypt } from '@/lib/crypto/encryption';
 
 export const settingsRouter = router({
   /**
@@ -26,6 +27,11 @@ export const settingsRouter = router({
 
     if (!user) {
       throw new Error('用户不存在');
+    }
+
+    // 解密 API Key（如果存在）
+    if (user.aiConfig && (user.aiConfig as any).apiKey) {
+      (user.aiConfig as any).apiKey = safeDecrypt((user.aiConfig as any).apiKey);
     }
 
     return user;
@@ -128,7 +134,12 @@ export const settingsRouter = router({
       Object.keys(input).forEach(key => {
         const value = input[key as keyof typeof input];
         if (value !== undefined) {
-          (updatedConfig as any)[key] = value;
+          // 如果是 apiKey，加密后再存储
+          if (key === 'apiKey' && value) {
+            (updatedConfig as any)[key] = encrypt(value);
+          } else {
+            (updatedConfig as any)[key] = value;
+          }
         }
       });
 

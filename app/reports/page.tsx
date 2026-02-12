@@ -503,7 +503,6 @@ export default function ReportsPage() {
                     type="primary"
                     icon={<Plus className="h-4 w-4" />}
                     onClick={() => handleGenerate('daily')}
-                    loading={startGenerateDaily.isPending}
                     className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-shadow"
                   >
                     生成日报
@@ -511,7 +510,6 @@ export default function ReportsPage() {
                   <Button
                     icon={<Plus className="h-4 w-4" />}
                     onClick={() => handleGenerate('weekly')}
-                    loading={startGenerateWeekly.isPending}
                   >
                     生成周报
                   </Button>

@@ -1,12 +1,19 @@
 /**
  * 系统初始化 API
  * 用于记录系统启动日志
+ * 需要认证：API 密钥
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { info } from '@/lib/logger';
+import { validateApiKey, unauthorizedResponse } from '@/lib/auth/api-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 验证 API 密钥
+  if (!validateApiKey(request)) {
+    return unauthorizedResponse('Valid API key required');
+  }
+
   try {
     // 记录系统启动日志
     await info('system', '系统初始化完成', {
@@ -15,8 +22,8 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: '系统初始化完成',
       timestamp: new Date().toISOString(),
     });

@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { verifyPassword, signToken, setSessionCookie } from '@/lib/auth';
+import { loginRateLimiter, getClientIdentifier, rateLimitResponse } from '@/lib/security/rate-limit';
+import { error } from '@/lib/logger';
 
 // 登录请求验证 schema
 const loginSchema = z.object({
@@ -15,6 +17,14 @@ const loginSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // 速率限制检查
+    const clientId = getClientIdentifier(req);
+    const rateLimit = await loginRateLimiter.check(clientId);
+
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.resetTime);
+    }
+
     const body = await req.json();
 
     // 验证请求数据

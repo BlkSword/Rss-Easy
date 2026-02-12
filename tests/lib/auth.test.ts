@@ -43,7 +43,7 @@ describe('Password', () => {
 
 describe('JWT', () => {
   it('should sign and verify token', async () => {
-    const payload = { userId: 'user-123', email: 'test@example.com' };
+    const payload = { userId: 'user-123', email: 'demo@example.com' };
     const token = await signToken(payload);
     const decoded = await verifyToken(token);
 

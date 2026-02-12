@@ -7,6 +7,20 @@ import nodemailer from 'nodemailer';
 import { info, warn, error } from '@/lib/logger';
 
 /**
+ * 转义 HTML 特殊字符
+ * 防止邮件中的 HTML 注入
+ */
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+    .replace(/\//g, "&#x2F;");
+}
+
+/**
  * 邮件配置接口
  */
 export interface EmailConfig {
@@ -179,7 +193,7 @@ export class EmailService {
    * 获取测试邮件模板
    */
   private getTestEmailTemplate(username?: string): string {
-    const displayName = username || '用户';
+    const displayName = escapeHtml(username || '用户');
 
     return `<!DOCTYPE html>
 <html>
@@ -236,7 +250,7 @@ export class EmailService {
     resetUrl: string,
     expiresIn: string
   ): string {
-    const displayName = username || '用户';
+    const displayName = escapeHtml(username || '用户');
 
     return `<!DOCTYPE html>
 <html>
@@ -313,7 +327,9 @@ export class EmailService {
     content: string,
     actionUrl?: string
   ): string {
-    const displayName = username || '用户';
+    const displayName = escapeHtml(username || '用户');
+    const safeTitle = escapeHtml(title);
+    const safeContent = escapeHtml(content);
 
     return `<!DOCTYPE html>
 <html>
@@ -340,12 +356,12 @@ export class EmailService {
       <p>智能 RSS 资讯聚合平台</p>
     </div>
     <div class="content">
-      <h2 style="margin-top: 0;">${title}</h2>
+      <h2 style="margin-top: 0;">${safeTitle}</h2>
       <p class="message">
         您好，${displayName}！
       </p>
       <div class="message">
-        ${content.replace(/\n/g, '<br>')}
+        ${safeContent.replace(/\n/g, '<br>')}
       </div>
       ${actionUrl ? `
       <div class="button-container">

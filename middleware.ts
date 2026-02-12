@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { verifyToken } from '@/lib/auth/jwt';
 
 // 公开路由（不需要认证）
 const publicRoutes = new Set([
@@ -46,14 +47,16 @@ function getSessionToken(request: NextRequest): string | undefined {
 }
 
 /**
- * 验证 JWT token（简化版，只检查格式）
- * 实际验证由 API 路由处理
+ * 验证 JWT token
+ * 使用真正的 JWT 验证而不是简单的长度检查
  */
-function isValidToken(token: string): boolean {
-  if (!token || token.length < 10) {
+async function isValidToken(token: string): Promise<boolean> {
+  try {
+    await verifyToken(token);
+    return true;
+  } catch {
     return false;
   }
-  return true;
 }
 
 export async function middleware(request: NextRequest) {
@@ -70,7 +73,7 @@ export async function middleware(request: NextRequest) {
 
   // API 路由 - 检查认证
   if (pathname.startsWith('/api/')) {
-    if (!sessionToken || !isValidToken(sessionToken)) {
+    if (!sessionToken || !(await isValidToken(sessionToken))) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -80,7 +83,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 页面路由 - 检查认证
-  if (!sessionToken || !isValidToken(sessionToken)) {
+  if (!sessionToken || !(await isValidToken(sessionToken))) {
     // 保存原始 URL，登录后跳转回来
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);

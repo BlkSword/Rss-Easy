@@ -232,25 +232,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* 测试账号提示 */}
-          <Fade delay={400}>
-            <div className="mt-6 p-5 rounded-xl bg-gradient-to-r from-muted/50 to-muted/30 border border-border/60 text-sm shadow-sm hover-lift cursor-pointer group">
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-                <span className="font-medium text-foreground">测试账号</span>
-              </div>
-              <div className="space-y-1 text-muted-foreground">
-                <p className="flex items-center gap-2">
-                  <Mail className="w-3 h-3" />
-                  邮箱: <span className="font-mono text-foreground select-all">test@example.com</span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <Lock className="w-3 h-3" />
-                  密码: <span className="font-mono text-foreground select-all">password123</span>
-                </p>
-              </div>
-            </div>
-          </Fade>
         </StaggerContainer>
       </Fade>
     </div>

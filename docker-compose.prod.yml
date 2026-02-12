@@ -1,0 +1,264 @@
+# =====================================================
+# Rss-Easy Docker Compose 生产环境配置
+# =====================================================
+#
+# 使用方式:
+#   docker-compose -f docker-compose.prod.yml up -d
+#
+# 环境变量配置：
+#   创建 .env 文件并配置所有必要的环境变量
+# =====================================================
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: rss-easy-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rss_easy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # 必须在 .env 中设置
+      POSTGRES_DB: ${POSTGRES_DB:-rss_easy}
+      # 性能优化
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      - "127.0.0.1:5432:5432"  # 仅本地访问
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rss_easy}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # 安全选项
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - rss-easy-network
+
+  # Redis 缓存和队列
+  redis:
+    image: redis:7-alpine
+    container_name: rss-easy-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}  # 必须在 .env 中设置
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"  # 仅本地访问
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - rss-easy-network
+
+  # 数据库初始化服务（自动运行迁移和种子数据）
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rss-easy-init
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss_easy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_easy}?connection_limit=10&pool_timeout=20
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Running Prisma generate...' &&
+        npx prisma@6.19.2 generate &&
+        echo 'Running database migrations...' &&
+        npx prisma@6.19.2 db push --accept-data-loss &&
+        echo 'Seeding initial data...' &&
+        npx tsx prisma/seed.ts &&
+        echo 'Initialization complete!'
+      "
+    volumes:
+      - ./prisma:/app/prisma
+    networks:
+      - rss-easy-network
+
+  # 应用服务
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rss-easy-app
+    ports:
+      - "3000:3000"
+    environment:
+      # 数据库配置
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss_easy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_easy}?connection_limit=10&pool_timeout=20
+
+      # Redis 配置
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # 认证配置（必须设置强密码）
+      JWT_SECRET: ${JWT_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      APP_URL: ${APP_URL}
+
+      # 加密配置
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+
+      # Cron 密钥
+      CRON_SECRET: ${CRON_SECRET}
+
+      # 应用配置
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+
+      # AI 配置
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      CUSTOM_API_BASE_URL: ${CUSTOM_API_BASE_URL}
+      CUSTOM_API_KEY: ${CUSTOM_API_KEY}
+      CUSTOM_API_MODEL: ${CUSTOM_API_MODEL}
+
+      # AI-Native 配置
+      PRELIMINARY_MIN_VALUE: ${PRELIMINARY_MIN_VALUE:-3}
+      REFLECTION_ENABLED: ${REFLECTION_ENABLED:-true}
+      MAX_REFLECTION_ROUNDS: ${MAX_REFLECTION_ROUNDS:-2}
+
+      # 邮件配置（可选）
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Rss-Easy}
+
+      # 日志配置
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Node.js 优化
+      NODE_OPTIONS: --max-old-space-size=2048
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "--tries=1", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - rss-easy-network
+
+  # 数据库备份服务（定时任务）
+  backup:
+    image: postgres:16-alpine
+    container_name: rss-easy-backup
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rss_easy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-rss_easy}
+      POSTGRES_HOST: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+      - backup_scripts:/scripts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # 定时备份（每天凌晨 2 点）
+    command: >
+      sh -c "
+        echo 'Backup schedule: 0 2 * * *' &&
+        while true; do
+          sleep 86400 &&
+          DATE=$$(date +%Y%m%d_%H%M%S) &&
+          pg_dump -U ${POSTGRES_USER:-rss_easy} -h postgres ${POSTGRES_DB:-rss_easy} | gzip > /backups/backup_$$DATE.sql.gz &&
+          echo 'Backup completed: backup_$$DATE.sql.gz' &&
+          find /backups -name 'backup_*.sql.gz' -mtime +30 -delete
+        done
+      "
+    networks:
+      - rss-easy-network
+
+networks:
+  rss-easy-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backup_scripts:
+    driver: local

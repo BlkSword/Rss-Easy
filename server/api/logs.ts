@@ -152,7 +152,7 @@ export const logsRouter = router({
       await warn('rss', '订阅源响应缓慢', { feedUrl: 'https://example.com/feed.xml', responseTime: 8000 });
       await info('ai', 'AI分析任务开始', { model: 'gpt-4o', entriesCount: 3 });
       await info('ai', 'AI摘要生成完成', { tokensUsed: 1250, cost: 0.002 });
-      await error('email', '邮件发送失败', new Error('SMTP连接超时'), { recipient: 'test@example.com' });
+      await error('email', '邮件发送失败', new Error('SMTP连接超时'), { recipient: 'user@example.com' });
       await info('auth', '用户登录成功', { userId, ip: '192.168.1.1' });
       await warn('api', 'API请求频率过高', { endpoint: '/api/feeds', count: 120 });
       await info('queue', '队列处理完成', { processed: 50, failed: 2 });

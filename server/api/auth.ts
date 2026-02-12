@@ -450,6 +450,7 @@ export const authRouter = router({
           email: true,
           username: true,
           passwordResetExpiresAt: true,
+          passwordResetUsed: true, // 检查是否已使用
         },
       });
 
@@ -464,6 +465,14 @@ export const authRouter = router({
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: '重置链接已过期，请重新申请',
+        });
+      }
+
+      // 检查 token 是否已被使用
+      if (user.passwordResetUsed) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '重置链接已被使用，请重新申请',
         });
       }
 
@@ -505,16 +514,25 @@ export const authRouter = router({
         });
       }
 
+      // 检查 token 是否已被使用
+      if (user.passwordResetUsed) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '重置链接已被使用，请重新申请',
+        });
+      }
+
       // 哈希新密码
       const passwordHash = await hashPassword(input.newPassword);
 
-      // 更新密码并清除重置 token
+      // 更新密码并清除重置 token，标记为已使用
       await (db.user as any).update({
         where: { id: user.id },
         data: {
           passwordHash,
           passwordResetToken: null,
           passwordResetExpiresAt: null,
+          passwordResetUsed: true, // 标记为已使用
           passwordResetCount: 0,
         },
       });

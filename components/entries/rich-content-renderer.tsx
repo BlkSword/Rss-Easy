@@ -2,12 +2,14 @@
  * 富文本内容渲染器
  * 专门用于处理 RSS 抓取的富文本内容（微信公众号等）
  * 支持内联样式、图片、链接等复杂 HTML 结构
+ * 使用 DOMPurify 进行 XSS 防护
  */
 
 'use client';
 
 import { memo, useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import DOMPurify from 'dompurify';
 
 interface RichContentRendererProps {
   html: string;
@@ -16,10 +18,54 @@ interface RichContentRendererProps {
 
 /**
  * 清理和优化 HTML 内容
- * 处理微信公众号等特殊标签和样式
+ * 使用 DOMPurify 进行真正的 XSS 防护
+ * 同时处理微信公众号等特殊标签和样式
  */
 function sanitizeHTML(html: string): string {
-  let cleaned = html;
+  // 配置 DOMPurify - 允许安全的标签和属性
+  const cleanHTML = DOMPurify.sanitize(html, {
+    // 允许的标签（包括内联样式支持的标签）
+    ALLOWED_TAGS: [
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'p', 'br', 'hr',
+      'strong', 'b', 'em', 'i', 'u', 's', 'strike',
+      'a', 'img',
+      'ul', 'ol', 'li',
+      'blockquote',
+      'code', 'pre',
+      'div', 'span',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'iframe', 'video', 'source',
+      'section', 'article',
+    ],
+    // 允许的属性
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'target', 'rel',
+      'class', 'id', 'style',
+      'width', 'height', 'data-*',
+      'type', 'colspan', 'rowspan',
+      'frameborder', 'allowfullscreen',
+    ],
+    // 允许 URI 协议
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    // 允许特定标签的前置和后置内容
+    ADD_ATTR: ['data-*'],
+    // 保留所有标签的小写属性名
+    KEEP_CONTENT: true,
+    // 返回完整的 HTML 文档
+    RETURN_DOM: false,
+    // 返回 DOM 节点
+    RETURN_DOM_FRAGMENT: false,
+    // 返回 DOM 节点
+    RETURN_DOM_IMPORT: false,
+    // 强制清理
+    FORCE_BODY: false,
+    // 允许 SVG 标签
+    ALLOW_SVG: false,
+  });
+
+  // 清理后的 HTML 再进行微信特殊标签清理
+  let cleaned = cleanHTML;
 
   // 移除微信公众号特有的无用标签
   cleaned = cleaned
@@ -52,13 +98,9 @@ function sanitizeHTML(html: string): string {
     .replace(/\s+data-service_type="[^"]*"/gi, '')
     // 清理嵌套的 div（保留内容）
     .replace(/<div\s+data-pm-slice="[^"]*">(.*?)<\/div>/gis, '<div>$1</div>')
-    // 清理多余的嵌套 section 标签
-    .replace(/<\/?section[^>]*>/gi, '')
     // 清理微信编辑器的特殊标记
     .replace(/\s+nodeleaf=""/gi, '')
-    .replace(/\s+leaf=""/gi, '')
-    // 保留图片、链接、标题、段落等常用标签
-    ;
+    .replace(/\s+leaf=""/gi, '');
 
   return cleaned;
 }

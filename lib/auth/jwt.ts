@@ -15,12 +15,21 @@ const getSecret = () => {
 export interface TokenPayload {
   userId: string;
   email: string;
+  type?: 'access' | 'refresh';
   iat?: number;
   exp?: number;
 }
 
 /**
- * 签发 JWT Token
+ * Token 类型配置
+ */
+const TOKEN_CONFIG = {
+  ACCESS_TOKEN_EXPIRY: '1d', // 访问 Token 1 天
+  REFRESH_TOKEN_EXPIRY: '30d', // 刷新 Token 30 天
+} as const;
+
+/**
+ * 签发访问 Token
  */
 export async function signToken(payload: {
   userId: string;
@@ -28,10 +37,34 @@ export async function signToken(payload: {
 }): Promise<string> {
   const secret = getSecret();
 
-  return new SignJWT({ userId: payload.userId, email: payload.email })
+  return new SignJWT({
+    userId: payload.userId,
+    email: payload.email,
+    type: 'access',
+  })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime(TOKEN_CONFIG.ACCESS_TOKEN_EXPIRY)
+    .sign(secret);
+}
+
+/**
+ * 签发刷新 Token
+ */
+export async function signRefreshToken(payload: {
+  userId: string;
+  email: string;
+}): Promise<string> {
+  const secret = getSecret();
+
+  return new SignJWT({
+    userId: payload.userId,
+    email: payload.email,
+    type: 'refresh',
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(TOKEN_CONFIG.REFRESH_TOKEN_EXPIRY)
     .sign(secret);
 }
 

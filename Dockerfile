@@ -1,8 +1,11 @@
 # =====================================================
-# Rss-Easy Dockerfile
+# Rss-Easy Dockerfile (安全优化版本)
 # =====================================================
 
 FROM node:20-alpine AS base
+
+# 安装安全相关工具
+RUN apk add --no-cache dumb-init
 
 # 安装依赖
 FROM base AS deps
@@ -12,7 +15,7 @@ WORKDIR /app
 RUN npm install -g prisma@6.19.2
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --production=false
 
 # 构建应用
 FROM base AS builder
@@ -24,31 +27,44 @@ COPY . .
 # 创建必要的目录
 RUN mkdir -p public static
 
+# 生成 Prisma Client
 RUN npx prisma generate
+
+# 构建应用
 RUN npm run build
 
-# 生产镜像
+# 生产镜像（安全优化）
 FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=2048 --optimize-for-size --gc-global"
 
-# 创建非 root 用户
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# 创建非 root 用户和组
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 --gid 1001 nextjs
 
 # 复制必要文件
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/.next/standalone ./
-
-# 复制 public 和 static
 COPY --from=builder /app/public/ ./public
 COPY --from=builder /app/.next/static ./.next/static
 
+# 创建日志目录
+RUN mkdir -p /app/logs && \
+    chown -R nextjs:nodejs /app
+
+# 使用非 root 用户
 USER nextjs
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 EXPOSE 3000
 
 ENV PORT=3000
 
+# 使用 dumb-init 启动以处理信号和僵尸进程
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "server.js"]
