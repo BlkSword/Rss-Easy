@@ -51,30 +51,14 @@ export function AISettings({ user }: AISettingsProps) {
     setConfigValid(aiConfig.configValid === true);
   }, [aiConfig.configValid]);
 
-  // 当提供商改变时，设置默认模型
+  // 当提供商改变时，不自动设置模型，让用户自己选择
   useEffect(() => {
-    if (!aiConfig.model) {
-      switch (provider) {
-        case 'openai':
-          setModel('gpt-4o-mini');
-          break;
-        case 'anthropic':
-          setModel('claude-3-5-sonnet-20241022');
-          break;
-        case 'deepseek':
-          setModel('deepseek-chat');
-          break;
-        case 'ollama':
-          setModel('llama3.2');
-          break;
-        case 'custom':
-          setModel('');
-          break;
-      }
-    } else {
+    // 如果已有模型配置，保持；否则保持为空
+    if (aiConfig.model) {
       setModel(aiConfig.model);
     }
-  }, [provider]);
+    // 不再根据 provider 自动设置默认模型
+  }, [provider, aiConfig.model]);
 
   // 检查是否有变化：apiKey 只有在用户输入新内容时才算变化
   const hasNewApiKey = apiKey.trim() !== '';

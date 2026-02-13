@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./globals-mobile.css";
 
 @layer base {
   :root {
@@ -313,6 +314,38 @@
 
   .animate-pulse-soft {
     animation: pulse-soft 2s ease-in-out infinite;
+  }
+
+  /* 从上往下滑入 */
+  @keyframes fade-in-down {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.95);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .animate-fade-in-down {
+    animation: fade-in-down 0.2s ease-out forwards;
+  }
+
+  /* 缩放进入 */
+  @keyframes scale-in {
+    0% {
+      opacity: 0;
+      transform: scale(0);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.2s ease-out forwards;
   }
 
   /* 摇晃 */
@@ -1047,7 +1080,7 @@
     width: 3px;
     background: hsl(var(--primary));
     transform: scaleY(0);
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), height 0.25s ease;
     border-radius: 0 3px 3px 0;
   }
   .list-item-hover:hover {

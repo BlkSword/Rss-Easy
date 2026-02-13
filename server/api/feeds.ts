@@ -39,7 +39,7 @@ export const feedsRouter = router({
           include: {
             category: true,
             _count: {
-              select: { 
+              select: {
                 entries: true,
               },
             },
@@ -53,21 +53,27 @@ export const feedsRouter = router({
         }),
       ]);
 
-      // 获取每个订阅源的未读数量
-      const feedsWithUnreadCount = await Promise.all(
-        feeds.map(async (feed) => {
-          const unreadCount = await ctx.db.entry.count({
-            where: {
-              feedId: feed.id,
-              isRead: false,
-            },
-          });
-          return {
-            ...feed,
-            unreadCount,
-          };
-        })
+      // 优化：使用单次聚合查询获取所有订阅源的未读数量
+      const feedIds = feeds.map(f => f.id);
+      const unreadCounts = await ctx.db.entry.groupBy({
+        by: ['feedId'],
+        where: {
+          feedId: { in: feedIds },
+          isRead: false,
+        },
+        _count: { id: true },
+      });
+
+      // 创建 feedId -> unreadCount 的映射
+      const unreadMap = new Map(
+        unreadCounts.map(item => [item.feedId, item._count.id])
       );
+
+      // 合并未读数量（无需额外查询）
+      const feedsWithUnreadCount = feeds.map(feed => ({
+        ...feed,
+        unreadCount: unreadMap.get(feed.id) || 0,
+      }));
 
       return {
         items: feedsWithUnreadCount,

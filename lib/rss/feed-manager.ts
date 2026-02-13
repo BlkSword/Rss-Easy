@@ -56,18 +56,24 @@ export class FeedManager {
           where: { contentHash },
         });
 
+        // 准备通用数据
+        const entryData = {
+          title: item.title,
+          content: item.content,
+          summary: item.contentSnippet?.slice(0, 500), // 限制摘要长度
+          url: item.link,
+          publishedAt: item.pubDate,
+          author: item.author,
+          tags: item.categories || [],
+          // 存储图片URL（如果有）
+          ...(item.image && { mainImageUrl: item.image }),
+        };
+
         if (existingEntry) {
           // 更新现有条目
           await db.entry.update({
             where: { id: existingEntry.id },
-            data: {
-              title: item.title,
-              content: item.content,
-              summary: item.contentSnippet,
-              url: item.link,
-              publishedAt: item.pubDate,
-              author: item.author,
-            },
+            data: entryData,
           });
           entriesUpdated++;
         } else {
@@ -75,14 +81,8 @@ export class FeedManager {
           const newEntry = await db.entry.create({
             data: {
               feedId: feed.id,
-              title: item.title,
-              url: item.link,
-              content: item.content,
-              summary: item.contentSnippet,
               contentHash,
-              publishedAt: item.pubDate,
-              author: item.author,
-              tags: item.categories || [],
+              ...entryData,
             },
           });
           entriesAdded++;

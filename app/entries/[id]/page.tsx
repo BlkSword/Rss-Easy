@@ -32,6 +32,11 @@ import {
   Target,
   TrendingUp,
   MessageSquare,
+  Settings,
+  HelpCircle,
+  CheckCircle,
+  XCircle,
+  Loader2,
 } from 'lucide-react';
 import { Button, Card, Empty, Tag, Space, Tooltip, Divider, Typography, Badge, Skeleton } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
@@ -187,6 +192,19 @@ function AIKeywords({ keywords, delay = 0 }: { keywords?: string[] | null; delay
 function AISidebar({ entry }: { entry: any }) {
   const [activeTab, setActiveTab] = useState<'summary' | 'analysis' | 'keywords'>('summary');
 
+  // 获取分析状态
+  const { data: analysisStatus, refetch: refetchStatus } = trpc.queue.entryAnalysisStatus.useQuery(
+    { entryId: entry.id },
+    { enabled: !!entry.id }
+  );
+
+  // 触发分析
+  const triggerAnalysis = trpc.queue.triggerAnalysis.useMutation({
+    onSuccess: () => {
+      refetchStatus();
+    },
+  });
+
   // 检查是否有任何AI分析结果（排除默认值）
   const hasAIAnalysis = !!(
     entry.aiSummary ||
@@ -195,6 +213,39 @@ function AISidebar({ entry }: { entry: any }) {
     entry.aiSentiment ||
     (entry.aiImportanceScore && entry.aiImportanceScore > 0)
   );
+
+  // 判断分析状态原因
+  const getAnalysisStatusInfo = () => {
+    if (hasAIAnalysis) {
+      return { type: 'completed', message: '分析完成', icon: CheckCircle, color: 'text-green-500' };
+    }
+
+    if (!analysisStatus) {
+      return { type: 'loading', message: '检查状态中...', icon: Loader2, color: 'text-muted-foreground' };
+    }
+
+    switch (analysisStatus.status) {
+      case 'processing':
+        return { type: 'processing', message: '正在分析中...', icon: Loader2, color: 'text-blue-500' };
+      case 'pending':
+        return { type: 'queued', message: `排队中 (第 ${(analysisStatus.queuePosition || 0) + 1} 位)`, icon: Clock, color: 'text-orange-500' };
+      case 'failed':
+        return { type: 'failed', message: '分析失败', icon: XCircle, color: 'text-red-500', detail: analysisStatus.errorMessage };
+      case 'not_analyzed':
+        if (analysisStatus.reason === 'no_config') {
+          return { type: 'no_config', message: 'AI 未配置', icon: Settings, color: 'text-yellow-500' };
+        }
+        if (analysisStatus.reason === 'old_article') {
+          return { type: 'old', message: '历史文章', icon: Clock, color: 'text-muted-foreground' };
+        }
+        return { type: 'not_queued', message: '等待分析', icon: Clock, color: 'text-muted-foreground' };
+      default:
+        return { type: 'unknown', message: '未知状态', icon: HelpCircle, color: 'text-muted-foreground' };
+    }
+  };
+
+  const statusInfo = getAnalysisStatusInfo();
+  const StatusIcon = statusInfo.icon;
 
   return (
     <aside className="w-80 flex-shrink-0 border-l border-border/60 bg-muted/30 overflow-y-auto">
@@ -210,26 +261,83 @@ function AISidebar({ entry }: { entry: any }) {
           </div>
         </div>
 
-        {/* 分析中状态 */}
+        {/* 分析状态 */}
         {!hasAIAnalysis && (
           <>
             <Card size="small" className="bg-muted/30 border-dashed">
               <div className="flex flex-col items-center gap-3 py-4">
-                <LoadingDots size="sm" />
+                <StatusIcon className={cn(
+                  'w-6 h-6',
+                  statusInfo.color,
+                  (statusInfo.type === 'processing' || statusInfo.type === 'loading') && 'animate-spin'
+                )} />
                 <p className="text-sm text-muted-foreground text-center">
-                  暂无AI分析结果
+                  {statusInfo.message}
                 </p>
-                <p className="text-xs text-muted-foreground/60 text-center">
-                  新抓取的文章会自动进行AI分析
-                </p>
+
+                {/* 根据不同状态显示不同的提示和操作 */}
+                {statusInfo.type === 'no_config' && (
+                  <>
+                    <p className="text-xs text-muted-foreground/60 text-center">
+                      请先在设置中配置 AI API 密钥
+                    </p>
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => window.location.href = '/settings'}
+                    >
+                      前往设置
+                    </Button>
+                  </>
+                )}
+
+                {statusInfo.type === 'failed' && (
+                  <>
+                    {statusInfo.detail && (
+                      <p className="text-xs text-red-500/80 text-center max-w-full truncate">
+                        {statusInfo.detail}
+                      </p>
+                    )}
+                    <Button
+                      size="small"
+                      onClick={() => triggerAnalysis.mutate({ entryId: entry.id })}
+                      loading={triggerAnalysis.isPending}
+                    >
+                      重新分析
+                    </Button>
+                  </>
+                )}
+
+                {(statusInfo.type === 'old' || statusInfo.type === 'not_queued') && (
+                  <>
+                    <p className="text-xs text-muted-foreground/60 text-center">
+                      {statusInfo.type === 'old' ? '历史文章不会自动分析' : '点击下方按钮开始分析'}
+                    </p>
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => triggerAnalysis.mutate({ entryId: entry.id })}
+                      loading={triggerAnalysis.isPending}
+                      icon={<Sparkles className="w-3 h-3" />}
+                    >
+                      开始分析
+                    </Button>
+                  </>
+                )}
+
+                {statusInfo.type === 'queued' && (
+                  <p className="text-xs text-muted-foreground/60 text-center">
+                    系统将自动处理，请稍候
+                  </p>
+                )}
+
+                {statusInfo.type === 'processing' && (
+                  <p className="text-xs text-muted-foreground/60 text-center">
+                    正在智能分析内容...
+                  </p>
+                )}
               </div>
             </Card>
-
-            {/* 提示信息 */}
-            <div className="text-xs text-muted-foreground/60 text-center space-y-1">
-              <p><strong>提示：</strong>旧文章不会自动分析</p>
-              <p>可以尝试重新抓取订阅源来分析所有文章</p>
-            </div>
           </>
         )}
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo, useMemo } from 'react';
 import {
   Rss,
   Folder,
@@ -35,7 +35,7 @@ export interface AppSidebarProps {
   collapsed?: boolean;
 }
 
-export function AppSidebar({ collapsed = false }: AppSidebarProps) {
+function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
   const pathname = usePathname();
   const { addToast } = useToast();
   const { t } = useLanguage();
@@ -496,4 +496,8 @@ export function AppSidebar({ collapsed = false }: AppSidebarProps) {
   );
 }
 
+// 使用 React.memo 优化性能
+const AppSidebar = memo(AppSidebarComponent);
+
 export default AppSidebar;
+export { AppSidebar };

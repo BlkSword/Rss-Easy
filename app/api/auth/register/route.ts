@@ -87,8 +87,7 @@ export async function POST(req: NextRequest) {
           itemsPerPage: 20,
         },
         aiConfig: {
-          provider: 'openai',
-          model: 'gpt-4o',
+          // 用户需要在设置中自行配置 AI
           enableSummary: true,
           enableCategory: true,
         },

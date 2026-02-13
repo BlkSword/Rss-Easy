@@ -17,6 +17,7 @@ import { aiRouter } from './ai';
 import { analyticsRouter } from './analytics';
 import { preliminaryRouter } from './preliminary';
 import { logsRouter } from './logs';
+import { queueRouter } from './queue';
 
 export const appRouter = router({
   auth: authRouter,
@@ -32,6 +33,7 @@ export const appRouter = router({
   analytics: analyticsRouter,
   preliminary: preliminaryRouter,
   logs: logsRouter,
+  queue: queueRouter,
 });
 
 export type AppRouter = typeof appRouter;

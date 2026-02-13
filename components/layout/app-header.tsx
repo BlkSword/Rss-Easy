@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -13,7 +13,6 @@ import {
   Bell,
   X,
   Command,
-  Plus,
   Keyboard,
   Sun,
   Moon,
@@ -29,6 +28,7 @@ import { useLanguage } from '@/components/providers/language-provider';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/animation/loading';
+import { QueueStatusIndicator } from '@/components/layout/queue-status-indicator';
 
 export interface AppHeaderProps {
   onRefresh?: () => void;
@@ -38,7 +38,7 @@ export interface AppHeaderProps {
   onSearch?: (query: string) => void;
 }
 
-export function AppHeader({
+function AppHeaderComponent({
   onRefresh,
   isRefreshing = false,
   onToggleSidebar,
@@ -272,19 +272,8 @@ export function AppHeader({
             </Button>
           </Tooltip>
 
-          <div className="w-px h-6 bg-border/60 mx-1" />
-
-          <Tooltip content={t('nav.add_feed')} position="bottom">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => router.push('/feeds/manage')}
-              leftIcon={<Plus className="h-4 w-4" />}
-              className="hidden sm:flex"
-            >
-              {t('nav.feeds')}
-            </Button>
-          </Tooltip>
+          {/* 队列状态指示器 */}
+          <QueueStatusIndicator />
 
           <Tooltip content={t('nav.logout')} position="bottom">
             <Button variant="ghost" size="icon" onClick={handleLogout}>
@@ -377,4 +366,8 @@ function SearchDropdown({
   );
 }
 
+// 使用 React.memo 优化性能
+const AppHeader = memo(AppHeaderComponent);
+
 export default AppHeader;
+export { AppHeader };

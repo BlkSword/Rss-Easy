@@ -6,6 +6,9 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { AntdThemeProvider } from '@/components/providers/antd-theme-provider';
 import { LanguageProvider } from '@/components/providers/language-provider';
+import { PWAProvider } from '@/components/providers/pwa-provider';
+import { MobileBottomNav } from '@/components/mobile/mobile-bottom-nav';
+import { NetworkStatusToast, InstallPrompt, UpdatePrompt } from '@/components/mobile/mobile-toast';
 
 export const metadata: Metadata = {
   title: 'Rss-Easy - 智能RSS资讯聚合平台',
@@ -55,15 +58,25 @@ export default function RootLayout({
         </div>
 
         <ErrorBoundary>
-          <LanguageProvider>
-            <ThemeProvider>
-              <AntdThemeProvider>
-                <ToastProvider>
-                  <TRPCProvider>{children}</TRPCProvider>
-                </ToastProvider>
-              </AntdThemeProvider>
-            </ThemeProvider>
-          </LanguageProvider>
+          <PWAProvider>
+            <LanguageProvider>
+              <ThemeProvider>
+                <AntdThemeProvider>
+                  <ToastProvider>
+                    <TRPCProvider>
+                      {children}
+                      {/* 移动端底部导航 */}
+                      <MobileBottomNav />
+                      {/* PWA 提示 */}
+                      <NetworkStatusToast />
+                      <InstallPrompt />
+                      <UpdatePrompt />
+                    </TRPCProvider>
+                  </ToastProvider>
+                </AntdThemeProvider>
+              </ThemeProvider>
+            </LanguageProvider>
+          </PWAProvider>
         </ErrorBoundary>
       </body>
     </html>

@@ -7,17 +7,18 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { getReportGenerator } from '@/lib/reports/generator';
 import { asyncReportGenerator } from '@/lib/reports/async-generator';
-import { checkAIConfig, getUserAIConfig } from '@/lib/ai/health-check';
+import { checkAIConfigQuick, getUserAIConfig } from '@/lib/ai/health-check';
 import { info, warn, error } from '@/lib/logger';
 
 export const reportsRouter = router({
   /**
-   * 检查AI配置
+   * 快速检查AI配置（不发送API请求）
    */
   checkAIConfig: protectedProcedure
     .query(async ({ ctx }) => {
       const aiConfig = await getUserAIConfig(ctx.userId, ctx.db);
-      const result = await checkAIConfig(aiConfig);
+      // 使用快速检查，不发送实际的API请求，响应更快
+      const result = await checkAIConfigQuick(aiConfig);
       return result;
     }),
 

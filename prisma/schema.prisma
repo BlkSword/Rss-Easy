@@ -133,6 +133,9 @@ model Feed {
   @@index([categoryId])
   @@index([lastFetchedAt])
   @@index([nextFetchAt])
+  // 复合索引优化查询
+  @@index([userId, isActive])           // 查询用户活跃订阅源
+  @@index([userId, priority])           // 按优先级排序
   @@map("feeds")
 }
 
@@ -235,6 +238,12 @@ model Entry {
   @@index([isRead])
   @@index([isStarred])
   @@index([contentHash])
+  // 复合索引优化常用查询
+  @@index([feedId, publishedAt])        // 按订阅源查询文章列表
+  @@index([feedId, isRead])             // 按订阅源查询未读文章
+  @@index([createdAt])                  // 按创建时间排序
+  @@index([aiImportanceScore])          // 按重要度排序
+  @@index([aiCategory])                 // 按AI分类筛选
   @@map("entries")
 }
 
