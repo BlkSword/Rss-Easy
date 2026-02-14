@@ -712,4 +712,75 @@ export const settingsRouter = router({
         return { success: false, message: err.message || '发送测试邮件失败' };
       }
     }),
+
+  /**
+   * 获取报告邮件设置
+   */
+  getReportEmailSettings: protectedProcedure
+    .output(z.object({
+      autoSendDaily: z.boolean(),
+      autoSendWeekly: z.boolean(),
+      dailySendTime: z.string(),
+      weeklySendDay: z.number(),
+      weeklySendTime: z.string(),
+    }))
+    .query(async ({ ctx }) => {
+      const user = await ctx.db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { emailConfig: true },
+      });
+
+      const emailConfig = (user?.emailConfig as any) || {};
+      const reportSettings = emailConfig.reportSettings || {};
+
+      return {
+        autoSendDaily: reportSettings.autoSendDaily ?? false,
+        autoSendWeekly: reportSettings.autoSendWeekly ?? false,
+        dailySendTime: reportSettings.dailySendTime ?? '09:00',
+        weeklySendDay: reportSettings.weeklySendDay ?? 1, // 默认周一
+        weeklySendTime: reportSettings.weeklySendTime ?? '09:00',
+      };
+    }),
+
+  /**
+   * 更新报告邮件设置
+   */
+  updateReportEmailSettings: protectedProcedure
+    .input(z.object({
+      autoSendDaily: z.boolean().optional(),
+      autoSendWeekly: z.boolean().optional(),
+      dailySendTime: z.string().optional(),
+      weeklySendDay: z.number().min(0).max(6).optional(),
+      weeklySendTime: z.string().optional(),
+    }))
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      const user = await ctx.db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { emailConfig: true },
+      });
+
+      const currentConfig = (user?.emailConfig as any) || {};
+      const currentReportSettings = currentConfig.reportSettings || {};
+
+      const updatedConfig = {
+        ...currentConfig,
+        reportSettings: {
+          ...currentReportSettings,
+          ...Object.fromEntries(Object.entries(input).filter(([_, v]) => v !== undefined)),
+        },
+      };
+
+      await ctx.db.user.update({
+        where: { id: ctx.userId },
+        data: { emailConfig: updatedConfig },
+      });
+
+      await info('system', '更新报告邮件设置', {
+        userId: ctx.userId,
+        settings: updatedConfig.reportSettings,
+      });
+
+      return { success: true };
+    }),
 });

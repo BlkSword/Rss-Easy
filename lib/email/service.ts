@@ -44,6 +44,15 @@ export interface SendResult {
 }
 
 /**
+ * 邮件附件
+ */
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
+/**
  * 邮件服务类
  */
 export class EmailService {
@@ -110,7 +119,8 @@ export class EmailService {
     to: string | string[],
     subject: string,
     html: string,
-    text?: string
+    text?: string,
+    attachments?: EmailAttachment[]
   ): Promise<SendResult> {
     try {
       // 验证配置
@@ -132,6 +142,11 @@ export class EmailService {
         subject,
         html,
         text: text || this.stripHtml(html),
+        attachments: attachments?.map(att => ({
+          filename: att.filename,
+          content: att.content,
+          contentType: att.contentType || 'application/octet-stream',
+        })),
       };
 
       // 发送邮件
@@ -141,6 +156,7 @@ export class EmailService {
         to,
         subject,
         messageId: info.messageId,
+        hasAttachments: !!attachments?.length,
       });
 
       return { success: true, message: '邮件发送成功' };
@@ -187,6 +203,36 @@ export class EmailService {
     const subject = `[Rss-Easy] ${title}`;
     const html = this.getNotificationTemplate(username, title, content, actionUrl);
     return this.sendEmail(to, subject, html);
+  }
+
+  /**
+   * 发送报告邮件
+   */
+  async sendReportEmail(
+    to: string,
+    username: string | null,
+    report: {
+      id: string;
+      title: string;
+      reportType: 'daily' | 'weekly';
+      reportDate: Date;
+      summary: string | null;
+      content: string | null;
+      highlights: string[];
+      totalEntries: number;
+      totalRead: number;
+      totalFeeds: number;
+    },
+    pdfAttachment?: EmailAttachment
+  ): Promise<SendResult> {
+    const subject = `[Rss-Easy] ${report.title}`;
+    const html = this.getReportEmailTemplate(username, report);
+    const text = this.stripHtml(report.content || '');
+
+    // 如果有 PDF 附件，添加附件信息到邮件
+    const attachments = pdfAttachment ? [pdfAttachment] : undefined;
+
+    return this.sendEmail(to, subject, html, text, attachments);
   }
 
   /**
@@ -368,6 +414,150 @@ export class EmailService {
         <a href="${actionUrl}" class="action-button">查看详情</a>
       </div>
       ` : ''}
+    </div>
+    <div class="footer">
+      <p>此邮件由 Rss-Easy 系统自动发送，请勿回复。</p>
+      <p>© ${new Date().getFullYear()} Rss-Easy. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * 获取报告邮件模板
+   */
+  private getReportEmailTemplate(
+    username: string | null,
+    report: {
+      id: string;
+      title: string;
+      reportType: 'daily' | 'weekly';
+      reportDate: Date;
+      summary: string | null;
+      content: string | null;
+      highlights: string[];
+      totalEntries: number;
+      totalRead: number;
+      totalFeeds: number;
+    }
+  ): string {
+    const displayName = escapeHtml(username || '用户');
+    const safeTitle = escapeHtml(report.title);
+    const safeSummary = escapeHtml(report.summary || '');
+    
+    // 转换 Markdown 为简单 HTML
+    let contentHtml = '';
+    if (report.content) {
+      // 简单的 Markdown 转换
+      contentHtml = report.content
+        .replace(/^### (.*$)/gim, '<h3 style="color: #333; margin: 20px 0 10px; font-size: 18px;">$1</h3>')
+        .replace(/^## (.*$)/gim, '<h2 style="color: #667eea; margin: 25px 0 15px; font-size: 20px; border-bottom: 2px solid #667eea; padding-bottom: 8px;">$1</h2>')
+        .replace(/^# (.*$)/gim, '<h1 style="color: #333; margin: 30px 0 20px; font-size: 24px;">$1</h1>')
+        .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+        .replace(/\[([^\]]+)\]\(([^\)]+)\)/gim, '<a href="$2" style="color: #667eea; text-decoration: none;">$1</a>')
+        .replace(/^\- (.*$)/gim, '<li style="margin: 8px 0; color: #555;">$1</li>')
+        .replace(/(<li>.*<\/li>)/gim, '<ul style="margin: 10px 0; padding-left: 20px;">$1</ul>')
+        .replace(/^(?!<[hlu])(.*$)/gim, '<p style="margin: 10px 0; line-height: 1.6; color: #555;">$1</p>')
+        .replace(/\n\n/g, '<br>');
+    }
+
+    const reportTypeText = report.reportType === 'daily' ? '日报' : '周报';
+    const reportTypeColor = report.reportType === 'daily' ? '#3b82f6' : '#8b5cf6';
+    const reportTypeIcon = report.reportType === 'daily' ? '📅' : '📊';
+
+    // 生成亮点 HTML
+    const highlightsHtml = report.highlights?.length > 0
+      ? report.highlights.slice(0, 5).map((h, i) => `
+        <div style="padding: 10px; margin: 8px 0; background: #f8fafc; border-radius: 6px; border-left: 3px solid ${reportTypeColor};">
+          <span style="color: ${reportTypeColor}; font-weight: bold;">${i + 1}.</span> 
+          <span style="color: #333;">${escapeHtml(h)}</span>
+        </div>
+      `).join('')
+      : '<p style="color: #888;">暂无亮点内容</p>';
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeTitle}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f5; margin: 0; padding: 20px; }
+    .container { max-width: 700px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, ${reportTypeColor} 0%, #667eea 100%); color: white; padding: 40px 30px; text-align: center; }
+    .logo { font-size: 20px; font-weight: bold; margin-bottom: 8px; opacity: 0.9; }
+    .report-icon { font-size: 48px; margin-bottom: 15px; }
+    .report-title { font-size: 28px; font-weight: bold; margin: 0 0 10px; }
+    .report-type { display: inline-block; padding: 6px 16px; background: rgba(255,255,255,0.2); border-radius: 20px; font-size: 14px; margin-top: 10px; }
+    .content { padding: 30px; }
+    .greeting { font-size: 16px; color: #555; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+    .stats { display: flex; justify-content: space-around; margin: 25px 0; padding: 20px; background: #f8fafc; border-radius: 10px; }
+    .stat-item { text-align: center; }
+    .stat-value { font-size: 24px; font-weight: bold; color: ${reportTypeColor}; }
+    .stat-label { font-size: 12px; color: #888; margin-top: 5px; }
+    .section { margin: 30px 0; }
+    .section-title { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #eee; }
+    .highlights { background: #fafafa; padding: 20px; border-radius: 10px; }
+    .button-container { text-align: center; margin: 30px 0; }
+    .view-button { display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, ${reportTypeColor} 0%, #667eea 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; }
+    .footer { background-color: #f9fafb; padding: 25px; text-align: center; font-size: 12px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">Rss-Easy</div>
+      <div class="report-icon">${reportTypeIcon}</div>
+      <h1 class="report-title">${safeTitle}</h1>
+      <div class="report-type">${reportTypeText}</div>
+    </div>
+    <div class="content">
+      <div class="greeting">
+        您好，${displayName}！<br>
+        您的${reportTypeText}已生成，以下是本期阅读摘要。
+      </div>
+
+      <div class="stats">
+        <div class="stat-item">
+          <div class="stat-value">${report.totalEntries}</div>
+          <div class="stat-label">新增文章</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">${report.totalRead}</div>
+          <div class="stat-label">已阅读</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">${report.totalFeeds}</div>
+          <div class="stat-label">订阅源</div>
+        </div>
+      </div>
+
+      ${safeSummary ? `
+      <div class="section">
+        <div class="section-title">📋 摘要</div>
+        <p style="color: #555; line-height: 1.8;">${safeSummary}</p>
+      </div>
+      ` : ''}
+
+      <div class="section">
+        <div class="section-title">✨ 精选亮点</div>
+        <div class="highlights">
+          ${highlightsHtml}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📝 详细内容</div>
+        <div style="background: #fafafa; padding: 20px; border-radius: 10px; border-left: 4px solid ${reportTypeColor};">
+          ${contentHtml}
+        </div>
+      </div>
+
+      <div class="button-container">
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reports/${report.id}" class="view-button">在网页中查看完整报告</a>
+      </div>
     </div>
     <div class="footer">
       <p>此邮件由 Rss-Easy 系统自动发送，请勿回复。</p>

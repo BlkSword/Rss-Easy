@@ -8,6 +8,8 @@ import { protectedProcedure, router } from '../trpc/init';
 import { getReportGenerator } from '@/lib/reports/generator';
 import { asyncReportGenerator } from '@/lib/reports/async-generator';
 import { checkAIConfigQuick, getUserAIConfig } from '@/lib/ai/health-check';
+import { createEmailServiceFromUser, type EmailAttachment } from '@/lib/email/service';
+import { convertMarkdownToPdf } from '@/lib/reports/pdf-converter';
 import { info, warn, error } from '@/lib/logger';
 
 export const reportsRouter = router({
@@ -384,5 +386,178 @@ export const reportsRouter = router({
       });
 
       return { success: true };
+    }),
+
+  /**
+   * 发送报告到邮箱
+   */
+  sendByEmail: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .output(z.object({ success: z.boolean(), message: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      await info('system', '用户请求发送报告邮件', {
+        userId: ctx.userId,
+        reportId: input.id
+      });
+
+      // 1. 获取报告
+      const report = await ctx.db.report.findFirst({
+        where: {
+          id: input.id,
+          userId: ctx.userId,
+        },
+      });
+
+      if (!report) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '报告不存在' });
+      }
+
+      if (report.status !== 'completed') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: '报告尚未生成完成，无法发送' });
+      }
+
+      // 2. 获取用户邮箱配置
+      const user = await ctx.db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { email: true, username: true, emailConfig: true },
+      });
+
+      if (!user) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '用户不存在' });
+      }
+
+      // 3. 检查邮件配置
+      const emailConfig = user.emailConfig as any;
+      if (!emailConfig?.enabled) {
+        return {
+          success: false,
+          message: '邮件服务未启用，请先在设置中配置邮件',
+        };
+      }
+
+      // 4. 创建邮件服务
+      const emailService = createEmailServiceFromUser(emailConfig);
+      if (!emailService) {
+        return {
+          success: false,
+          message: '邮件服务配置无效，请检查邮件设置',
+        };
+      }
+
+      // 5. 生成 PDF 附件
+      let pdfAttachment: EmailAttachment | undefined;
+      if (report.content) {
+        try {
+          const pdfResult = await convertMarkdownToPdf(report.content, {
+            title: report.title,
+          });
+
+          if (pdfResult.success && pdfResult.pdfBuffer) {
+            const dateStr = report.reportDate.toLocaleDateString('zh-CN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).replace(/\//g, '-');
+            const reportTypeText = report.reportType === 'daily' ? '日报' : '周报';
+
+            pdfAttachment = {
+              filename: `${reportTypeText}_${dateStr}.pdf`,
+              content: pdfResult.pdfBuffer,
+              contentType: 'application/pdf',
+            };
+
+            await info('system', 'PDF 附件生成成功', {
+              reportId: input.id,
+              pdfSize: pdfResult.pdfBuffer.length,
+            });
+          }
+        } catch (pdfError) {
+          // PDF 生成失败不影响邮件发送
+          await warn('system', 'PDF 附件生成失败，将发送无附件邮件', {
+            reportId: input.id,
+            error: pdfError instanceof Error ? pdfError.message : String(pdfError),
+          });
+        }
+      }
+
+      // 6. 发送邮件（包含 PDF 附件）
+      const sendResult = await emailService.sendReportEmail(
+        user.email,
+        user.username,
+        {
+          id: report.id,
+          title: report.title,
+          reportType: report.reportType as 'daily' | 'weekly',
+          reportDate: report.reportDate,
+          summary: report.summary,
+          content: report.content,
+          highlights: report.highlights,
+          totalEntries: report.totalEntries,
+          totalRead: report.totalRead,
+          totalFeeds: report.totalFeeds,
+        },
+        pdfAttachment
+      );
+
+      if (sendResult.success) {
+        await info('system', '报告邮件发送成功', {
+          userId: ctx.userId,
+          reportId: input.id,
+          email: user.email,
+          hasPdfAttachment: !!pdfAttachment,
+        });
+      } else {
+        await error('system', '报告邮件发送失败', undefined, {
+          userId: ctx.userId,
+          reportId: input.id,
+          error: sendResult.message,
+        });
+      }
+
+      return {
+        success: sendResult.success,
+        message: sendResult.message + (pdfAttachment ? '（含 PDF 附件）' : ''),
+      };
+    }),
+
+  /**
+   * 检查报告邮件配置状态
+   */
+  checkEmailConfig: protectedProcedure
+    .output(z.object({
+      enabled: z.boolean(),
+      configured: z.boolean(),
+      email: z.string().optional(),
+      message: z.string(),
+    }))
+    .query(async ({ ctx }) => {
+      const user = await ctx.db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { email: true, emailConfig: true },
+      });
+
+      if (!user) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '用户不存在' });
+      }
+
+      const emailConfig = user.emailConfig as any;
+      const enabled = emailConfig?.enabled ?? false;
+      const configured = !!(emailConfig?.smtpHost && emailConfig?.smtpUser);
+
+      let message = '';
+      if (!enabled) {
+        message = '邮件服务未启用';
+      } else if (!configured) {
+        message = '邮件服务配置不完整';
+      } else {
+        message = '邮件服务已配置';
+      }
+
+      return {
+        enabled,
+        configured,
+        email: user.email,
+        message,
+      };
     }),
 });

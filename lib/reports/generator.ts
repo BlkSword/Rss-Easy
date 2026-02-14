@@ -1,12 +1,15 @@
 /**
  * 报告生成服务
- * 支持日报、周报的AI生成
+ * 支持日报、周报的AI生成，以及PDF导出和邮件发送
  */
 
 import { db } from '../db';
 import { AIService } from '../ai/client';
 import { getNotificationService } from '../notifications/service';
 import { getUserAIConfig } from '../ai/health-check';
+import { convertMarkdownToPdf } from './pdf-converter';
+import { createSystemEmailService } from '../email/service';
+import { info, warn, error } from '../logger';
 import type { Report, Entry } from '@prisma/client';
 
 export interface ReportEntry {
@@ -405,57 +408,130 @@ export class ReportGenerator {
   }> {
     const title = this.generateTitle(reportType, reportDate);
     const dateStr = reportDate.toLocaleDateString('zh-CN');
+    const dateRange = reportType === 'daily' ? dateStr : `${dateStr} 当周`;
+
+    // 按分类分组文章
+    const entriesByCategory = new Map<string, Entry[]>();
+    entries.forEach((entry) => {
+      const category = entry.aiCategory || '其他';
+      if (!entriesByCategory.has(category)) {
+        entriesByCategory.set(category, []);
+      }
+      entriesByCategory.get(category)!.push(entry);
+    });
+
+    // 按文章数量排序分类
+    const sortedCategories = Array.from(entriesByCategory.entries())
+      .sort((a, b) => b[1].length - a[1].length);
 
     // 构建内容
     let content = `# ${title}\n\n`;
-    content += `日期: ${dateStr}\n\n`;
+    content += `> 时间范围：${dateRange}\n\n`;
 
-    // 统计概览
-    content += `## 📊 统计概览\n\n`;
-    content += `- **新增文章**: ${stats.totalEntries} 篇\n`;
-    content += `- **已阅读**: ${stats.totalRead} 篇 (${Math.round((stats.totalRead / stats.totalEntries) * 100) || 0}%)\n`;
-    content += `- **订阅源**: ${stats.totalFeeds} 个\n\n`;
+    // 一、整体热度概览
+    content += `## 一、整体热度概览\n\n`;
+    content += `本期共收录 **${stats.totalEntries}** 篇文章，来自 **${stats.totalFeeds}** 个订阅源。`;
 
-    // 分类统计
-    if (stats.categories.length > 0) {
-      content += `## 📁 分类统计\n\n`;
-      stats.categories.slice(0, 5).forEach((cat) => {
-        content += `- **${cat.name}**: ${cat.count} 篇\n`;
-      });
-      content += '\n';
-    }
-
-    // 主题概览
     if (stats.topTopics.length > 0) {
-      content += `## 🏷️ 热门主题\n\n`;
-      stats.topTopics.slice(0, 5).forEach((topic) => {
-        content += `- **${topic.topic}**: ${topic.count} 篇\n`;
+      content += `热门话题集中在：**${stats.topTopics.slice(0, 5).map(t => t.topic).join('**、**')}** 等领域。`;
+    }
+    content += '\n\n';
+
+    // 热度分布表格
+    if (stats.topTopics.length > 0) {
+      content += `| 热门话题 | 文章数 |\n`;
+      content += `|---------|-------|\n`;
+      stats.topTopics.slice(0, 8).forEach((topic) => {
+        content += `| ${topic.topic} | ${topic.count} |\n`;
       });
       content += '\n';
     }
 
-    // 精选文章
-    content += `## ⭐ 精选文章\n\n`;
-    entries.slice(0, 10).forEach((entry, index) => {
-      const importanceStars = '⭐'.repeat(Math.round(entry.aiImportanceScore * 5) || 1);
-      content += `### ${index + 1}. ${entry.title}\n\n`;
-      if (entry.aiSummary) {
-        content += `${entry.aiSummary}\n\n`;
-      }
-      content += `${importanceStars} 重要性: ${(entry.aiImportanceScore * 100).toFixed(0)}%\n`;
-      if (entry.aiCategory) {
-        content += `分类: ${entry.aiCategory}\n`;
-      }
-      content += `[阅读全文](${entry.url})\n\n`;
+    // 按分类生成章节
+    let sectionIndex = 2;
+    const categoryNames: string[] = ['整体热度概览'];
+
+    sortedCategories.forEach(([category, categoryEntries]) => {
+      const chineseNum = ['二', '三', '四', '五', '六', '七', '八', '九', '十'][sectionIndex - 2] || String(sectionIndex);
+      content += `## ${chineseNum}、${category}\n\n`;
+
+      categoryNames.push(category);
+
+      // 按重要性排序
+      const sortedEntries = categoryEntries.sort((a, b) => b.aiImportanceScore - a.aiImportanceScore);
+
+      sortedEntries.slice(0, 10).forEach((entry, index) => {
+        content += `### ${index + 1}. ${entry.title}\n\n`;
+
+        // 时间
+        if (entry.publishedAt) {
+          content += `**时间**：${entry.publishedAt.toLocaleDateString('zh-CN')}\n\n`;
+        }
+
+        // 核心信息
+        content += `**核心信息**：\n`;
+        if (entry.aiSummary) {
+          // 将摘要拆分为要点
+          const points = entry.aiSummary.split(/[。！？\n]/).filter(p => p.trim().length > 0).slice(0, 3);
+          if (points.length > 0) {
+            points.forEach(point => {
+              content += `- ${point.trim()}\n`;
+            });
+          } else {
+            content += `- ${entry.aiSummary}\n`;
+          }
+        } else if (entry.content) {
+          // 从内容提取前200字符作为摘要
+          const snippet = entry.content.replace(/<[^>]*>/g, '').substring(0, 200).trim();
+          content += `- ${snippet}...\n`;
+        } else {
+          content += `- 暂无摘要\n`;
+        }
+        content += '\n';
+
+        // 来源
+        content += `**来源**：[${entry.url}](${entry.url})\n\n`;
+
+        // 重要性评分
+        const score = Math.round(entry.aiImportanceScore * 100);
+        if (score > 0) {
+          content += `> 重要性评分：${score}%\n\n`;
+        }
+
+        content += '---\n\n';
+      });
+
+      sectionIndex++;
     });
 
-    const summary = `${reportType === 'daily' ? '今日' : '本周'}共新增 ${stats.totalEntries} 篇文章，已阅读 ${stats.totalRead} 篇。热门主题包括：${stats.topTopics.slice(0, 3).map((t) => t.topic).join('、')}。`;
+    // 小结
+    const summaryChineseNum = ['二', '三', '四', '五', '六', '七', '八', '九', '十'][sectionIndex - 2] || String(sectionIndex);
+    content += `## ${summaryChineseNum}、小结\n\n`;
+    content += `本期${reportType === 'daily' ? '日报' : '周报'}要点：\n\n`;
+
+    // 生成小结要点
+    content += `1. **内容概览**：共收录 ${stats.totalEntries} 篇文章，涵盖 ${sortedCategories.length} 个主要领域。\n`;
+
+    if (stats.topTopics.length > 0) {
+      content += `2. **热门话题**：${stats.topTopics.slice(0, 3).map(t => t.topic).join('、')} 是本期最受关注的话题。\n`;
+    }
+
+    if (sortedCategories.length > 0) {
+      const topCategory = sortedCategories[0];
+      content += `3. **重点关注**：${topCategory[0]} 领域文章最多（${topCategory[1].length} 篇），建议优先关注。\n`;
+    }
+
+    const readRate = stats.totalEntries > 0 ? Math.round((stats.totalRead / stats.totalEntries) * 100) : 0;
+    content += `4. **阅读进度**：已阅读 ${stats.totalRead} 篇（${readRate}%），继续保持阅读习惯。\n`;
+
+    const summary = `${reportType === 'daily' ? '今日' : '本周'}共收录 ${stats.totalEntries} 篇文章，涵盖 ${sortedCategories.length} 个领域。热门话题：${stats.topTopics.slice(0, 3).map(t => t.topic).join('、')}。`;
 
     const highlights = entries.slice(0, 5).map((e) => e.title);
 
     const topics = {
-      topTopics: stats.topTopics.slice(0, 5),
-      categories: stats.categories.slice(0, 5),
+      topTopics: stats.topTopics.slice(0, 10),
+      categories: stats.categories.slice(0, 10),
+      categoryNames,
     };
 
     return Promise.resolve({
@@ -476,38 +552,84 @@ export class ReportGenerator {
     reportDate: Date
   ): string {
     const dateStr = reportDate.toLocaleDateString('zh-CN');
+    const dateRange = reportType === 'daily'
+      ? dateStr
+      : `${dateStr} 当周`;
 
-    let prompt = `请为以下内容生成一份${reportType === 'daily' ? '日' : '周'}报，日期：${dateStr}\n\n`;
-    prompt += `## 统计数据\n`;
-    prompt += `- 新增文章：${stats.totalEntries} 篇\n`;
-    prompt += `- 已阅读：${stats.totalRead} 篇\n`;
-    prompt += `- 订阅源：${stats.totalFeeds} 个\n\n`;
+    let prompt = `你是一位专业的科技资讯分析师。请根据以下文章数据，生成一份结构化的${reportType === 'daily' ? '日' : '周'}报。
 
-    prompt += `## 热门主题\n`;
-    stats.topTopics.slice(0, 5).forEach((topic) => {
+## 报告要求
+
+请严格按照以下格式生成报告：
+
+### 一、整体热度概览
+用2-3句话概括本期最重要的热点趋势，说明各领域的热度分布情况。
+
+### 二、[领域名称1]（按文章数量降序排列）
+为每个领域生成独立章节，每个领域下按重要性排列文章：
+
+#### 1. [文章标题]
+- **时间**：发布日期
+- **核心信息**：
+  - [要点1]
+  - [要点2]
+  - [要点3]
+- **来源**：订阅源名称
+
+#### 2. [文章标题]
+...
+
+### 三、[领域名称2]
+...
+
+### [N]、小结
+用3-5个要点总结本期主线趋势和关键洞察。
+
+---
+
+## 输入数据
+
+**日期范围**：${dateRange}
+**文章总数**：${stats.totalEntries} 篇
+**订阅源数量**：${stats.totalFeeds} 个
+
+### 热门主题分布
+`;
+    stats.topTopics.slice(0, 10).forEach((topic) => {
       prompt += `- ${topic.topic}: ${topic.count} 篇\n`;
     });
-    prompt += '\n';
 
-    prompt += `## 精选文章\n`;
-    entries.slice(0, 10).forEach((entry, index) => {
-      prompt += `${index + 1}. ${entry.title}\n`;
-      if (entry.aiSummary) {
-        prompt += `   摘要：${entry.aiSummary}\n`;
-      }
-      prompt += `   重要性：${(entry.aiImportanceScore * 100).toFixed(0)}%\n`;
-      if (entry.aiCategory) {
-        prompt += `   分类：${entry.aiCategory}\n`;
-      }
-      prompt += '\n';
+    prompt += `\n### 分类分布\n`;
+    stats.categories.slice(0, 10).forEach((cat) => {
+      prompt += `- ${cat.name}: ${cat.count} 篇\n`;
     });
 
-    prompt += `\n请生成一份结构化的报告，包含：\n`;
-    prompt += `1. 概要总结（3-5句话）\n`;
-    prompt += `2. 重点内容分析\n`;
-    prompt += `3. 趋势洞察\n`;
-    prompt += `4. 推荐阅读（按重要性排序）\n\n`;
-    prompt += `使用Markdown格式，语言风格简洁专业。`;
+    prompt += `\n### 精选文章（按重要性排序）\n`;
+    entries.slice(0, 15).forEach((entry, index) => {
+      prompt += `\n---\n**${index + 1}. ${entry.title}**\n`;
+      if (entry.publishedAt) {
+        prompt += `发布时间：${entry.publishedAt.toLocaleDateString('zh-CN')}\n`;
+      }
+      if (entry.aiSummary) {
+        prompt += `AI摘要：${entry.aiSummary}\n`;
+      }
+      prompt += `重要性评分：${(entry.aiImportanceScore * 100).toFixed(0)}%\n`;
+      if (entry.aiCategory) {
+        prompt += `分类：${entry.aiCategory}\n`;
+      }
+      if (entry.aiKeywords && entry.aiKeywords.length > 0) {
+        prompt += `关键词：${entry.aiKeywords.slice(0, 5).join('、')}\n`;
+      }
+    });
+
+    prompt += `\n---
+
+## 注意事项
+1. 将文章按领域/主题分组，每个领域独立成章
+2. 领域名称要简洁专业，如"人工智能"、"网络安全"、"芯片半导体"、"云计算"等
+3. 每篇文章的核心信息要提炼3个以内的关键要点
+4. 语言风格要简洁专业，避免冗余
+5. 使用中文输出，Markdown格式`;
 
     return prompt;
   }
@@ -536,15 +658,20 @@ export class ReportGenerator {
    */
   private generateTitle(reportType: 'daily' | 'weekly', reportDate: Date): string {
     const dateStr = reportDate.toLocaleDateString('zh-CN', {
-      year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
 
     if (reportType === 'daily') {
-      return `日报 - ${dateStr}`;
+      return `资讯日报 · ${dateStr}`;
     } else {
-      return `周报 - ${dateStr} 当周`;
+      const endDate = new Date(reportDate);
+      endDate.setDate(endDate.getDate() + 6);
+      const endDateStr = endDate.toLocaleDateString('zh-CN', {
+        month: 'long',
+        day: 'numeric',
+      });
+      return `资讯周报 · ${dateStr} - ${endDateStr}`;
     }
   }
 
@@ -644,6 +771,153 @@ export class ReportGenerator {
       null,
       2
     );
+  }
+
+  /**
+   * 生成报告 PDF
+   */
+  async generateReportPdf(reportId: string): Promise<Buffer | null> {
+    const report = await db.report.findUnique({
+      where: { id: reportId },
+    });
+
+    if (!report || !report.content) {
+      await warn('system', '无法生成 PDF：报告不存在或内容为空', { reportId });
+      return null;
+    }
+
+    const pdfResult = await convertMarkdownToPdf(report.content, {
+      title: report.title,
+    });
+
+    if (!pdfResult.success || !pdfResult.pdfBuffer) {
+      await error('system', 'PDF 生成失败', undefined, {
+        reportId,
+        error: pdfResult.error
+      });
+      return null;
+    }
+
+    await info('system', 'PDF 生成成功', {
+      reportId,
+      pdfSize: pdfResult.pdfBuffer.length
+    });
+
+    return pdfResult.pdfBuffer;
+  }
+
+  /**
+   * 发送报告邮件（包含 PDF 附件）
+   */
+  async sendReportEmail(
+    userId: string,
+    reportId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    // 获取用户邮箱
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { email: true, username: true },
+    });
+
+    if (!user?.email) {
+      await warn('email', '无法发送报告邮件：用户邮箱不存在', { userId, reportId });
+      return { success: false, error: '用户邮箱不存在' };
+    }
+
+    // 获取报告信息
+    const report = await db.report.findUnique({
+      where: { id: reportId },
+    });
+
+    if (!report) {
+      return { success: false, error: '报告不存在' };
+    }
+
+    // 检查邮件服务是否可用
+    const emailService = createSystemEmailService();
+    if (!emailService) {
+      await warn('email', '邮件服务未配置，跳过发送', { userId, reportId });
+      return { success: false, error: '邮件服务未配置' };
+    }
+
+    // 生成 PDF
+    let pdfAttachment: { filename: string; content: Buffer; contentType: string } | undefined;
+    const pdfBuffer = await this.generateReportPdf(reportId);
+
+    if (pdfBuffer) {
+      const dateStr = report.reportDate.toLocaleDateString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).replace(/\//g, '-');
+      const reportTypeText = report.reportType === 'daily' ? '日报' : '周报';
+
+      pdfAttachment = {
+        filename: `${reportTypeText}_${dateStr}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      };
+    }
+
+    // 发送邮件
+    const result = await emailService.sendReportEmail(
+      user.email,
+      user.username,
+      {
+        id: report.id,
+        title: report.title,
+        reportType: report.reportType as 'daily' | 'weekly',
+        reportDate: report.reportDate,
+        summary: report.summary,
+        content: report.content,
+        highlights: report.highlights as string[],
+        totalEntries: report.totalEntries,
+        totalRead: report.totalRead,
+        totalFeeds: report.totalFeeds,
+      },
+      pdfAttachment
+    );
+
+    if (result.success) {
+      await info('email', '报告邮件发送成功', {
+        userId,
+        reportId,
+        to: user.email,
+        hasPdf: !!pdfAttachment
+      });
+    }
+
+    return { success: result.success, error: result.error };
+  }
+
+  /**
+   * 生成报告并发送邮件
+   */
+  async generateAndSendReport(
+    userId: string,
+    reportType: 'daily' | 'weekly',
+    reportDate: Date,
+    aiGenerated = true,
+    sendEmail = true
+  ): Promise<Report> {
+    // 生成报告
+    const report = reportType === 'daily'
+      ? await this.generateDailyReport(userId, reportDate, aiGenerated)
+      : await this.generateWeeklyReport(userId, reportDate, aiGenerated);
+
+    // 发送邮件
+    if (sendEmail) {
+      // 异步发送邮件，不阻塞报告生成
+      this.sendReportEmail(userId, report.id).catch(async (err) => {
+        await error('email', '报告邮件发送失败', undefined, {
+          userId,
+          reportId: report.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
+    }
+
+    return report;
   }
 }
 

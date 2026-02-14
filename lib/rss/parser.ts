@@ -119,6 +119,8 @@ export class RSSParser {
           // 微信公众号特有
           'mp:author',
           'mp:source',
+          // 通用来源字段
+          'source',
         ],
       },
     });
@@ -202,8 +204,9 @@ export class RSSParser {
               const updatedDate = this.parseDate(item.updated || item.modified);
 
               return {
-                title: item.title || 'Untitled',
-                link: item.link || item['feedburner:origLink'] || '',
+                title: (item.title || 'Untitled').trim(),
+                // link fallback: link -> feedburner:origLink -> guid (如果是URL格式)
+                link: item.link || item['feedburner:origLink'] || (item.guid && item.guid.startsWith('http') ? item.guid : ''),
                 pubDate,
                 content: content || undefined,
                 contentSnippet,
@@ -228,9 +231,11 @@ export class RSSParser {
             } catch (error) {
               // 如果单个条目处理失败，返回基本条目
               console.error('Error parsing RSS item:', error);
+              const rawItem = item as any;
+              const fallbackLink = rawItem.link || (rawItem.guid && rawItem.guid.startsWith('http') ? rawItem.guid : '');
               return {
-                title: (item as any).title || 'Untitled',
-                link: (item as any).link || '',
+                title: (rawItem.title || 'Untitled').trim(),
+                link: fallbackLink,
                 pubDate: (item as any).pubDate ? new Date((item as any).pubDate) : undefined,
                 content: (item as any).content || (item as any)['content:encoded'] || undefined,
                 contentSnippet: (item as any).contentSnippet || '',
@@ -243,7 +248,7 @@ export class RSSParser {
         );
 
         return {
-          title: feed.title || 'Untitled Feed',
+          title: (feed.title || 'Untitled Feed').trim(),
           description: feed.description,
           link: feed.link,
           language: feed.language,

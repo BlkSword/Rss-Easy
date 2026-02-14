@@ -5,8 +5,8 @@
 
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   User,
@@ -49,11 +49,20 @@ const tabs = [
 
 export function SettingsPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>('profile');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: user } = trpc.auth.me.useQuery();
+
+  // 从URL参数读取tab
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') as TabKey;
+    if (tabFromUrl && tabs.some(t => t.key === tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
   const { mutate: deleteAccount } = trpc.settings.deleteAccount.useMutation();
 
   const handleDeleteAccount = async () => {

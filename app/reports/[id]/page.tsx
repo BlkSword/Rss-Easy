@@ -32,6 +32,8 @@ import {
   Clock,
   X,
   RefreshCw,
+  Mail,
+  Settings,
 } from 'lucide-react';
 import { Button, Card, Row, Col, Select, Space, Modal, Typography, Tag, Progress, Steps, Tooltip } from 'antd';
 import { useToast } from '@/components/ui/toast';
@@ -351,9 +353,12 @@ export default function ReportDetailPage() {
         data?.status === 'generating' || data?.status === 'pending' ? 2000 : false,
     }
   );
+  const { data: emailConfig } = trpc.reports.checkEmailConfig.useQuery();
   
   const deleteReport = trpc.reports.delete.useMutation();
   const cancelGeneration = trpc.reports.cancelGeneration.useMutation();
+  const sendByEmail = trpc.reports.sendByEmail.useMutation();
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const handleDownload = () => {
     const blob = new Blob([report?.content || ''], { type: 'text/markdown' });
@@ -402,6 +407,36 @@ export default function ReportDetailPage() {
       refetch();
     } catch (error) {
       handleApiError(error, '取消失败');
+    }
+  };
+
+  const handleSendByEmail = async () => {
+    // 检查邮件配置
+    if (!emailConfig?.enabled || !emailConfig?.configured) {
+      Modal.confirm({
+        title: '邮件服务未配置',
+        content: '您需要先配置邮件服务才能发送报告到邮箱。是否前往设置页面？',
+        okText: '前往设置',
+        cancelText: '取消',
+        onOk: () => {
+          router.push('/settings?tab=email');
+        },
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const result = await sendByEmail.mutateAsync({ id: reportId });
+      if (result.success) {
+        notifySuccess('邮件发送成功', `报告已发送至 ${emailConfig.email}`);
+      } else {
+        notifyError(result.message, '请检查邮件配置是否正确');
+      }
+    } catch (error: any) {
+      handleApiError(error, '发送邮件失败');
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -588,6 +623,21 @@ export default function ReportDetailPage() {
                       >
                         分享
                       </Button>
+                      <Tooltip 
+                        title={!emailConfig?.enabled ? '邮件服务未配置' : `发送至 ${emailConfig.email}`}
+                      >
+                        <Button
+                          onClick={handleSendByEmail}
+                          loading={isSendingEmail}
+                          disabled={isSendingEmail}
+                          icon={<Mail className="h-4 w-4" />}
+                          className="hover:scale-105 transition-transform duration-200"
+                          type={emailConfig?.enabled ? 'primary' : 'default'}
+                          ghost={emailConfig?.enabled}
+                        >
+                          发送邮件
+                        </Button>
+                      </Tooltip>
                       <Button
                         danger
                         onClick={handleDelete}

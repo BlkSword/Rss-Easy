@@ -55,6 +55,7 @@ start.bat                # Windows: 启动 Docker 服务、数据库迁移和应
 - **认证**: JWT (jose) + HTTP-only Cookies
 - **任务队列**: BullMQ + Redis
 - **AI**: OpenAI / Anthropic / DeepSeek / Ollama / 自定义 API
+- **PWA**: Service Worker + Web App Manifest（支持离线和安装）
 
 ## 代码架构
 
@@ -399,7 +400,7 @@ export const appRouter = router({
 });
 ```
 
-**现有 tRPC 路由**：
+**现有 tRPC 路由**（定义在 `server/api/index.ts`）：
 - `auth` - 认证（登录/注册）
 - `feeds` - 订阅源管理
 - `entries` - 文章操作
@@ -409,10 +410,11 @@ export const appRouter = router({
 - `settings` - 用户设置
 - `rules` - 订阅规则
 - `notifications` - 通知管理
-- `ai` - AI 功能
-- `analytics` - 用户行为追踪和偏好学习（AI-Native）
-- `recommendations` - 个性化推荐
-- `preliminary` - 初步评估队列（AI-Native）
+- `ai` - AI 功能配置和测试
+- `analytics` - 用户行为追踪和偏好学习
+- `preliminary` - 初步评估队列
+- `logs` - 系统日志查询
+- `queue` - AI 队列状态管理
 
 ### 数据库变更
 

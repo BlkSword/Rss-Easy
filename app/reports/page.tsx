@@ -26,6 +26,11 @@ import {
   Sparkles,
   RefreshCw,
   X,
+  Mail,
+  Settings,
+  Brain,
+  CheckCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button, Card, Tag, Space, Modal, Dropdown, Progress, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
@@ -45,6 +50,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // Hooks
 import { usePageLoadAnimation } from '@/hooks/use-animation';
+
+// Components
+import { ReportEmailSettings } from './components/report-email-settings';
 
 // 报告类型图标组件
 function ReportTypeIcon({ type }: { type: string }) {
@@ -139,6 +147,75 @@ function FilterButton({
   );
 }
 
+// 配置状态卡片
+function ConfigStatusCard({
+  type,
+  isConfigured,
+  onConfigure,
+}: {
+  type: 'ai' | 'email';
+  isConfigured: boolean;
+  onConfigure: () => void;
+}) {
+  const isAI = type === 'ai';
+  const title = isAI ? 'AI 服务' : '邮件服务';
+  const icon = isAI ? <Brain className="h-5 w-5" /> : <Mail className="h-5 w-5" />;
+  const description = isAI
+    ? '生成报告需要配置 AI 服务'
+    : '发送报告邮件需要配置邮件服务';
+
+  return (
+    <Fade direction="up" distance={10}>
+      <Card
+        className={cn(
+          'border-2 transition-all duration-300',
+          isConfigured
+            ? 'border-green-200 bg-green-50/30 hover:border-green-300'
+            : 'border-amber-200 bg-amber-50/50 hover:border-amber-300'
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                'w-10 h-10 rounded-xl flex items-center justify-center transition-colors',
+                isConfigured
+                  ? 'bg-green-500/10 text-green-600'
+                  : 'bg-amber-500/10 text-amber-600'
+              )}
+            >
+              {icon}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{title}</span>
+                {isConfigured ? (
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {isConfigured ? '已配置' : description}
+              </p>
+            </div>
+          </div>
+          {!isConfigured && (
+            <Button
+              type="primary"
+              size="small"
+              onClick={onConfigure}
+              icon={<Settings className="h-3.5 w-3.5" />}
+            >
+              去配置
+            </Button>
+          )}
+        </div>
+      </Card>
+    </Fade>
+  );
+}
+
 // 生成中报告卡片
 function GeneratingReportCard({
   report,
@@ -209,7 +286,7 @@ function ReportCard({
   report: any;
   index: number;
   onDelete: (id: string) => void;
-  getActionItems: (id: string) => MenuProps['items'];
+  getActionItems: (id: string, isCompleted: boolean) => MenuProps['items'];
 }) {
   // 生成中的报告使用特殊卡片
   if (report.status === 'generating' || report.status === 'pending') {
@@ -307,7 +384,7 @@ function ReportCard({
             </Link>
 
             <div className="flex items-center gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              <Dropdown menu={{ items: getActionItems(report.id) }} trigger={['click']}>
+              <Dropdown menu={{ items: getActionItems(report.id, report.status === 'completed') }} trigger={['click']}>
                 <Button type="text" icon={<MoreHorizontal className="h-4 w-4" />} />
               </Dropdown>
             </div>
@@ -346,6 +423,7 @@ export default function ReportsPage() {
   const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
   const [filter, setFilter] = useState<'all' | 'daily' | 'weekly'>('all');
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 页面加载动画
   const isPageLoaded = usePageLoadAnimation(100);
@@ -390,17 +468,32 @@ export default function ReportsPage() {
   const startGenerateWeekly = trpc.reports.startGenerateWeekly.useMutation();
   const cancelGeneration = trpc.reports.cancelGeneration.useMutation();
   const deleteReport = trpc.reports.delete.useMutation();
-  const checkAIConfig = trpc.reports.checkAIConfig.useQuery(undefined, {
-    enabled: false, // 手动触发
+  const sendByEmail = trpc.reports.sendByEmail.useMutation();
+  const { data: emailConfig } = trpc.reports.checkEmailConfig.useQuery();
+  const { data: aiConfigStatus, refetch: refetchAIConfig } = trpc.reports.checkAIConfig.useQuery(undefined, {
+    enabled: true, // 页面加载时自动检查
   });
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+
+  // 检查配置状态
+  const isAIConfigured = aiConfigStatus?.success ?? false;
+  const isEmailConfigured = emailConfig?.enabled && emailConfig?.configured;
 
   const handleGenerate = async (type: 'daily' | 'weekly') => {
     const date = new Date();
     
     // 1. 先检查AI配置
-    const configResult = await checkAIConfig.refetch();
+    const configResult = await refetchAIConfig();
     if (configResult.data && !configResult.data.success) {
-      notifyError(configResult.data.error || 'AI配置检查失败', configResult.data.message);
+      Modal.confirm({
+        title: 'AI服务未配置',
+        content: configResult.data.error || '生成报告需要配置AI服务。是否前往设置页面配置？',
+        okText: '前往设置',
+        cancelText: '取消',
+        onOk: () => {
+          window.location.href = '/settings?tab=ai';
+        },
+      });
       return;
     }
     
@@ -448,28 +541,75 @@ export default function ReportsPage() {
     });
   };
 
-  const getActionItems = (reportId: string): MenuProps['items'] => [
-    {
-      key: 'download',
-      icon: <Download className="h-4 w-4" />,
-      label: '下载',
-    },
-    {
-      key: 'share',
-      icon: <Share2 className="h-4 w-4" />,
-      label: '分享',
-    },
-    {
+  const handleSendByEmail = async (id: string) => {
+    // 检查邮件配置
+    if (!emailConfig?.enabled || !emailConfig?.configured) {
+      Modal.confirm({
+        title: '邮件服务未配置',
+        content: '您需要先配置邮件服务才能发送报告到邮箱。是否前往设置页面？',
+        okText: '前往设置',
+        cancelText: '取消',
+        onOk: () => {
+          window.location.href = '/settings?tab=email';
+        },
+      });
+      return;
+    }
+
+    setSendingEmailId(id);
+    try {
+      const result = await sendByEmail.mutateAsync({ id });
+      if (result.success) {
+        notifySuccess('邮件发送成功', `报告已发送至 ${emailConfig.email}`);
+      } else {
+        notifyError(result.message, '请检查邮件配置是否正确');
+      }
+    } catch (error: any) {
+      handleApiError(error, '发送邮件失败');
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  const getActionItems = (reportId: string, isCompleted: boolean): MenuProps['items'] => {
+    const items: MenuProps['items'] = [
+      {
+        key: 'download',
+        icon: <Download className="h-4 w-4" />,
+        label: '下载',
+      },
+      {
+        key: 'share',
+        icon: <Share2 className="h-4 w-4" />,
+        label: '分享',
+      },
+    ];
+
+    // 只有已完成的报告才能发送邮件
+    if (isCompleted) {
+      items.push({
+        key: 'email',
+        icon: sendingEmailId === reportId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />,
+        label: sendingEmailId === reportId ? '发送中...' : '发送到邮箱',
+        disabled: sendingEmailId === reportId || !emailConfig?.enabled,
+        onClick: () => handleSendByEmail(reportId),
+      });
+    }
+
+    items.push({
       type: 'divider',
-    },
-    {
+    });
+
+    items.push({
       key: 'delete',
       icon: <Trash2 className="h-4 w-4" />,
       label: '删除',
       danger: true,
       onClick: () => handleDelete(reportId),
-    },
-  ];
+    });
+
+    return items;
+  };
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -499,6 +639,14 @@ export default function ReportsPage() {
                   <p className="text-muted-foreground">查看日报、周报和阅读分析</p>
                 </div>
                 <Space>
+                  <Tooltip title="邮件设置">
+                    <Button
+                      icon={<Settings className="h-4 w-4" />}
+                      onClick={() => setSettingsOpen(true)}
+                    >
+                      邮件设置
+                    </Button>
+                  </Tooltip>
                   <Button
                     type="primary"
                     icon={<Plus className="h-4 w-4" />}
@@ -516,6 +664,28 @@ export default function ReportsPage() {
                 </Space>
               </div>
             </Fade>
+
+            {/* 配置状态提示 - 当配置不完整时显示 */}
+            {!isLoading && (!isAIConfigured || !isEmailConfigured) && (
+              <Fade delay={100} direction="up" distance={15}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {!isAIConfigured && (
+                    <ConfigStatusCard
+                      type="ai"
+                      isConfigured={false}
+                      onConfigure={() => window.location.href = '/settings?tab=ai'}
+                    />
+                  )}
+                  {!isEmailConfigured && (
+                    <ConfigStatusCard
+                      type="email"
+                      isConfigured={false}
+                      onConfigure={() => window.location.href = '/settings?tab=email'}
+                    />
+                  )}
+                </div>
+              </Fade>
+            )}
 
             {/* 统计概览 */}
             {!isLoading && reports && reports.length > 0 && (
@@ -616,6 +786,12 @@ export default function ReportsPage() {
           </div>
         </main>
       </div>
+
+      {/* 邮件设置弹窗 */}
+      <ReportEmailSettings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }
