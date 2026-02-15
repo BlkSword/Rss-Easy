@@ -123,7 +123,6 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
       // 乐观更新：更新分类和订阅源未读计数
       const currentEntries = entriesData?.items || [];
       utils.categories.list.setData(undefined, (oldData: any) => {
-        // oldData 直接是数组，不是包含 categories 属性的对象
         if (!oldData || !Array.isArray(oldData)) return oldData;
         return oldData.map((category: any) => {
           const affectedCount = vars.entryIds.filter((id: string) => {

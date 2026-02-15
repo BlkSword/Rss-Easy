@@ -1,5 +1,6 @@
 /**
  * Reports API Router
+ * 安全修复：使用加密安全的随机令牌生成
  */
 
 import { TRPCError } from '@trpc/server';
@@ -11,6 +12,7 @@ import { checkAIConfigQuick, getUserAIConfig } from '@/lib/ai/health-check';
 import { createEmailServiceFromUser, type EmailAttachment } from '@/lib/email/service';
 import { convertMarkdownToPdf } from '@/lib/reports/pdf-converter';
 import { info, warn, error } from '@/lib/logger';
+import { randomBytes } from 'crypto';
 
 export const reportsRouter = router({
   /**
@@ -380,13 +382,13 @@ export const reportsRouter = router({
 
   /**
    * 生成分享链接
+   * 安全修复：使用加密安全的随机令牌
    */
   generateShareToken: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
-      // 生成随机token
-      const shareToken = Math.random().toString(36).substring(2, 15) +
-        Math.random().toString(36).substring(2, 15);
+      // 生成加密安全的随机 token
+      const shareToken = randomBytes(32).toString('base64url');
 
       await ctx.db.report.update({
         where: {

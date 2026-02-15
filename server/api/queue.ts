@@ -1,6 +1,7 @@
 /**
  * 队列状态 API
  * 提供实时队列监控信息
+ * 安全修复：添加用户数据隔离
  */
 
 import { router, publicProcedure, protectedProcedure } from '../trpc/init';
@@ -8,6 +9,15 @@ import { db } from '@/lib/db';
 import { getScheduler } from '@/lib/jobs/scheduler';
 import { z } from 'zod';
 import { safeDecrypt } from '@/lib/crypto/encryption';
+
+// 辅助函数：获取用户的 Feed ID 列表
+async function getUserFeedIds(userId: string): Promise<string[]> {
+  const feeds = await db.feed.findMany({
+    where: { userId },
+    select: { id: true },
+  });
+  return feeds.map(f => f.id);
+}
 
 export const queueRouter = router({
   /**
@@ -182,18 +192,43 @@ export const queueRouter = router({
 
   /**
    * 获取 AI 分析队列状态
+   * 数据隔离：只显示用户自己的 Feed 相关任务
    */
   aiQueueStatus: protectedProcedure
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const userId = ctx.userId!;
+      const userFeedIds = await getUserFeedIds(userId);
+
+      // 如果用户没有订阅源，返回空数据
+      if (userFeedIds.length === 0) {
+        return {
+          pending: 0,
+          processing: 0,
+          completed: 0,
+          failed: 0,
+          total: 0,
+          recentTasks: [],
+        };
+      }
+
       const [pending, processing, completed, failed, recentTasks] = await Promise.all([
-        db.aIAnalysisQueue.count({ where: { status: 'pending' } }),
-        db.aIAnalysisQueue.count({ where: { status: 'processing' } }),
-        db.aIAnalysisQueue.count({ where: { status: 'completed' } }),
-        db.aIAnalysisQueue.count({ where: { status: 'failed' } }),
+        db.aIAnalysisQueue.count({
+          where: { status: 'pending', entry: { feedId: { in: userFeedIds } } }
+        }),
+        db.aIAnalysisQueue.count({
+          where: { status: 'processing', entry: { feedId: { in: userFeedIds } } }
+        }),
+        db.aIAnalysisQueue.count({
+          where: { status: 'completed', entry: { feedId: { in: userFeedIds } } }
+        }),
+        db.aIAnalysisQueue.count({
+          where: { status: 'failed', entry: { feedId: { in: userFeedIds } } }
+        }),
         // 获取最近的任务
         db.aIAnalysisQueue.findMany({
           where: {
             status: { in: ['pending', 'processing'] },
+            entry: { feedId: { in: userFeedIds } },
           },
           take: 10,
           orderBy: { createdAt: 'desc' },
@@ -238,15 +273,18 @@ export const queueRouter = router({
 
   /**
    * 获取调度器状态
+   * 数据隔离：只显示用户自己的 Feed 统计
    */
   schedulerStatus: protectedProcedure
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const userId = ctx.userId!;
       const scheduler = getScheduler();
       const status = scheduler.getStatus();
 
-      // 获取待抓取的 Feed 数量
+      // 获取待抓取的 Feed 数量（仅用户的）
       const feedsToUpdate = await db.feed.count({
         where: {
+          userId,
           isActive: true,
           OR: [
             { nextFetchAt: null },
@@ -255,11 +293,11 @@ export const queueRouter = router({
         },
       });
 
-      // 获取 Feed 统计
+      // 获取 Feed 统计（仅用户的）
       const [totalFeeds, activeFeeds, errorFeeds] = await Promise.all([
-        db.feed.count(),
-        db.feed.count({ where: { isActive: true } }),
-        db.feed.count({ where: { errorCount: { gt: 0 } } }),
+        db.feed.count({ where: { userId } }),
+        db.feed.count({ where: { userId, isActive: true } }),
+        db.feed.count({ where: { userId, errorCount: { gt: 0 } } }),
       ]);
 
       return {
@@ -275,12 +313,39 @@ export const queueRouter = router({
 
   /**
    * 获取系统概览状态
+   * 数据隔离：只显示用户自己的数据
    */
   systemOverview: protectedProcedure
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const userId = ctx.userId!;
+      const userFeedIds = await getUserFeedIds(userId);
       const now = new Date();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      // 如果用户没有订阅源，返回空数据
+      if (userFeedIds.length === 0) {
+        return {
+          entries: {
+            total: 0,
+            lastHour: 0,
+            lastDay: 0,
+            unread: 0,
+            starred: 0,
+          },
+          queue: {
+            pending: 0,
+            processing: 0,
+            completed: 0,
+            failed: 0,
+          },
+          feeds: {
+            toUpdate: 0,
+          },
+          scheduler: getScheduler().getStatus(),
+          timestamp: now.toISOString(),
+        };
+      }
 
       const [
         totalEntries,
@@ -292,17 +357,19 @@ export const queueRouter = router({
         feedsToUpdate,
         schedulerStatus,
       ] = await Promise.all([
-        db.entry.count(),
-        db.entry.count({ where: { createdAt: { gte: oneHourAgo } } }),
-        db.entry.count({ where: { createdAt: { gte: oneDayAgo } } }),
-        db.entry.count({ where: { isRead: false } }),
-        db.entry.count({ where: { isStarred: true } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds } } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, createdAt: { gte: oneHourAgo } } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, createdAt: { gte: oneDayAgo } } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, isRead: false } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, isStarred: true } }),
         db.aIAnalysisQueue.groupBy({
           by: ['status'],
+          where: { entry: { feedId: { in: userFeedIds } } },
           _count: { id: true },
         }),
         db.feed.count({
           where: {
+            userId,
             isActive: true,
             OR: [
               { nextFetchAt: null },
@@ -343,12 +410,22 @@ export const queueRouter = router({
 
   /**
    * 获取当前正在处理的任务
+   * 数据隔离：只显示用户自己的 Feed 相关任务
    */
   activeTasks: protectedProcedure
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const userId = ctx.userId!;
+      const userFeedIds = await getUserFeedIds(userId);
+
+      // 如果用户没有订阅源，返回空数据
+      if (userFeedIds.length === 0) {
+        return [];
+      }
+
       const tasks = await db.aIAnalysisQueue.findMany({
         where: {
           status: 'processing',
+          entry: { feedId: { in: userFeedIds } },
         },
         orderBy: { startedAt: 'desc' },
         take: 5,
@@ -380,16 +457,19 @@ export const queueRouter = router({
 
   /**
    * 获取待更新的订阅源列表
+   * 数据隔离：只显示用户自己的订阅源
    */
   feedsToUpdate: protectedProcedure
     .input(z.object({
       limit: z.number().min(1).max(50).default(10),
     }).optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      const userId = ctx.userId!;
       const limit = input?.limit ?? 10;
 
       const feeds = await db.feed.findMany({
         where: {
+          userId,
           isActive: true,
           OR: [
             { nextFetchAt: null },
@@ -444,13 +524,55 @@ export const queueRouter = router({
 
   /**
    * 获取详细的系统监控数据
+   * 数据隔离：只显示用户自己的数据
    */
   detailedMonitor: protectedProcedure
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const userId = ctx.userId!;
+      const userFeedIds = await getUserFeedIds(userId);
       const now = new Date();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // 如果用户没有订阅源，返回空数据
+      if (userFeedIds.length === 0) {
+        return {
+          feeds: {
+            total: 0,
+            active: 0,
+            errors: 0,
+            toUpdate: 0,
+            recentlyFetched: 0,
+            healthScore: 100,
+          },
+          entries: {
+            total: 0,
+            lastHour: 0,
+            lastDay: 0,
+            unread: 0,
+            starred: 0,
+          },
+          queue: {
+            pending: 0,
+            processing: 0,
+            completed: 0,
+            failed: 0,
+            total: 0,
+            activeTasks: [],
+          },
+          scheduler: {
+            isRunning: getScheduler().getStatus().isRunning,
+            fetchInterval: getScheduler().getStatus().fetchInterval,
+            aiProcessInterval: getScheduler().getStatus().aiProcessInterval,
+          },
+          health: {
+            status: 'healthy',
+            message: '系统运行正常',
+          },
+          timestamp: now.toISOString(),
+        };
+      }
 
       // 并行获取所有统计数据
       const [
@@ -477,12 +599,13 @@ export const queueRouter = router({
         feedCount,
         userCount,
       ] = await Promise.all([
-        // Feed 统计
-        db.feed.count(),
-        db.feed.count({ where: { isActive: true } }),
-        db.feed.count({ where: { errorCount: { gt: 0 } } }),
+        // Feed 统计（仅用户的）
+        db.feed.count({ where: { userId } }),
+        db.feed.count({ where: { userId, isActive: true } }),
+        db.feed.count({ where: { userId, errorCount: { gt: 0 } } }),
         db.feed.count({
           where: {
+            userId,
             isActive: true,
             OR: [
               { nextFetchAt: null },
@@ -492,24 +615,29 @@ export const queueRouter = router({
         }),
         db.feed.count({
           where: {
+            userId,
             lastFetchedAt: { gte: oneHourAgo },
           },
         }),
 
-        // 文章统计
-        db.entry.count(),
-        db.entry.count({ where: { createdAt: { gte: oneHourAgo } } }),
-        db.entry.count({ where: { createdAt: { gte: oneDayAgo } } }),
-        db.entry.count({ where: { isRead: false } }),
-        db.entry.count({ where: { isStarred: true } }),
+        // 文章统计（仅用户的）
+        db.entry.count({ where: { feedId: { in: userFeedIds } } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, createdAt: { gte: oneHourAgo } } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, createdAt: { gte: oneDayAgo } } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, isRead: false } }),
+        db.entry.count({ where: { feedId: { in: userFeedIds }, isStarred: true } }),
 
-        // AI 队列统计
+        // AI 队列统计（仅用户的）
         db.aIAnalysisQueue.groupBy({
           by: ['status'],
+          where: { entry: { feedId: { in: userFeedIds } } },
           _count: { id: true },
         }),
         db.aIAnalysisQueue.findMany({
-          where: { status: 'processing' },
+          where: {
+            status: 'processing',
+            entry: { feedId: { in: userFeedIds } },
+          },
           select: {
             id: true,
             startedAt: true,
@@ -525,10 +653,10 @@ export const queueRouter = router({
           orderBy: { startedAt: 'desc' },
         }),
 
-        // 数据库统计
-        db.entry.count(),
-        db.feed.count(),
-        db.user.count(),
+        // 数据库统计（仅用户的）
+        db.entry.count({ where: { feedId: { in: userFeedIds } } }),
+        db.feed.count({ where: { userId } }),
+        db.user.count({ where: { id: userId } }),
       ]);
 
       // 转换队列状态

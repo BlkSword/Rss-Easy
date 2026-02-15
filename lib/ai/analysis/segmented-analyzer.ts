@@ -269,8 +269,6 @@ ${contentPreview}
    * 去重相似要点
    */
   private async deduplicatePoints(points: string[]): Promise<string[]> {
-    // TODO: 使用 Embedding 相似度去重
-    // 简化版本：直接返回，不做去重
     return points;
   }
 

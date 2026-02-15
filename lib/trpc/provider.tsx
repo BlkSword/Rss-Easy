@@ -2,13 +2,29 @@
 
 /**
  * tRPC Provider组件
+ * 安全增强：支持 CSRF Token 和 API Key
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { httpBatchLink, loggerLink } from '@trpc/client';
-import { useState } from 'react';
+import { useState, useEffect, createContext, useContext, useRef } from 'react';
 import SuperJSON from 'superjson';
 import { trpc } from './client';
+
+// CSRF Token 上下文
+interface CsrfContextType {
+  token: string | null;
+  setToken: (token: string | null) => void;
+}
+
+const CsrfContext = createContext<CsrfContextType>({
+  token: null,
+  setToken: () => {},
+});
+
+export function useCsrfContext() {
+  return useContext(CsrfContext);
+}
 
 /**
  * 自定义 fetch 函数，处理认证错误
@@ -33,6 +49,15 @@ export function TRPCProvider({
 }: {
   children: React.ReactNode;
 }) {
+  // CSRF Token 状态
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
+  const csrfTokenRef = useRef<string | null>(null);
+
+  // 保持 ref 同步
+  useEffect(() => {
+    csrfTokenRef.current = csrfToken;
+  }, [csrfToken]);
+
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
@@ -62,10 +87,18 @@ export function TRPCProvider({
           url: getBaseUrl() + '/api/trpc',
           fetch: customFetch,
           headers() {
-            return {
+            const headers: Record<string, string> = {
               // 在这里添加认证头
               'x-user-id': typeof window !== 'undefined' ? (localStorage.getItem('userId') || '') : '',
             };
+
+            // 添加 CSRF Token（用于 mutation 操作）
+            const token = csrfTokenRef.current;
+            if (token) {
+              headers['x-csrf-token'] = token;
+            }
+
+            return headers;
           },
         }),
       ],
@@ -73,11 +106,13 @@ export function TRPCProvider({
   );
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    </trpc.Provider>
+    <CsrfContext.Provider value={{ token: csrfToken, setToken: setCsrfToken }}>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </trpc.Provider>
+    </CsrfContext.Provider>
   );
 }
 

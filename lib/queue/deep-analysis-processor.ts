@@ -223,7 +223,6 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
           mappedPrefs
         );
 
-        // TODO: 保存个性化评分
         console.log('个性化评分:', personalScore);
       }
 

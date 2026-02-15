@@ -1,8 +1,12 @@
 /**
  * 认证相关的 tRPC Router
+ * 安全修复：
+ * - 需要认证的操作使用 protectedProcedure
+ * - 登录/注册使用速率限制
+ * - 登出使用 CSRF 保护
  */
 
-import { router, publicProcedure } from '../trpc/init';
+import { router, publicProcedure, protectedProcedure, loginProcedure, registerProcedure, protectedMutation } from '../trpc/init';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashPassword, verifyPassword, signToken } from '@/lib/auth';
@@ -10,12 +14,14 @@ import { TRPCError } from '@trpc/server';
 import { info, warn, error } from '@/lib/logger';
 import { createEmailServiceFromUser, createSystemEmailService } from '@/lib/email/service';
 import { randomBytes } from 'crypto';
+import { loginRateLimiter, registerRateLimiter } from '@/lib/security/redis-rate-limit';
 
 export const authRouter = router({
   /**
    * 用户注册
+   * 安全增强：使用速率限制
    */
-  register: publicProcedure
+  register: registerProcedure
     .input(
       z.object({
         email: z.string().email(),
@@ -27,7 +33,7 @@ export const authRouter = router({
           .regex(/\d/, '密码必须包含数字'),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // 检查邮箱是否已存在
       const existingEmail = await db.user.findUnique({
         where: { email: input.email },
@@ -87,6 +93,10 @@ export const authRouter = router({
         email: user.email,
       });
 
+      // 注册成功后重置速率限制
+      const identifier = ctx.ip ? `ip:${ctx.ip}` : `email:${input.email}`;
+      await registerRateLimiter.reset(identifier);
+
       return {
         user,
         token,
@@ -95,15 +105,16 @@ export const authRouter = router({
 
   /**
    * 用户登录
+   * 安全增强：使用速率限制
    */
-  login: publicProcedure
+  login: loginProcedure
     .input(
       z.object({
         email: z.string().email(),
         password: z.string(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // 查找用户
       const user = await db.user.findUnique({
         where: { email: input.email },
@@ -132,6 +143,10 @@ export const authRouter = router({
         email: user.email,
       });
 
+      // 登录成功后重置速率限制
+      const identifier = ctx.ip ? `ip:${ctx.ip}` : `user:${user.id}`;
+      await loginRateLimiter.reset(identifier);
+
       await info('auth', '用户登录成功', { userId: user.id, email: user.email });
 
       return {
@@ -150,28 +165,21 @@ export const authRouter = router({
 
   /**
    * 用户登出
+   * 安全增强：使用 CSRF 保护
    */
-  logout: publicProcedure
+  logout: protectedMutation
     .mutation(async ({ ctx }) => {
-      if (ctx.userId) {
-        await info('auth', '用户登出', { userId: ctx.userId });
-      }
+      await info('auth', '用户登出', { userId: ctx.userId!, authMethod: ctx.authMethod });
       return { success: true };
     }),
 
   /**
    * 获取当前用户信息
+   * 安全修复：使用 protectedProcedure
    */
-  me: publicProcedure.query(async ({ ctx }) => {
-    if (!ctx.userId) {
-      throw new TRPCError({
-        code: 'UNAUTHORIZED',
-        message: '未登录',
-      });
-    }
-
+  me: protectedProcedure.query(async ({ ctx }) => {
     const user = await db.user.findUnique({
-      where: { id: ctx.userId },
+      where: { id: ctx.userId! },
       select: {
         id: true,
         email: true,
@@ -203,8 +211,9 @@ export const authRouter = router({
 
   /**
    * 更新用户资料
+   * 安全修复：使用 protectedProcedure
    */
-  updateProfile: publicProcedure
+  updateProfile: protectedProcedure
     .input(
       z.object({
         username: z.string().min(3).max(20).optional(),
@@ -212,15 +221,8 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      if (!ctx.userId) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: '未登录',
-        });
-      }
-
       const user = await db.user.update({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         data: input,
         select: {
           id: true,
@@ -235,8 +237,9 @@ export const authRouter = router({
 
   /**
    * 更新用户偏好设置
+   * 安全修复：使用 protectedProcedure
    */
-  updatePreferences: publicProcedure
+  updatePreferences: protectedProcedure
     .input(
       z.object({
         theme: z.enum(['light', 'dark', 'system']).optional(),
@@ -247,15 +250,8 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      if (!ctx.userId) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: '未登录',
-        });
-      }
-
       const user = await db.user.update({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         data: {
           preferences: input,
         },
@@ -272,8 +268,9 @@ export const authRouter = router({
 
   /**
    * 更新密码
+   * 安全修复：使用 protectedProcedure
    */
-  updatePassword: publicProcedure
+  updatePassword: protectedProcedure
     .input(
       z.object({
         currentPassword: z.string(),
@@ -281,16 +278,9 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      if (!ctx.userId) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: '未登录',
-        });
-      }
-
       // 获取用户
       const user = await db.user.findUnique({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         select: {
           passwordHash: true,
         },
@@ -319,7 +309,7 @@ export const authRouter = router({
       const passwordHash = await hashPassword(input.newPassword);
 
       await db.user.update({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         data: { passwordHash },
       });
 
@@ -328,8 +318,9 @@ export const authRouter = router({
 
   /**
    * 更新AI配置
+   * 安全修复：使用 protectedProcedure
    */
-  updateAiConfig: publicProcedure
+  updateAiConfig: protectedProcedure
     .input(
       z.object({
         provider: z.enum(['openai', 'anthropic', 'deepseek', 'ollama']).optional(),
@@ -342,15 +333,8 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      if (!ctx.userId) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: '未登录',
-        });
-      }
-
       const user = await db.user.update({
-        where: { id: ctx.userId },
+        where: { id: ctx.userId! },
         data: {
           aiConfig: input,
         },

@@ -53,6 +53,7 @@ export function SettingsPageContent() {
   const [activeTab, setActiveTab] = useState<TabKey>('profile');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
 
   const { data: user } = trpc.auth.me.useQuery();
 
@@ -66,15 +67,25 @@ export function SettingsPageContent() {
   const { mutate: deleteAccount } = trpc.settings.deleteAccount.useMutation();
 
   const handleDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      notifyError('请输入密码以确认删除');
+      return;
+    }
+
     setIsDeleting(true);
     try {
-      await deleteAccount();
+      await deleteAccount({ password: deletePassword });
       notifySuccess('账户已删除');
       router.push('/login');
     } catch (error) {
       notifyError(error instanceof Error ? error.message : '删除失败');
       setIsDeleting(false);
     }
+  };
+
+  const handleDeleteModalClose = () => {
+    setIsDeleteModalOpen(false);
+    setDeletePassword('');
   };
 
   const handleBack = () => {
@@ -197,16 +208,55 @@ export function SettingsPageContent() {
       </div>
 
       {/* 删除账户确认弹窗 */}
-      <ConfirmModal
+      <Modal
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleDeleteAccount}
+        onClose={handleDeleteModalClose}
         title="删除账户"
         description="此操作将永久删除您的账户和所有数据，包括订阅源、文章、设置等。此操作无法撤销，请谨慎操作。"
-        confirmText="确认删除"
-        confirmVariant="danger"
-        isConfirmLoading={isDeleting}
-      />
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={handleDeleteModalClose}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted transition-colors"
+              disabled={isDeleting}
+            >
+              取消
+            </button>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={isDeleting || !deletePassword.trim()}
+              className={cn(
+                'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                'bg-red-600 hover:bg-red-700 text-white',
+                'disabled:opacity-50 disabled:cursor-not-allowed'
+              )}
+            >
+              {isDeleting ? '删除中...' : '确认删除'}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg">
+            <p className="text-sm text-red-700 dark:text-red-300">
+              ⚠️ 警告：删除账户将永久移除所有数据，此操作不可恢复！
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              请输入密码以确认删除
+            </label>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              placeholder="输入您的密码"
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-red-500"
+              autoFocus
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

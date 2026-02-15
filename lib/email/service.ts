@@ -1,10 +1,12 @@
 /**
  * 邮件服务
  * 基于 nodemailer 实现邮件发送功能
+ * 安全修复：解密 SMTP 密码
  */
 
 import nodemailer from 'nodemailer';
 import { info, warn, error } from '@/lib/logger';
+import { safeDecrypt } from '@/lib/crypto/encryption';
 
 /**
  * 转义 HTML 特殊字符
@@ -617,13 +619,21 @@ export function createEmailServiceFromUser(emailConfig: any): EmailService | nul
     return null;
   }
 
+  // 解密 SMTP 密码（如果已加密）
+  let smtpPassword = emailConfig.smtpPassword || '';
+  if (smtpPassword) {
+    // 尝试解密，如果解密失败则使用原始值（兼容旧数据）
+    const decrypted = safeDecrypt(smtpPassword);
+    smtpPassword = decrypted || smtpPassword;
+  }
+
   const config: EmailConfig = {
     enabled: emailConfig.enabled,
     smtpHost: emailConfig.smtpHost || '',
     smtpPort: emailConfig.smtpPort || 587,
     smtpSecure: emailConfig.smtpSecure ?? false,
     smtpUser: emailConfig.smtpUser || '',
-    smtpPassword: emailConfig.smtpPassword || '',
+    smtpPassword,
     fromEmail: emailConfig.fromEmail || '',
     fromName: emailConfig.fromName || 'Rss-Easy',
   };

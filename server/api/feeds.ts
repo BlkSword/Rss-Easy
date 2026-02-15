@@ -1,5 +1,6 @@
 /**
  * Feeds API Router
+ * 安全修复：添加 SSRF 防护
  */
 
 import { TRPCError } from '@trpc/server';
@@ -9,6 +10,7 @@ import { feedManager } from '@/lib/rss/feed-manager';
 import { parseFeed } from '@/lib/rss/parser';
 import { AIAnalysisQueue } from '@/lib/ai/queue';
 import { info, warn, error } from '@/lib/logger';
+import { isUrlSafe } from '@/lib/utils';
 
 export const feedsRouter = router({
   /**
@@ -127,6 +129,7 @@ export const feedsRouter = router({
 
   /**
    * 添加订阅源
+   * 安全修复：添加 SSRF 防护
    */
   add: protectedProcedure
     .input(z.object({
@@ -140,6 +143,20 @@ export const feedsRouter = router({
       siteUrl: z.string().url().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      // SSRF 防护：验证 URL 安全性
+      const urlCheck = isUrlSafe(input.url);
+      if (!urlCheck.safe) {
+        await warn('rss', '订阅源 URL 被 SSRF 防护拦截', {
+          userId: ctx.userId,
+          url: input.url,
+          reason: urlCheck.reason
+        });
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `URL 不安全: ${urlCheck.reason}`
+        });
+      }
+
       await info('rss', '用户尝试创建订阅源', {
         userId: ctx.userId,
         url: input.url,
@@ -480,10 +497,25 @@ export const feedsRouter = router({
   /**
    * 自动发现订阅源信息
    * 优先从 RSS feed 中提取，如果失败则从网页提取
+   * 安全修复：添加 SSRF 防护
    */
   discover: protectedProcedure
     .input(z.object({ url: z.string().url() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // SSRF 防护：验证 URL 安全性
+      const urlCheck = isUrlSafe(input.url);
+      if (!urlCheck.safe) {
+        await warn('rss', '发现订阅源 URL 被 SSRF 防护拦截', {
+          userId: ctx.userId,
+          url: input.url,
+          reason: urlCheck.reason
+        });
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `URL 不安全: ${urlCheck.reason}`
+        });
+      }
+
       try {
         // 首先尝试直接解析 RSS feed
         let title: string | null = null;

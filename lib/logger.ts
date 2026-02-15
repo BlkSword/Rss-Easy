@@ -6,7 +6,7 @@
 import { db } from './db';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
-type LogCategory = 'system' | 'rss' | 'ai' | 'auth' | 'email' | 'api' | 'queue';
+type LogCategory = 'system' | 'rss' | 'ai' | 'auth' | 'email' | 'api' | 'queue' | 'security';
 
 interface LogOptions {
   level: LogLevel;
@@ -75,22 +75,22 @@ export async function log(options: LogOptions) {
 /**
  * 快捷方法：调试日志
  */
-export function debug(category: LogCategory, message: string, details?: Record<string, any>) {
-  return log({ level: 'debug', category, message, details });
+export function debug(category: LogCategory, message: string, details?: Record<string, any>, userId?: string) {
+  return log({ level: 'debug', category, message, details, userId });
 }
 
 /**
  * 快捷方法：信息日志
  */
-export function info(category: LogCategory, message: string, details?: Record<string, any>) {
-  return log({ level: 'info', category, message, details });
+export function info(category: LogCategory, message: string, details?: Record<string, any>, userId?: string) {
+  return log({ level: 'info', category, message, details, userId });
 }
 
 /**
  * 快捷方法：警告日志
  */
-export function warn(category: LogCategory, message: string, details?: Record<string, any>) {
-  return log({ level: 'warn', category, message, details });
+export function warn(category: LogCategory, message: string, details?: Record<string, any>, userId?: string) {
+  return log({ level: 'warn', category, message, details, userId });
 }
 
 /**
@@ -100,7 +100,8 @@ export function error(
   category: LogCategory,
   message: string,
   errorObj?: Error,
-  details?: Record<string, any>
+  details?: Record<string, any>,
+  userId?: string
 ) {
   return log({
     level: 'error',
@@ -108,6 +109,7 @@ export function error(
     message,
     error: errorObj,
     details,
+    userId,
   });
 }
 
@@ -118,7 +120,8 @@ export function fatal(
   category: LogCategory,
   message: string,
   errorObj?: Error,
-  details?: Record<string, any>
+  details?: Record<string, any>,
+  userId?: string
 ) {
   return log({
     level: 'fatal',
@@ -126,6 +129,7 @@ export function fatal(
     message,
     error: errorObj,
     details,
+    userId,
   });
 }
 

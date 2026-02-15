@@ -1,17 +1,32 @@
 /**
  * Settings API Router
  * 用户设置管理
+ * 安全修复：
+ * - 敏感配置遮蔽、SMTP密码加密
+ * - 危险操作使用 CSRF 保护
+ * - 账户删除需要密码验证
  */
 
 import { z } from 'zod';
-import { protectedProcedure, router } from '../trpc/init';
-import { info, error } from '@/lib/logger';
+import { protectedProcedure, protectedMutation, router } from '../trpc/init';
+import { info, error, warn } from '@/lib/logger';
 import { createEmailServiceFromUser } from '@/lib/email/service';
 import { encrypt, safeDecrypt } from '@/lib/crypto/encryption';
+import { verifyPassword } from '@/lib/auth/password';
+
+/**
+ * 遮蔽敏感字符串，只显示前后几个字符
+ */
+function maskSensitive(value: string | undefined, showChars: number = 4): string {
+  if (!value) return '';
+  if (value.length <= showChars * 2) return '****';
+  return `${value.slice(0, showChars)}${'*'.repeat(Math.min(8, value.length - showChars * 2))}${value.slice(-showChars)}`;
+}
 
 export const settingsRouter = router({
   /**
    * 获取用户设置
+   * 安全修复：遮蔽敏感配置（API Key, SMTP 密码）
    */
   get: protectedProcedure.query(async ({ ctx }) => {
     const user = await ctx.db.user.findUnique({
@@ -22,6 +37,7 @@ export const settingsRouter = router({
         email: true,
         preferences: true,
         aiConfig: true,
+        emailConfig: true,
       },
     });
 
@@ -29,12 +45,33 @@ export const settingsRouter = router({
       throw new Error('用户不存在');
     }
 
-    // 解密 API Key（如果存在）
-    if (user.aiConfig && (user.aiConfig as any).apiKey) {
-      (user.aiConfig as any).apiKey = safeDecrypt((user.aiConfig as any).apiKey);
+    // 处理 AI 配置
+    const aiConfig = (user.aiConfig as any) || {};
+    const maskedAiConfig = { ...aiConfig };
+
+    // 遮蔽 API Key（解密后只显示部分）
+    if (aiConfig.apiKey) {
+      const decryptedKey = safeDecrypt(aiConfig.apiKey);
+      maskedAiConfig.apiKey = maskSensitive(decryptedKey);
+      maskedAiConfig.hasApiKey = !!decryptedKey;
     }
 
-    return user;
+    // 处理邮件配置
+    const emailConfig = (user.emailConfig as any) || {};
+    const maskedEmailConfig = { ...emailConfig };
+
+    // 遮蔽 SMTP 密码
+    if (emailConfig.smtpPassword) {
+      const decryptedPassword = safeDecrypt(emailConfig.smtpPassword);
+      maskedEmailConfig.smtpPassword = maskSensitive(decryptedPassword);
+      maskedEmailConfig.hasSmtpPassword = !!decryptedPassword;
+    }
+
+    return {
+      ...user,
+      aiConfig: maskedAiConfig,
+      emailConfig: maskedEmailConfig,
+    };
   }),
 
   /**
@@ -224,22 +261,50 @@ export const settingsRouter = router({
 
   /**
    * 删除账户
+   * 安全增强：需要密码验证 + CSRF 保护
    */
-  deleteAccount: protectedProcedure
+  deleteAccount: protectedMutation
+    .input(
+      z.object({
+        password: z.string().min(1, '请输入密码以确认删除'),
+      })
+    )
     .output(z.object({ success: z.boolean() }))
-    .mutation(async ({ ctx }) => {
+    .mutation(async ({ input, ctx }) => {
+      // 验证密码
+      const user = await ctx.db.user.findUnique({
+        where: { id: ctx.userId },
+        select: { passwordHash: true, email: true },
+      });
+
+      if (!user) {
+        throw new Error('用户不存在');
+      }
+
+      const isValidPassword = await verifyPassword(input.password, user.passwordHash);
+
+      if (!isValidPassword) {
+        await warn('security', '账户删除密码验证失败', {
+          userId: ctx.userId,
+        });
+        throw new Error('密码错误，无法删除账户');
+      }
+
       // 删除用户的所有数据
       await ctx.db.user.delete({
         where: { id: ctx.userId },
       });
+
+      await info('security', '账户已删除', { userId: ctx.userId, email: user.email });
 
       return { success: true };
     }),
 
   /**
    * 清空所有文章
+   * 安全增强：使用 CSRF 保护
    */
-  clearAllEntries: protectedProcedure
+  clearAllEntries: protectedMutation
     .output(z.object({ success: z.boolean() }))
     .mutation(async ({ ctx }) => {
       await ctx.db.entry.deleteMany({
@@ -247,6 +312,8 @@ export const settingsRouter = router({
           feed: { userId: ctx.userId },
         },
       });
+
+      await info('system', '清空所有文章', { userId: ctx.userId });
 
       return { success: true };
     }),
@@ -366,8 +433,9 @@ export const settingsRouter = router({
 
   /**
    * 删除API密钥
+   * 安全增强：使用 CSRF 保护
    */
-  deleteApiKey: protectedProcedure
+  deleteApiKey: protectedMutation
     .input(
       z.object({
         id: z.string(),
@@ -381,6 +449,8 @@ export const settingsRouter = router({
           userId: ctx.userId,
         },
       });
+
+      await info('security', '删除 API Key', { userId: ctx.userId, apiKeyId: input.id });
 
       return { success: true };
     }),
@@ -523,6 +593,7 @@ export const settingsRouter = router({
 
   /**
    * 更新邮件配置
+   * 安全修复：加密 SMTP 密码
    */
   updateEmailConfig: protectedProcedure
     .input(
@@ -544,10 +615,21 @@ export const settingsRouter = router({
         select: { emailConfig: true },
       });
 
-      const updatedConfig = {
-        ...((current?.emailConfig as any) || {}),
-        ...input,
-      };
+      const currentConfig = (current?.emailConfig as any) || {};
+      const updatedConfig = { ...currentConfig };
+
+      // 处理每个字段
+      Object.keys(input).forEach(key => {
+        const value = input[key as keyof typeof input];
+        if (value !== undefined) {
+          // 如果是 SMTP 密码，加密后存储
+          if (key === 'smtpPassword' && typeof value === 'string' && value) {
+            updatedConfig[key] = encrypt(value);
+          } else {
+            updatedConfig[key] = value;
+          }
+        }
+      });
 
       // 如果密码为空字符串，保留原密码
       if (input.smtpPassword === '') {
@@ -560,6 +642,8 @@ export const settingsRouter = router({
           emailConfig: updatedConfig as any,
         },
       });
+
+      await info('system', '更新邮件配置', { userId: ctx.userId });
 
       return { success: true };
     }),

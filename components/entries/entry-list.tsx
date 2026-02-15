@@ -138,7 +138,6 @@ export function EntryList({
 
       // 乐观更新：更新分类未读计数
       utils.categories.list.setData(undefined, (oldData: any) => {
-        // oldData 直接是数组，不是包含 categories 属性的对象
         if (!oldData || !Array.isArray(oldData)) return oldData;
         return oldData.map((category: any) => {
           // 计算该分类中被标记的未读文章数

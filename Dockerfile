@@ -50,6 +50,10 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/public/ ./public
 COPY --from=builder /app/.next/static ./.next/static
 
+# 复制启动脚本
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # 创建日志目录
 RUN mkdir -p /app/logs && \
     chown -R nextjs:nodejs /app
@@ -65,6 +69,6 @@ EXPOSE 3000
 
 ENV PORT=3000
 
-# 使用 dumb-init 启动以处理信号和僵尸进程
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "server.js"]
+# 使用启动脚本（自动生成密钥）
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["dumb-init", "--", "node", "server.js"]
