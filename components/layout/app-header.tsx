@@ -17,11 +17,11 @@ import {
   Sun,
   Moon,
   Languages,
+  MoreVertical,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { useToast } from '@/components/ui/toast';
-import { useUserPreferences } from '@/hooks/use-local-storage';
 import { useIsMobile } from '@/hooks/use-media-query';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useLanguage } from '@/components/providers/language-provider';
@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/animation/loading';
 import { QueueStatusIndicator } from '@/components/layout/queue-status-indicator';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export interface AppHeaderProps {
   onRefresh?: () => void;
@@ -48,18 +49,19 @@ function AppHeaderComponent({
   const router = useRouter();
   const { addToast } = useToast();
   const isMobile = useIsMobile();
-  const { sidebarCollapsed, setSidebarCollapsed } = useUserPreferences();
   const { resolvedTheme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useLanguage();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const { data: notifications } = trpc.notifications.unreadCount.useQuery();
 
-  // 点击外部关闭搜索
+  // 点击外部关闭搜索和菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -67,6 +69,12 @@ function AppHeaderComponent({
         !searchContainerRef.current.contains(event.target as Node)
       ) {
         setIsSearchOpen(false);
+      }
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
+        setIsMobileMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -109,38 +117,38 @@ function AppHeaderComponent({
     }
   };
 
+  // 侧边栏切换 - 直接使用父组件传递的回调
   const handleToggleSidebar = () => {
-    if (onToggleSidebar) {
-      onToggleSidebar();
-    } else {
-      setSidebarCollapsed(!sidebarCollapsed);
-    }
+    onToggleSidebar?.();
   };
 
   return (
-    <header className="flex-shrink-0 h-16 sticky top-0 z-40 header-glass">
-      <div className="flex h-full items-center justify-between px-4 gap-4">
+    <header className="flex-shrink-0 h-14 md:h-16 sticky top-0 z-40 header-glass">
+      <div className="flex h-full items-center justify-between px-3 md:px-4 gap-2 md:gap-4">
         {/* 左侧：Logo 和菜单 */}
-        <div className="flex items-center gap-3">
-          <Tooltip content="切换侧边栏 (Cmd+B)" position="bottom">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleToggleSidebar}
-              className={cn(
-                'transition-transform duration-300',
-                isSidebarCollapsed && 'rotate-180'
-              )}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          </Tooltip>
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* 移动端隐藏侧边栏按钮 */}
+          {!isMobile && (
+            <Tooltip content="切换侧边栏 (Cmd+B)" position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleToggleSidebar}
+                className={cn(
+                  'transition-transform duration-300',
+                  isSidebarCollapsed && 'rotate-180'
+                )}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </Tooltip>
+          )}
 
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm group-hover:shadow-md transition-shadow">
-              <BookOpen className="h-4.5 w-4.5" />
+          <Link href="/" className="flex items-center gap-2 md:gap-2.5 group">
+            <div className="flex h-8 w-8 md:h-9 md:w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-sm group-hover:shadow-md transition-shadow overflow-hidden">
+              <img src="/logo-small.png" alt="Rss-Easy" className="h-5 w-5 md:h-6 md:w-6 object-contain" />
             </div>
-            <span className="font-semibold text-base hidden sm:block">
+            <span className="font-semibold text-sm md:text-base hidden sm:block">
               Rss-Easy
             </span>
           </Link>
@@ -151,7 +159,7 @@ function AppHeaderComponent({
           ref={searchContainerRef}
           className={cn(
             'flex-1 max-w-xl transition-all duration-300',
-            isSearchOpen ? 'scale-105' : ''
+            isSearchOpen && !isMobile ? 'scale-105' : ''
           )}
         >
           <div className="relative group">
@@ -159,13 +167,13 @@ function AppHeaderComponent({
             <input
               ref={searchInputRef}
               type="text"
-              placeholder={`${t('nav.search')}... (Cmd+K)`}
+              placeholder={isMobile ? t('nav.search') : `${t('nav.search')}... (Cmd+K)`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setIsSearchOpen(true)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               className={cn(
-                'w-full h-10 pl-10 pr-10 rounded-xl border bg-muted/30 text-sm',
+                'w-full h-9 md:h-10 pl-10 pr-10 rounded-xl border bg-muted/30 text-sm',
                 'placeholder:text-muted-foreground/60',
                 'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50',
                 'transition-all duration-200'
@@ -179,7 +187,7 @@ function AppHeaderComponent({
                 <X className="h-3.5 w-3.5 text-muted-foreground" />
               </button>
             )}
-            
+
             {/* 搜索建议下拉框 */}
             {isSearchOpen && (
               <SearchDropdown
@@ -193,94 +201,209 @@ function AppHeaderComponent({
           </div>
         </div>
 
-        {/* 右侧：操作按钮 */}
-        <div className="flex items-center gap-1">
-          <Tooltip content={t('action.refresh')} position="bottom">
+        {/* 右侧：操作按钮 - 桌面端完整版 */}
+        {!isMobile && (
+          <div className="flex items-center gap-1">
+            <Tooltip content={t('action.refresh')} position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onRefresh}
+                disabled={isRefreshing}
+                className={cn(
+                  'transition-all duration-200',
+                  isRefreshing && 'hover:bg-transparent'
+                )}
+              >
+                <RefreshCw className={cn(
+                  'h-4 w-4 transition-transform duration-500',
+                  isRefreshing && 'animate-spin-smooth'
+                )} />
+              </Button>
+            </Tooltip>
+
+            <Tooltip content={t('settings.language')} position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLanguage(language === 'zh-CN' ? 'en' : 'zh-CN')}
+                className="font-medium text-sm"
+              >
+                {language === 'zh-CN' ? 'EN' : '中'}
+              </Button>
+            </Tooltip>
+
+            <Tooltip content={t('settings.theme')} position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+              >
+                {resolvedTheme === 'dark' ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+              </Button>
+            </Tooltip>
+
+            <Tooltip content={t('nav.shortcuts')} position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push('/shortcuts')}
+              >
+                <Keyboard className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+
+            <Tooltip content={t('nav.settings')} position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push('/settings')}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+
+            <Tooltip content={t('nav.notifications')} position="bottom">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push('/notifications')}
+                className="relative"
+              >
+                <Bell className="h-4 w-4" />
+                {(notifications ?? 0) > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-background" />
+                )}
+              </Button>
+            </Tooltip>
+
+            {/* 队列状态指示器 */}
+            <QueueStatusIndicator />
+
+            <Tooltip content={t('nav.logout')} position="bottom">
+              <Button variant="ghost" size="icon" onClick={handleLogout}>
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+          </div>
+        )}
+
+        {/* 右侧：操作按钮 - 移动端简化版 */}
+        {isMobile && (
+          <div className="flex items-center gap-1">
+            {/* 刷新按钮 */}
             <Button
               variant="ghost"
               size="icon"
               onClick={onRefresh}
               disabled={isRefreshing}
-              className={cn(
-                'transition-all duration-200',
-                isRefreshing && 'hover:bg-transparent'
-              )}
+              className="relative"
             >
               <RefreshCw className={cn(
-                'h-4 w-4 transition-transform duration-500',
+                'h-5 w-5 transition-transform duration-500',
                 isRefreshing && 'animate-spin-smooth'
               )} />
             </Button>
-          </Tooltip>
 
-          <Tooltip content={t('settings.language')} position="bottom">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLanguage(language === 'zh-CN' ? 'en' : 'zh-CN')}
-              className="font-medium text-sm"
-            >
-              {language === 'zh-CN' ? 'EN' : '中'}
-            </Button>
-          </Tooltip>
+            {/* 队列状态指示器 */}
+            <QueueStatusIndicator />
 
-          <Tooltip content={t('settings.theme')} position="bottom">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-            >
-              {resolvedTheme === 'dark' ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-            </Button>
-          </Tooltip>
+            {/* 更多菜单 */}
+            <div ref={menuRef} className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              >
+                <MoreVertical className="h-5 w-5" />
+              </Button>
 
-          <Tooltip content={t('nav.shortcuts')} position="bottom">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/shortcuts')}
-            >
-              <Keyboard className="h-4 w-4" />
-            </Button>
-          </Tooltip>
-
-          <Tooltip content={t('nav.settings')} position="bottom">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/settings')}
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-          </Tooltip>
-
-          <Tooltip content={t('nav.notifications')} position="bottom">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push('/notifications')}
-              className="relative"
-            >
-              <Bell className="h-4 w-4" />
-              {(notifications ?? 0) > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-background" />
-              )}
-            </Button>
-          </Tooltip>
-
-          {/* 队列状态指示器 */}
-          <QueueStatusIndicator />
-
-          <Tooltip content={t('nav.logout')} position="bottom">
-            <Button variant="ghost" size="icon" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </Tooltip>
-        </div>
+              <AnimatePresence>
+                {isMobileMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-border/60 bg-background/95 backdrop-blur-lg shadow-xl overflow-hidden z-50"
+                  >
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setLanguage(language === 'zh-CN' ? 'en' : 'zh-CN');
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                      >
+                        <Languages className="h-4 w-4 text-muted-foreground" />
+                        <span>{language === 'zh-CN' ? 'English' : '中文'}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          toggleTheme();
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                      >
+                        {resolvedTheme === 'dark' ? (
+                          <>
+                            <Sun className="h-4 w-4 text-muted-foreground" />
+                            <span>浅色模式</span>
+                          </>
+                        ) : (
+                          <>
+                            <Moon className="h-4 w-4 text-muted-foreground" />
+                            <span>深色模式</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          router.push('/settings');
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                      >
+                        <Settings className="h-4 w-4 text-muted-foreground" />
+                        <span>{t('nav.settings')}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          router.push('/notifications');
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                      >
+                        <Bell className="h-4 w-4 text-muted-foreground" />
+                        <span>{t('nav.notifications')}</span>
+                        {(notifications ?? 0) > 0 && (
+                          <span className="ml-auto w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
+                            {notifications! > 99 ? '99+' : notifications}
+                          </span>
+                        )}
+                      </button>
+                      <div className="border-t border-border/60 my-1" />
+                      <button
+                        onClick={() => {
+                          handleLogout();
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        <span>{t('nav.logout')}</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

@@ -235,7 +235,7 @@ export const entriesRouter = router({
     }),
 
   /**
-   * 标记为已读
+   * 标记为已读（优化版：批量操作避免 N+1 查询）
    */
   markAsRead: protectedProcedure
     .input(z.object({
@@ -243,36 +243,44 @@ export const entriesRouter = router({
       readAt: z.date().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await ctx.db.entry.updateMany({
-        where: {
-          id: { in: input.entryIds },
-          feed: { userId: ctx.userId },
-        },
-        data: {
-          isRead: true,
-          readAt: input.readAt || new Date(),
-        },
+      // 使用事务确保数据一致性
+      await ctx.db.$transaction(async (tx) => {
+        // 1. 批量更新文章状态
+        await tx.entry.updateMany({
+          where: {
+            id: { in: input.entryIds },
+            feed: { userId: ctx.userId },
+          },
+          data: {
+            isRead: true,
+            readAt: input.readAt || new Date(),
+          },
+        });
+
+        // 2. 使用 groupBy 批量获取每个 feed 受影响的文章数
+        const feedStats = await tx.entry.groupBy({
+          by: ['feedId'],
+          where: {
+            id: { in: input.entryIds },
+            isRead: true,
+          },
+          _count: { id: true },
+        });
+
+        // 3. 批量更新每个 feed 的未读计数（使用 decrement）
+        await Promise.all(
+          feedStats.map(stat =>
+            tx.feed.update({
+              where: { id: stat.feedId },
+              data: { unreadCount: { decrement: stat._count.id } },
+            })
+          )
+        );
       });
 
-      // 更新feed的未读计数
-      const feedIds = await ctx.db.entry.findMany({
-        where: { id: { in: input.entryIds } },
-        select: { feedId: true },
-      });
-
-      for (const { feedId } of feedIds) {
-        const unreadCount = await ctx.db.entry.count({
-          where: { feedId, isRead: false },
-        });
-        await ctx.db.feed.update({
-          where: { id: feedId },
-          data: { unreadCount },
-        });
-      }
-
-      await info('rss', '标记文章已读', { 
-        userId: ctx.userId, 
-        count: input.entryIds.length 
+      await info('rss', '标记文章已读', {
+        userId: ctx.userId,
+        count: input.entryIds.length
       });
 
       return { success: true };

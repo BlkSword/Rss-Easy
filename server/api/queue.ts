@@ -377,4 +377,226 @@ export const queueRouter = router({
         processingTime: task.startedAt ? Date.now() - task.startedAt.getTime() : 0,
       }));
     }),
+
+  /**
+   * 获取待更新的订阅源列表
+   */
+  feedsToUpdate: protectedProcedure
+    .input(z.object({
+      limit: z.number().min(1).max(50).default(10),
+    }).optional())
+    .query(async ({ input }) => {
+      const limit = input?.limit ?? 10;
+
+      const feeds = await db.feed.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { nextFetchAt: null },
+            { nextFetchAt: { lte: new Date() } },
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          feedUrl: true,
+          siteUrl: true,
+          iconUrl: true,
+          lastFetchedAt: true,
+          lastSuccessAt: true,
+          nextFetchAt: true,
+          errorCount: true,
+          lastError: true,
+          totalEntries: true,
+          unreadCount: true,
+          fetchInterval: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+            },
+          },
+        },
+        orderBy: [
+          { nextFetchAt: 'asc' },
+          { lastFetchedAt: 'asc' },
+        ],
+        take: limit,
+      });
+
+      // 计算待更新时间
+      const now = new Date();
+      const feedsWithStatus = feeds.map(feed => {
+        const lastFetch = feed.lastFetchedAt ? new Date(feed.lastFetchedAt) : null;
+        const timeSinceLastFetch = lastFetch ? now.getTime() - lastFetch.getTime() : null;
+
+        return {
+          ...feed,
+          timeSinceLastFetch,
+          isOverdue: !feed.nextFetchAt || new Date(feed.nextFetchAt) <= now,
+          hasError: feed.errorCount > 0,
+        };
+      });
+
+      return feedsWithStatus;
+    }),
+
+  /**
+   * 获取详细的系统监控数据
+   */
+  detailedMonitor: protectedProcedure
+    .query(async () => {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // 并行获取所有统计数据
+      const [
+        // Feed 统计
+        totalFeeds,
+        activeFeeds,
+        errorFeeds,
+        feedsToUpdate,
+        recentlyFetchedFeeds,
+
+        // 文章统计
+        totalEntries,
+        entriesLastHour,
+        entriesLastDay,
+        unreadEntries,
+        starredEntries,
+
+        // AI 队列统计
+        aiQueueStats,
+        processingTasks,
+
+        // 数据库大小估算
+        entryCount,
+        feedCount,
+        userCount,
+      ] = await Promise.all([
+        // Feed 统计
+        db.feed.count(),
+        db.feed.count({ where: { isActive: true } }),
+        db.feed.count({ where: { errorCount: { gt: 0 } } }),
+        db.feed.count({
+          where: {
+            isActive: true,
+            OR: [
+              { nextFetchAt: null },
+              { nextFetchAt: { lte: now } },
+            ],
+          },
+        }),
+        db.feed.count({
+          where: {
+            lastFetchedAt: { gte: oneHourAgo },
+          },
+        }),
+
+        // 文章统计
+        db.entry.count(),
+        db.entry.count({ where: { createdAt: { gte: oneHourAgo } } }),
+        db.entry.count({ where: { createdAt: { gte: oneDayAgo } } }),
+        db.entry.count({ where: { isRead: false } }),
+        db.entry.count({ where: { isStarred: true } }),
+
+        // AI 队列统计
+        db.aIAnalysisQueue.groupBy({
+          by: ['status'],
+          _count: { id: true },
+        }),
+        db.aIAnalysisQueue.findMany({
+          where: { status: 'processing' },
+          select: {
+            id: true,
+            startedAt: true,
+            entry: {
+              select: {
+                id: true,
+                title: true,
+                feed: { select: { title: true } },
+              },
+            },
+          },
+          take: 3,
+          orderBy: { startedAt: 'desc' },
+        }),
+
+        // 数据库统计
+        db.entry.count(),
+        db.feed.count(),
+        db.user.count(),
+      ]);
+
+      // 转换队列状态
+      const queueStats = {
+        pending: 0,
+        processing: 0,
+        completed: 0,
+        failed: 0,
+      };
+      aiQueueStats.forEach(item => {
+        queueStats[item.status as keyof typeof queueStats] = item._count.id;
+      });
+
+      // 获取调度器状态
+      const schedulerStatus = getScheduler().getStatus();
+
+      // 计算处理中任务的耗时
+      const activeTasks = processingTasks.map(task => ({
+        id: task.id,
+        entryTitle: task.entry.title,
+        feedTitle: task.entry.feed.title,
+        processingTime: task.startedAt ? now.getTime() - task.startedAt.getTime() : 0,
+      }));
+
+      return {
+        // Feed 状态
+        feeds: {
+          total: totalFeeds,
+          active: activeFeeds,
+          errors: errorFeeds,
+          toUpdate: feedsToUpdate,
+          recentlyFetched: recentlyFetchedFeeds,
+          healthScore: totalFeeds > 0 ? Math.round((activeFeeds - errorFeeds) / totalFeeds * 100) : 100,
+        },
+
+        // 文章状态
+        entries: {
+          total: totalEntries,
+          lastHour: entriesLastHour,
+          lastDay: entriesLastDay,
+          unread: unreadEntries,
+          starred: starredEntries,
+        },
+
+        // AI 队列状态
+        queue: {
+          ...queueStats,
+          total: queueStats.pending + queueStats.processing + queueStats.completed + queueStats.failed,
+          activeTasks,
+        },
+
+        // 调度器状态
+        scheduler: {
+          isRunning: schedulerStatus.isRunning,
+          fetchInterval: schedulerStatus.fetchInterval,
+          aiProcessInterval: schedulerStatus.aiProcessInterval,
+        },
+
+        // 系统健康状态
+        health: {
+          status: errorFeeds > totalFeeds * 0.3 ? 'warning' : 'healthy',
+          message: errorFeeds > totalFeeds * 0.3
+            ? `${errorFeeds} 个订阅源存在错误`
+            : '系统运行正常',
+        },
+
+        // 时间戳
+        timestamp: now.toISOString(),
+      };
+    }),
 });

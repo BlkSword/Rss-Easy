@@ -12,7 +12,6 @@ import { zhCN } from 'date-fns/locale';
 import {
   FileText,
   Calendar,
-  TrendingUp,
   Plus,
   Download,
   Share2,
@@ -24,7 +23,6 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  RefreshCw,
   X,
   Mail,
   Settings,
@@ -43,7 +41,6 @@ import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/
 // 动画组件
 import { Fade, StaggerContainer, ListItemFade, HoverLift } from '@/components/animation/fade';
 import { AnimatedCounter } from '@/components/animation/animated-counter';
-import { Spinner, LoadingDots } from '@/components/animation/loading';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -52,7 +49,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePageLoadAnimation } from '@/hooks/use-animation';
 
 // Components
-import { ReportEmailSettings } from './components/report-email-settings';
+import { ReportScheduleSettings } from './components/report-schedule-settings';
 
 // 报告类型图标组件
 function ReportTypeIcon({ type }: { type: string }) {
@@ -65,7 +62,7 @@ function ReportTypeIcon({ type }: { type: string }) {
   }
   return (
     <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
-      <TrendingUp className="h-5 w-5 text-purple-500" />
+      <BarChart3 className="h-5 w-5 text-purple-500" />
     </div>
   );
 }
@@ -111,39 +108,6 @@ function ReportsListSkeleton() {
         </Card>
       ))}
     </div>
-  );
-}
-
-// 过滤器按钮
-function FilterButton({
-  active,
-  onClick,
-  children,
-  delay = 0,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  delay?: number;
-}) {
-  return (
-    <Fade delay={delay} direction="up" distance={10}>
-      <button
-        onClick={onClick}
-        className={cn(
-          'px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300',
-          'relative overflow-hidden group',
-          active
-            ? 'bg-primary text-primary-foreground shadow-md shadow-primary/20'
-            : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80'
-        )}
-      >
-        <span className="relative z-10 flex items-center gap-2">{children}</span>
-        {active && (
-          <span className="absolute inset-0 bg-gradient-to-r from-primary to-primary/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        )}
-      </button>
-    </Fade>
   );
 }
 
@@ -238,15 +202,15 @@ function GeneratingReportCard({
                 生成中
               </Tag>
             </div>
-            
+
             <div className="mb-3">
               <div className="flex items-center justify-between text-sm mb-1">
                 <span className="text-muted-foreground">{report.currentStep || '准备中...'}</span>
                 <span className="text-primary font-medium">{report.progress || 0}%</span>
               </div>
-              <Progress 
-                percent={report.progress || 0} 
-                size="small" 
+              <Progress
+                percent={report.progress || 0}
+                size="small"
                 strokeColor="#ea580c"
                 showInfo={false}
               />
@@ -264,9 +228,9 @@ function GeneratingReportCard({
           </div>
 
           <Tooltip title="取消生成">
-            <Button 
-              type="text" 
-              icon={<X className="h-4 w-4" />} 
+            <Button
+              type="text"
+              icon={<X className="h-4 w-4" />}
               onClick={() => onCancel(report.id)}
             />
           </Tooltip>
@@ -318,10 +282,10 @@ function ReportCard({
                 </span>
               </div>
             </div>
-            <Button 
-              type="text" 
+            <Button
+              type="text"
               danger
-              icon={<Trash2 className="h-4 w-4" />} 
+              icon={<Trash2 className="h-4 w-4" />}
               onClick={() => onDelete(report.id)}
             >
               删除
@@ -421,16 +385,13 @@ function ReportCard({
 export default function ReportsPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
-  const [filter, setFilter] = useState<'all' | 'daily' | 'weekly'>('all');
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 页面加载动画
   const isPageLoaded = usePageLoadAnimation(100);
 
-  const { data: reportsData, isLoading, refetch } = trpc.reports.list.useQuery({
-    reportType: filter === 'all' ? undefined : filter,
-  });
+  const { data: reportsData, isLoading, refetch } = trpc.reports.list.useQuery({});
 
   const reports = reportsData?.items;
 
@@ -458,20 +419,17 @@ export default function ReportsPage() {
   // 计算统计数据
   const stats = {
     total: reports?.filter(r => r.status === 'completed').length || 0,
-    daily: reports?.filter((r) => r.reportType === 'daily' && r.status === 'completed').length || 0,
-    weekly: reports?.filter((r) => r.reportType === 'weekly' && r.status === 'completed').length || 0,
     totalEntries: reports?.filter(r => r.status === 'completed').reduce((sum, r) => sum + r.totalEntries, 0) || 0,
     generating: reports?.filter(r => r.status === 'generating' || r.status === 'pending').length || 0,
   };
 
   const startGenerateDaily = trpc.reports.startGenerateDaily.useMutation();
-  const startGenerateWeekly = trpc.reports.startGenerateWeekly.useMutation();
   const cancelGeneration = trpc.reports.cancelGeneration.useMutation();
   const deleteReport = trpc.reports.delete.useMutation();
   const sendByEmail = trpc.reports.sendByEmail.useMutation();
   const { data: emailConfig } = trpc.reports.checkEmailConfig.useQuery();
   const { data: aiConfigStatus, refetch: refetchAIConfig } = trpc.reports.checkAIConfig.useQuery(undefined, {
-    enabled: true, // 页面加载时自动检查
+    enabled: true,
   });
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
 
@@ -479,9 +437,9 @@ export default function ReportsPage() {
   const isAIConfigured = aiConfigStatus?.success ?? false;
   const isEmailConfigured = emailConfig?.enabled && emailConfig?.configured;
 
-  const handleGenerate = async (type: 'daily' | 'weekly') => {
+  const handleGenerate = async () => {
     const date = new Date();
-    
+
     // 1. 先检查AI配置
     const configResult = await refetchAIConfig();
     if (configResult.data && !configResult.data.success) {
@@ -496,15 +454,11 @@ export default function ReportsPage() {
       });
       return;
     }
-    
+
     try {
-      // 2. 启动异步生成
-      if (type === 'daily') {
-        await startGenerateDaily.mutateAsync({ reportDate: date });
-      } else {
-        await startGenerateWeekly.mutateAsync({ reportDate: date });
-      }
-      
+      // 2. 启动异步生成（使用日报接口，但概念上只是"生成报告"）
+      await startGenerateDaily.mutateAsync({ reportDate: date });
+
       notifySuccess('已开始生成报告', '请稍候，报告生成完成后会自动刷新');
       refetch();
     } catch (error: any) {
@@ -628,38 +582,30 @@ export default function ReportsPage() {
 
         {/* 主内容区 */}
         <main className="flex-1 overflow-y-auto bg-background/30 relative">
-          {/* 移除遮罩，改为非阻塞式 */}
-          
           <div className="max-w-5xl mx-auto px-6 py-8">
             {/* 头部 */}
             <Fade in={isPageLoaded} direction="up" distance={20} duration={500}>
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h1 className="text-2xl font-bold">报告中心</h1>
-                  <p className="text-muted-foreground">查看日报、周报和阅读分析</p>
+                  <p className="text-muted-foreground">查看和管理您的阅读报告</p>
                 </div>
                 <Space>
-                  <Tooltip title="邮件设置">
+                  <Tooltip title="定时任务设置">
                     <Button
-                      icon={<Settings className="h-4 w-4" />}
+                      icon={<Clock className="h-4 w-4" />}
                       onClick={() => setSettingsOpen(true)}
                     >
-                      邮件设置
+                      定时任务
                     </Button>
                   </Tooltip>
                   <Button
                     type="primary"
                     icon={<Plus className="h-4 w-4" />}
-                    onClick={() => handleGenerate('daily')}
+                    onClick={handleGenerate}
                     className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-shadow"
                   >
-                    生成日报
-                  </Button>
-                  <Button
-                    icon={<Plus className="h-4 w-4" />}
-                    onClick={() => handleGenerate('weekly')}
-                  >
-                    生成周报
+                    生成报告
                   </Button>
                 </Space>
               </div>
@@ -689,7 +635,7 @@ export default function ReportsPage() {
 
             {/* 统计概览 */}
             {!isLoading && reports && reports.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                 <StatCard
                   value={stats.total}
                   label="总报告数"
@@ -697,56 +643,21 @@ export default function ReportsPage() {
                   delay={100}
                 />
                 <StatCard
-                  value={stats.daily}
-                  label="日报"
-                  icon={<Calendar className="h-5 w-5 text-blue-500" />}
-                  delay={200}
-                />
-                <StatCard
-                  value={stats.weekly}
-                  label="周报"
-                  icon={<TrendingUp className="h-5 w-5 text-purple-500" />}
-                  delay={300}
-                />
-                <StatCard
                   value={stats.totalEntries}
                   label="累计文章"
                   icon={<BookOpen className="h-5 w-5 text-green-500" />}
-                  delay={400}
+                  delay={200}
                 />
                 {stats.generating > 0 && (
                   <StatCard
                     value={stats.generating}
                     label="生成中"
                     icon={<Loader2 className="h-5 w-5 text-amber-500 animate-spin" />}
-                    delay={500}
+                    delay={300}
                   />
                 )}
               </div>
             )}
-
-            {/* 过滤器 */}
-            <div className="flex items-center gap-2 mb-6">
-              <FilterButton active={filter === 'all'} onClick={() => setFilter('all')} delay={150}>
-                全部
-              </FilterButton>
-              <FilterButton
-                active={filter === 'daily'}
-                onClick={() => setFilter('daily')}
-                delay={200}
-              >
-                <Calendar className="h-3.5 w-3.5" />
-                日报
-              </FilterButton>
-              <FilterButton
-                active={filter === 'weekly'}
-                onClick={() => setFilter('weekly')}
-                delay={250}
-              >
-                <TrendingUp className="h-3.5 w-3.5" />
-                周报
-              </FilterButton>
-            </div>
 
             {/* 报告列表 */}
             {isLoading ? (
@@ -758,12 +669,8 @@ export default function ReportsPage() {
                   title="暂无报告"
                   description="生成您的第一份报告来查看阅读统计和分析"
                   action={{
-                    label: '生成日报',
-                    onClick: () => handleGenerate('daily'),
-                  }}
-                  secondaryAction={{
-                    label: '生成周报',
-                    onClick: () => handleGenerate('weekly'),
+                    label: '生成报告',
+                    onClick: handleGenerate,
                   }}
                   variant="card"
                 />
@@ -787,8 +694,8 @@ export default function ReportsPage() {
         </main>
       </div>
 
-      {/* 邮件设置弹窗 */}
-      <ReportEmailSettings
+      {/* 定时任务设置弹窗 */}
+      <ReportScheduleSettings
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       />

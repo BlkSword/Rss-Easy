@@ -10,6 +10,7 @@ import { entriesRouter } from './entries';
 import { categoriesRouter } from './categories';
 import { searchRouter } from './search';
 import { reportsRouter } from './reports';
+import { reportSchedulesRouter } from './report-schedules';
 import { settingsRouter } from './settings';
 import { rulesRouter } from './rules';
 import { notificationsRouter } from './notifications';
@@ -26,6 +27,7 @@ export const appRouter = router({
   categories: categoriesRouter,
   search: searchRouter,
   reports: reportsRouter,
+  reportSchedules: reportSchedulesRouter,
   settings: settingsRouter,
   rules: rulesRouter,
   notifications: notificationsRouter,

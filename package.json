@@ -44,6 +44,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/postcss": "^4.1.18",
     "@tanstack/react-query": "^5.90.20",
+    "@tanstack/react-virtual": "^3.13.18",
     "@trpc/client": "^11.9.0",
     "@trpc/next": "^11.9.0",
     "@trpc/react-query": "^11.9.0",

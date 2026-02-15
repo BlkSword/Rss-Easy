@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BookOpen, Eye, EyeOff, Loader2, ArrowRight, Mail, Lock, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, Mail, Lock, CheckCircle } from 'lucide-react';
 import { Button, Input, Form, Checkbox } from 'antd';
 import { MailOutlined, LockOutlined } from '@ant-design/icons';
 import { handleApiError, handleApiSuccess } from '@/lib/feedback';
@@ -107,8 +107,8 @@ export default function LoginPage() {
         <StaggerContainer staggerDelay={100} initialDelay={200}>
           {/* Logo 和标题 */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shadow-primary/20 mb-6 hover-lift">
-              <BookOpen className="w-10 h-10" />
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/20 mb-6 hover-lift overflow-hidden">
+              <img src="/logo.png" alt="Rss-Easy" className="w-14 h-14 object-contain" />
             </div>
             <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
               欢迎回来
@@ -189,7 +189,6 @@ export default function LoginPage() {
                   type="primary"
                   htmlType="submit"
                   size="large"
-                  loading={isLoading}
                   disabled={isLoading}
                   block
                   className="h-12 rounded-xl font-medium shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300 btn-press"

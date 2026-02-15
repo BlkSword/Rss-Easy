@@ -28,7 +28,6 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
 import { SidebarSkeleton } from '@/components/ui/skeleton';
-import { useUserPreferences } from '@/hooks/use-local-storage';
 import { useLanguage } from '@/components/providers/language-provider';
 
 export interface AppSidebarProps {
@@ -44,9 +43,9 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const { sidebarCollapsed } = useUserPreferences();
 
-  const isCollapsed = collapsed || sidebarCollapsed;
+  // 直接使用 prop，不再使用 useUserPreferences
+  const isCollapsed = collapsed;
 
   const { data: categories, isLoading: categoriesLoading } =
     trpc.categories.list.useQuery();

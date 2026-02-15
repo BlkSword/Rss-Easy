@@ -63,6 +63,7 @@ export function useReaderShortcuts({
   onRead,
   onSearch,
   onAddFeed,
+  onToggleSidebar,
 }: {
   onNext?: () => void;
   onPrevious?: () => void;
@@ -71,6 +72,7 @@ export function useReaderShortcuts({
   onRead?: () => void;
   onSearch?: () => void;
   onAddFeed?: () => void;
+  onToggleSidebar?: () => void;
 }) {
   const bindings: KeyBinding[] = [
     {
@@ -107,6 +109,12 @@ export function useReaderShortcuts({
       key: 'a',
       handler: () => onAddFeed?.(),
       description: '添加订阅源',
+    },
+    {
+      key: 'b',
+      ctrl: true,
+      handler: () => onToggleSidebar?.(),
+      description: '切换侧边栏',
     },
   ];
 

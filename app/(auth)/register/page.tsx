@@ -7,7 +7,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Loader2, ArrowRight, Sparkles, Check, X } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, Check, X } from 'lucide-react';
 import { Button, Input, Form, Progress } from 'antd';
 import { MailOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { handleApiError, handleApiSuccess } from '@/lib/feedback';
@@ -157,8 +157,8 @@ export default function RegisterPage() {
         <StaggerContainer staggerDelay={100} initialDelay={200}>
           {/* Logo 和标题 */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg shadow-primary/20 mb-6 hover-lift">
-              <Sparkles className="w-10 h-10" />
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/20 mb-6 hover-lift overflow-hidden">
+              <img src="/logo.png" alt="Rss-Easy" className="w-14 h-14 object-contain" />
             </div>
             <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
               创建账号
@@ -337,7 +337,6 @@ export default function RegisterPage() {
                   type="primary"
                   htmlType="submit"
                   size="large"
-                  loading={isLoading}
                   disabled={isLoading}
                   block
                   className="h-12 rounded-xl font-medium shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300 btn-press"

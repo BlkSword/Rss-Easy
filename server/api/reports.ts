@@ -15,13 +15,47 @@ import { info, warn, error } from '@/lib/logger';
 export const reportsRouter = router({
   /**
    * 快速检查AI配置（不发送API请求）
+   * 只检查用户级别的配置，不回退到环境变量
    */
   checkAIConfig: protectedProcedure
     .query(async ({ ctx }) => {
       const aiConfig = await getUserAIConfig(ctx.userId, ctx.db);
-      // 使用快速检查，不发送实际的API请求，响应更快
-      const result = await checkAIConfigQuick(aiConfig);
-      return result;
+
+      // 检查用户是否明确配置了 AI
+      // 必须有 provider 和 apiKey 才算配置完成
+      const hasProvider = !!(aiConfig?.provider);
+      const hasApiKey = !!(aiConfig?.apiKey);
+
+      if (!hasProvider && !hasApiKey) {
+        return {
+          success: false,
+          message: '未配置AI服务',
+          error: '请在设置中配置AI提供商和API密钥',
+        };
+      }
+
+      if (!hasProvider) {
+        return {
+          success: false,
+          message: '未选择AI提供商',
+          error: '请在设置中选择AI提供商',
+        };
+      }
+
+      if (!hasApiKey) {
+        return {
+          success: false,
+          message: '未配置API密钥',
+          error: '请在设置中配置API密钥',
+        };
+      }
+
+      return {
+        success: true,
+        message: 'AI配置已就绪',
+        provider: aiConfig.provider,
+        model: aiConfig.model,
+      };
     }),
 
   /**

@@ -83,8 +83,14 @@ server/                 # 服务端代码
 lib/                    # 工具库
 ├── rss/                # RSS 解析和订阅源管理
 ├── ai/                 # AI 服务抽象层
+│   ├── client.ts       # AI 服务提供商实现
+│   ├── queue.ts        # BullMQ 队列管理
+│   ├── smart-analyzer.ts  # 智能分析器
+│   ├── preliminary-evaluator.ts  # 初步评估器
+│   └── model-selector.ts  # 模型选择器
 ├── auth/               # 认证工具（JWT、密码、会话）
 ├── db.ts               # Prisma 客户端
+├── logger.ts           # 结构化日志系统
 └── utils.ts            # 通用工具函数
 
 hooks/                  # 自定义 React Hooks
@@ -100,8 +106,9 @@ prisma/                 # 数据库
 1. **tRPC** - 前后端内部通信的主要 API
    - 类型安全，端到端类型推导
    - 使用 SuperJSON 序列化
-   - `protectedProcedure` 用于需要认证的操作
-   - `publicProcedure` 用于公开操作
+   - `publicProcedure` - 公开操作，无需认证
+   - `protectedProcedure` - 需要 JWT 认证的操作
+   - `protectedMutation` - 需要认证 + CSRF Token 验证的 mutation 操作
 
 2. **REST API** - Webhook 和外部集成
    - 定义在 `server/api/` 中
@@ -253,6 +260,14 @@ AnalysisFeedback (分析反馈)
   ├── rating - 用户评分 1-5
   ├── isHelpful - 是否有帮助
   └── isApplied - 是否已应用到分析
+
+SystemLog (系统日志)
+  ├── level - 日志级别 ('debug', 'info', 'warn', 'error', 'fatal')
+  ├── category - 分类 ('system', 'rss', 'ai', 'auth', 'email', 'api', 'queue')
+  ├── message - 日志消息
+  ├── details - 详细数据 (JSON)
+  ├── userId, requestId - 上下文信息
+  └── duration, memory - 性能指标
 ```
 
 ### 环境变量
@@ -283,6 +298,10 @@ CUSTOM_API_MODEL=       # 自定义 API 模型
 PRELIMINARY_MIN_VALUE=  # 初步评估最低分数（默认 3）
 REFLECTION_ENABLED=     # 是否启用反思引擎（默认 true）
 MAX_REFLECTION_ROUNDS=  # 最大反思轮数（默认 2）
+
+# 安全配置
+CRON_SECRET=            # Cron Job API 密钥验证
+ENCRYPTION_KEY=         # 敏感数据加密密钥（32字符）
 
 # 自定义 API 示例（支持国内 AI 服务）
 # Moonshot（月之暗面）
@@ -435,6 +454,20 @@ export const appRouter = router({
 - **全文搜索**：PostgreSQL 全文搜索
 - **语义搜索**：pgvector 向量相似度搜索
 - 搜索历史保存在 SearchHistory 模型
+
+### 日志系统
+
+使用 `lib/logger.ts` 进行结构化日志记录：
+
+```typescript
+import { info, warn, error, debug } from '@/lib/logger';
+
+// 日志会自动写入 SystemLog 表
+await info('rss', 'Feed 抓取成功', { feedId, entriesCount: 10 });
+await error('ai', 'AI 分析失败', err, { entryId, model });
+```
+
+日志级别通过 `LOG_LEVEL` 环境变量控制（debug | info | warn | error）。
 
 ## AI-Native 智能分析系统
 

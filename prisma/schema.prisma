@@ -39,6 +39,7 @@ model User {
   userPreference UserPreference?
   searchHistory  SearchHistory[]
   reports       Report[]
+  reportSchedules ReportSchedule[]
   notifications  Notification[]
   apiKeys       ApiKey[]
   subscriptionRules SubscriptionRule[]
@@ -419,6 +420,50 @@ model ReportEntry {
   @@unique([reportId, entryId])
   @@index([reportId])
   @@map("report_entries")
+}
+
+// =====================================================
+// 8.5 报告定时任务
+// =====================================================
+
+model ReportSchedule {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+
+  // 任务名称
+  name            String
+
+  // 执行时间设置
+  firstRunAt      DateTime  @map("first_run_at") // 首次执行时间
+  frequency       String    // 'once', 'daily', 'weekly', 'monthly'
+  nextRunAt       DateTime? @map("next_run_at") // 下次执行时间
+  lastRunAt       DateTime? @map("last_run_at") // 上次执行时间
+
+  // 报告内容设置
+  dateRange       String    @map("date_range") // 'yesterday', 'last7days', 'last30days', 'lastWeek', 'lastMonth', 'custom'
+  customDays      Int?      @map("custom_days") // 自定义天数
+  includeStats    Boolean   @default(true) @map("include_stats") // 包含阅读统计
+  includeHighlights Boolean @default(true) @map("include_highlights") // 包含精选内容
+  includeAiSummary  Boolean @default(true) @map("include_ai_summary") // 包含AI摘要
+
+  // 发送设置
+  recipientEmail  String    @map("recipient_email") // 接收邮箱
+  emailSubject    String?   @map("email_subject") // 邮件主题（可选，有默认值）
+
+  // 任务状态
+  isEnabled       Boolean   @default(true) @map("is_enabled")
+  runCount        Int       @default(0) @map("run_count") // 执行次数
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // 关联关系
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isEnabled])
+  @@index([nextRunAt])
+  @@map("report_schedules")
 }
 
 // =====================================================

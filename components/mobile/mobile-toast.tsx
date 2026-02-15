@@ -139,15 +139,22 @@ export function InstallPrompt() {
 // 更新提示
 export function UpdatePrompt() {
   const [showUpdate, setShowUpdate] = useState(false);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
   useEffect(() => {
-    // 监听 Service Worker 更新
-    if ('serviceWorker' in navigator) {
+    // 标记首次加载完成
+    const timer = setTimeout(() => setIsFirstLoad(false), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    // 监听 Service Worker 更新，但首次加载时不显示
+    if ('serviceWorker' in navigator && !isFirstLoad) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         setShowUpdate(true);
       });
     }
-  }, []);
+  }, [isFirstLoad]);
 
   if (!showUpdate) return null;
 

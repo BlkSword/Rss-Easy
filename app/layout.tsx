@@ -15,6 +15,14 @@ export const metadata: Metadata = {
   description: '支持AI智能摘要、智能分类、全文搜索、日报/周报生成的前沿RSS工具',
   keywords: ['RSS', 'AI', '阅读器', '资讯聚合', '智能摘要'],
   authors: [{ name: 'Rss-Easy Team' }],
+  icons: {
+    icon: [
+      { url: '/icon.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-48.png', sizes: '48x48', type: 'image/png' },
+    ],
+    shortcut: '/favicon.png',
+    apple: '/icons/apple-touch-icon.png',
+  },
 };
 
 export const viewport: Viewport = {

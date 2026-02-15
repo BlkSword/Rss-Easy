@@ -5,10 +5,11 @@
 
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Star,
   ExternalLink,
@@ -468,10 +469,32 @@ export function EntryList({
 }
 
 /**
- * 单个文章项
+ * 单个文章项（性能优化版 + 移动端适配）
+ * 使用 React.memo 避免不必要的重渲染
+ * 移动端简化显示，减少信息密度
  */
 interface EntryItemProps {
-  entry: any;
+  entry: {
+    id: string;
+    title: string;
+    url: string;
+    isRead: boolean;
+    isStarred: boolean;
+    publishedAt?: Date | string | null;
+    createdAt: Date | string;
+    aiSummary?: string | null;
+    summary?: string | null;
+    aiCategory?: string | null;
+    aiSentiment?: string | null;
+    aiImportanceScore?: number;
+    aiKeywords?: string[];
+    feed: {
+      id: string;
+      title: string;
+      iconUrl?: string | null;
+      categoryId?: string | null;
+    };
+  };
   isSelected?: boolean;
   isChecked?: boolean;
   onSelect?: () => void;
@@ -481,7 +504,7 @@ interface EntryItemProps {
   index: number;
 }
 
-function EntryItem({
+const EntryItem = memo(function EntryItem({
   entry,
   isSelected,
   isChecked,
@@ -493,6 +516,106 @@ function EntryItem({
 }: EntryItemProps) {
   const [isHovered, setIsHovered] = useState(false);
 
+  // 缓存日期格式化结果，避免每次渲染重新计算
+  const formattedDate = useMemo(() => {
+    return formatDistanceToNow(new Date(entry.publishedAt || entry.createdAt), {
+      addSuffix: true,
+      locale: zhCN,
+    });
+  }, [entry.publishedAt, entry.createdAt]);
+
+  // 检测是否为移动端
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // 移动端简化版
+  if (isMobile) {
+    return (
+      <article
+        onClick={onSelect}
+        className={cn(
+          'group relative flex items-start gap-3 p-4 active:bg-muted/30 transition-colors cursor-pointer',
+          isSelected && 'bg-primary/5',
+          'border-b border-border/40 last:border-0'
+        )}
+        style={{
+          animationDelay: `${index * 30}ms`,
+        }}
+      >
+        {/* Feed 图标 */}
+        <div className="flex-shrink-0 mt-0.5">
+          {entry.feed.iconUrl ? (
+            <img
+              src={entry.feed.iconUrl}
+              alt=""
+              className="w-10 h-10 rounded-xl object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <span className="text-primary text-xs font-medium">
+                {entry.feed.title?.slice(0, 2)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* 内容区域 */}
+        <div className="flex-1 min-w-0 py-0.5">
+          {/* 标题行 */}
+          <div className="flex items-start gap-2">
+            <h3
+              className={cn(
+                'text-[15px] leading-snug line-clamp-2 flex-1',
+                !entry.isRead
+                  ? 'font-semibold text-foreground'
+                  : 'font-medium text-muted-foreground'
+              )}
+            >
+              {entry.title}
+            </h3>
+            {/* 星标 */}
+            {entry.isStarred && (
+              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 flex-shrink-0 mt-0.5" />
+            )}
+          </div>
+
+          {/* 元信息 - 简化 */}
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+            <span className="truncate max-w-[120px]">{entry.feed.title}</span>
+            <span className="text-muted-foreground/50">·</span>
+            <span>{formattedDate}</span>
+            {/* 重要性评分 - 只显示高分的 */}
+            {entry.aiImportanceScore != null && entry.aiImportanceScore >= 0.7 && (
+              <>
+                <span className="text-muted-foreground/50">·</span>
+                <span className="text-orange-500">⭐</span>
+              </>
+            )}
+          </div>
+
+          {/* 摘要 - 移动端只显示一行 */}
+          {(entry.aiSummary || entry.summary) && (
+            <p className="mt-1.5 text-[13px] text-muted-foreground/80 line-clamp-1">
+              {entry.aiSummary || entry.summary}
+            </p>
+          )}
+        </div>
+
+        {/* 未读指示器 */}
+        {!entry.isRead && (
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-10 bg-primary rounded-r-full" />
+        )}
+      </article>
+    );
+  }
+
+  // 桌面端完整版
   return (
     <article
       onClick={onSelect}
@@ -561,12 +684,7 @@ function EntryItem({
             <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground flex-wrap">
               <span className="font-medium">{entry.feed.title}</span>
               <span>·</span>
-              <span>
-                {formatDistanceToNow(new Date(entry.publishedAt || entry.createdAt), {
-                  addSuffix: true,
-                  locale: zhCN,
-                })}
-              </span>
+              <span>{formattedDate}</span>
               {entry.aiCategory && (
                 <>
                   <span>·</span>
@@ -595,7 +713,7 @@ function EntryItem({
                 </>
               )}
               {/* 重要性评分 */}
-              {entry.aiImportanceScore > 0 && (
+              {entry.aiImportanceScore != null && entry.aiImportanceScore > 0 && (
                 <>
                   <span>·</span>
                   <span className={cn(
@@ -698,6 +816,15 @@ function EntryItem({
       )}
     </article>
   );
-}
+}, (prevProps, nextProps) => {
+  // 自定义比较函数：只有这些属性变化时才重新渲染
+  return (
+    prevProps.entry.id === nextProps.entry.id &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isChecked === nextProps.isChecked &&
+    prevProps.entry.isRead === nextProps.entry.isRead &&
+    prevProps.entry.isStarred === nextProps.entry.isStarred
+  );
+});
 
 export default EntryList;

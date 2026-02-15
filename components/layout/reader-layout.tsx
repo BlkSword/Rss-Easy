@@ -35,8 +35,24 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
   const isMobile = useIsMobile();
   const { sidebarCollapsed, setSidebarCollapsed } = useUserPreferences();
 
+  // 移动端侧边栏始终隐藏（通过移动端抽屉显示）
+  // 桌面端侧边栏可以收缩/展开
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!sidebarCollapsed);
+
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // 同步 localStorage 中的状态
+  useEffect(() => {
+    setIsSidebarOpen(!sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
+  // 切换侧边栏状态
+  const handleToggleSidebar = useCallback(() => {
+    const newState = !isSidebarOpen;
+    setIsSidebarOpen(newState);
+    setSidebarCollapsed(!newState);
+  }, [isSidebarOpen, setSidebarCollapsed]);
 
   // 获取 tRPC utils 用于缓存操作
   const utils = trpc.useUtils();
@@ -203,6 +219,7 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
     },
     onRefresh: () => handleRefresh(),
     onSearch: () => document.querySelector<HTMLInputElement>('input[type="text"]')?.focus(),
+    onToggleSidebar: handleToggleSidebar,
   });
 
   const handleSelectEntry = useCallback((entryId: string) => {
@@ -269,22 +286,27 @@ export function ReaderLayout({ filters = {} }: ReaderLayoutProps) {
       <AppHeader
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
-        onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-        isSidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={handleToggleSidebar}
+        isSidebarCollapsed={!isSidebarOpen}
       />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* 侧边栏 */}
-        <aside
-          className={cn(
-            'flex-shrink-0 border-r border-border/60 bg-muted/20 transition-all duration-300',
-            sidebarCollapsed ? 'w-16' : 'w-64 hidden md:block'
-          )}
-        >
-          <ErrorBoundary>
-            <AppSidebar collapsed={sidebarCollapsed} />
-          </ErrorBoundary>
-        </aside>
+      <div className={cn(
+        'flex-1 flex overflow-hidden',
+        isMobile && 'pb-16' // 移动端底部导航留白
+      )}>
+        {/* 侧边栏 - 只在桌面端显示 */}
+        {!isMobile && (
+          <aside
+            className={cn(
+              'flex-shrink-0 border-r border-border/60 bg-muted/20 transition-all duration-300 ease-in-out',
+              isSidebarOpen ? 'w-64' : 'w-16'
+            )}
+          >
+            <ErrorBoundary>
+              <AppSidebar collapsed={!isSidebarOpen} />
+            </ErrorBoundary>
+          </aside>
+        )}
 
         {/* 文章列表 */}
         <main

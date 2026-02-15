@@ -5,6 +5,10 @@
 
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import { EmbeddingCache } from './embedding-cache';
+
+// 默认超时时间（毫秒）
+const DEFAULT_TIMEOUT = 60000;
 
 export interface AIConfig {
   provider: 'openai' | 'anthropic' | 'deepseek' | 'ollama' | 'custom';
@@ -13,6 +17,7 @@ export interface AIConfig {
   baseURL?: string;
   maxTokens?: number;
   temperature?: number;
+  timeout?: number;
 }
 
 export interface AIAnalysisResult {
@@ -58,6 +63,20 @@ export abstract class AIProvider {
     this.config = config;
   }
 
+  /**
+   * 为 Promise 添加超时机制
+   */
+  protected async withTimeout<T>(promise: Promise<T>, ms?: number): Promise<T> {
+    const timeout = ms ?? this.config.timeout ?? DEFAULT_TIMEOUT;
+
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`AI 请求超时（${timeout}ms）`)), timeout)
+      ),
+    ]);
+  }
+
   abstract generateSummary(content: string): Promise<string>;
   abstract extractKeywords(content: string): Promise<string[]>;
   abstract categorize(content: string): Promise<string>;
@@ -82,99 +101,108 @@ class OpenAIProvider extends AIProvider {
   }
 
   async generateSummary(content: string): Promise<string> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，要求：
-1. 3-5句话概括文章核心内容
-2. 突出文章的关键信息和观点
-3. 语言简洁明了，避免冗余
-4. 如果文章是技术类，突出技术要点`,
-        },
-        {
-          role: 'user',
-          content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
-        },
-      ],
-      max_tokens: this.config.maxTokens || 500,
-      temperature: this.config.temperature || 0.7,
-    });
-
-    return response.choices[0].message.content || '';
-  }
-
-  async extractKeywords(content: string): Promise<string[]> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: '请从文章中提取5-10个最重要的关键词，用逗号分隔。',
-        },
-        {
-          role: 'user',
-          content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
-        },
-      ],
-      max_tokens: 200,
-      temperature: 0.3,
-    });
-
-    const text = response.choices[0].message.content || '';
-    return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
-  }
-
-  async categorize(content: string): Promise<string> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: `请将文章分类到以下类别之一：
-AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
-数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业,
-行业新闻, 技术趋势, 工具/资源, 教程/指南
-
-只返回类别名称。文章内容：\n\n${content.slice(0, 2000)}`,
-        },
-      ],
-      max_tokens: 50,
-      temperature: 0.3,
-    });
-
-    return (response.choices[0].message.content || '').trim();
-  }
-
-  async analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
-        },
-      ],
-      max_tokens: 20,
-      temperature: 0.1,
-    });
-
-    const sentiment = (response.choices[0].message.content || '').trim().toLowerCase();
-    if (sentiment.includes('positive')) return 'positive';
-    if (sentiment.includes('negative')) return 'negative';
-    return 'neutral';
-  }
-
-  async calculateImportance(content: string): Promise<number> {
-    try {
-      // 使用 AI 评估内容重要性
+    return this.withTimeout((async () => {
       const response = await this.client.chat.completions.create({
         model: this.config.model || 'gpt-4o',
         messages: [
           {
             role: 'system',
-            content: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
+            content: `你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，要求：
+1. 3-5句话概括文章核心内容
+2. 突出文章的关键信息和观点
+3. 语言简洁明了，避免冗余
+4. 如果文章是技术类，突出技术要点`,
+          },
+          {
+            role: 'user',
+            content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
+          },
+        ],
+        max_tokens: this.config.maxTokens || 500,
+        temperature: this.config.temperature || 0.7,
+      });
+
+      return response.choices[0].message.content || '';
+    })());
+  }
+
+  async extractKeywords(content: string): Promise<string[]> {
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: '请从文章中提取5-10个最重要的关键词，用逗号分隔。',
+          },
+          {
+            role: 'user',
+            content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
+          },
+        ],
+        max_tokens: 200,
+        temperature: 0.3,
+      });
+
+      const text = response.choices[0].message.content || '';
+      return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+    })());
+  }
+
+  async categorize(content: string): Promise<string> {
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: `请将文章分类到以下类别之一：
+AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
+数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业,
+行业新闻, 技术趋势, 工具/资源, 教程/指南
+
+只返回类别名称。文章内容：\n\n${content.slice(0, 2000)}`,
+          },
+        ],
+        max_tokens: 50,
+        temperature: 0.3,
+      });
+
+      return (response.choices[0].message.content || '').trim();
+    })());
+  }
+
+  async analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'> {
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
+          },
+        ],
+        max_tokens: 20,
+        temperature: 0.1,
+      });
+
+      const sentiment = (response.choices[0].message.content || '').trim().toLowerCase();
+      if (sentiment.includes('positive')) return 'positive';
+      if (sentiment.includes('negative')) return 'negative';
+      return 'neutral';
+    })());
+  }
+
+  async calculateImportance(content: string): Promise<number> {
+    try {
+      return await this.withTimeout((async () => {
+        // 使用 AI 评估内容重要性
+        const response = await this.client.chat.completions.create({
+          model: this.config.model || 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
 
 1. 实用性（30分）：内容是否提供有用的信息、技能或见解
 2. 独创性（25分）：内容是否独特、有新意，而非老生常谈
@@ -182,25 +210,26 @@ AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
 4. 时效性（20分）：内容是否具有时效价值或长期参考价值
 
 请只返回一个0-100之间的数字分数，不要其他文字。`,
-          },
-          {
-            role: 'user',
-            content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
-          },
-        ],
-        max_tokens: 10,
-        temperature: 0.3,
-      });
+            },
+            {
+              role: 'user',
+              content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
+            },
+          ],
+          max_tokens: 10,
+          temperature: 0.3,
+        });
 
-      const scoreText = response.choices[0]?.message?.content?.trim() || '50';
-      const score = parseInt(scoreText, 10);
+        const scoreText = response.choices[0]?.message?.content?.trim() || '50';
+        const score = parseInt(scoreText, 10);
 
-      // 确保分数在0-100之间
-      if (isNaN(score)) {
-        return 0.5; // 默认中等重要性
-      }
+        // 确保分数在0-100之间
+        if (isNaN(score)) {
+          return 0.5; // 默认中等重要性
+        }
 
-      return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+        return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+      })());
     } catch (error) {
       console.error('AI importance calculation failed, using fallback:', error);
       // 降级到简单算法
@@ -217,30 +246,34 @@ AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
-    const response = await this.client.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text.slice(0, 8191),
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text.slice(0, 8191),
+      });
 
-    return {
-      embedding: response.data[0].embedding,
-      tokensUsed: response.usage.total_tokens,
-    };
+      return {
+        embedding: response.data[0].embedding,
+        tokensUsed: response.usage.total_tokens,
+      };
+    })());
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {
-    const response = await this.client.chat.completions.create({
-      model: options.model,
-      messages: options.messages as any,
-      max_tokens: options.max_tokens || this.config.maxTokens || 2000,
-      temperature: options.temperature ?? this.config.temperature ?? 0.7,
-      response_format: options.response_format as any,
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: options.model,
+        messages: options.messages as any,
+        max_tokens: options.max_tokens || this.config.maxTokens || 2000,
+        temperature: options.temperature ?? this.config.temperature ?? 0.7,
+        response_format: options.response_format as any,
+      });
 
-    return {
-      content: response.choices[0].message.content || '',
-      tokensUsed: response.usage?.total_tokens,
-    };
+      return {
+        content: response.choices[0].message.content || '',
+        tokensUsed: response.usage?.total_tokens,
+      };
+    })());
   }
 }
 
@@ -259,91 +292,100 @@ class AnthropicProvider extends AIProvider {
   }
 
   async generateSummary(content: string): Promise<string> {
-    const response = await this.client.messages.create({
-      model: this.config.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: this.config.maxTokens || 500,
-      temperature: this.config.temperature || 0.7,
-      system: `你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，要求：
+    return this.withTimeout((async () => {
+      const response = await this.client.messages.create({
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        max_tokens: this.config.maxTokens || 500,
+        temperature: this.config.temperature || 0.7,
+        system: `你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，要求：
 1. 3-5句话概括文章核心内容
 2. 突出文章的关键信息和观点
 3. 语言简洁明了，避免冗余
 4. 如果文章是技术类，突出技术要点`,
-      messages: [
-        {
-          role: 'user',
-          content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
-        },
-      ],
-    });
+        messages: [
+          {
+            role: 'user',
+            content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
+          },
+        ],
+      });
 
-    return response.content[0].type === 'text' ? response.content[0].text : '';
+      return response.content[0].type === 'text' ? response.content[0].text : '';
+    })());
   }
 
   async extractKeywords(content: string): Promise<string[]> {
-    const response = await this.client.messages.create({
-      model: this.config.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 200,
-      temperature: 0.3,
-      system: `请从文章中提取5-10个最重要的关键词，用逗号分隔。`,
-      messages: [
-        {
-          role: 'user',
-          content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
-        },
-      ],
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.messages.create({
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        max_tokens: 200,
+        temperature: 0.3,
+        system: `请从文章中提取5-10个最重要的关键词，用逗号分隔。`,
+        messages: [
+          {
+            role: 'user',
+            content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
+          },
+        ],
+      });
 
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
-    return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+      const text = response.content[0].type === 'text' ? response.content[0].text : '';
+      return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+    })());
   }
 
   async categorize(content: string): Promise<string> {
-    const categories = `AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
+    return this.withTimeout((async () => {
+      const categories = `AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps,
 数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业,
 行业新闻, 技术趋势, 工具/资源, 教程/指南`;
 
-    const response = await this.client.messages.create({
-      model: this.config.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 50,
-      temperature: 0.3,
-      messages: [
-        {
-          role: 'user',
-          content: `请将文章分类到以下类别之一：\n${categories}\n\n文章内容：\n${content.slice(0, 2000)}\n\n只返回类别名称。`,
-        },
-      ],
-    });
+      const response = await this.client.messages.create({
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        max_tokens: 50,
+        temperature: 0.3,
+        messages: [
+          {
+            role: 'user',
+            content: `请将文章分类到以下类别之一：\n${categories}\n\n文章内容：\n${content.slice(0, 2000)}\n\n只返回类别名称。`,
+          },
+        ],
+      });
 
-    return response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+      return response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+    })());
   }
 
   async analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'> {
-    const response = await this.client.messages.create({
-      model: this.config.model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 20,
-      temperature: 0.1,
-      messages: [
-        {
-          role: 'user',
-          content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
-        },
-      ],
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.messages.create({
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        max_tokens: 20,
+        temperature: 0.1,
+        messages: [
+          {
+            role: 'user',
+            content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
+          },
+        ],
+      });
 
-    const text = response.content[0].type === 'text' ? response.content[0].text.trim().toLowerCase() : '';
-    if (text.includes('positive')) return 'positive';
-    if (text.includes('negative')) return 'negative';
-    return 'neutral';
+      const text = response.content[0].type === 'text' ? response.content[0].text.trim().toLowerCase() : '';
+      if (text.includes('positive')) return 'positive';
+      if (text.includes('negative')) return 'negative';
+      return 'neutral';
+    })());
   }
 
   async calculateImportance(content: string): Promise<number> {
     try {
-      // 使用 AI 评估内容重要性（Anthropic API）
-      const response = await this.client.messages.create({
-        model: this.config.model || 'claude-3-5-sonnet-20241022',
-        max_tokens: 10,
-        temperature: 0.3,
-        system: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
+      return await this.withTimeout((async () => {
+        // 使用 AI 评估内容重要性（Anthropic API）
+        const response = await this.client.messages.create({
+          model: this.config.model || 'claude-3-5-sonnet-20241022',
+          max_tokens: 10,
+          temperature: 0.3,
+          system: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
 
 1. 实用性（30分）：内容是否提供有用的信息、技能或见解
 2. 独创性（25分）：内容是否独特、有新意，而非老生常谈
@@ -351,23 +393,24 @@ class AnthropicProvider extends AIProvider {
 4. 时效性（20分）：内容是否具有时效价值或长期参考价值
 
 请只返回一个0-100之间的数字分数，不要其他文字。`,
-        messages: [
-          {
-            role: 'user',
-            content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
-          },
-        ],
-      });
+          messages: [
+            {
+              role: 'user',
+              content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
+            },
+          ],
+        });
 
-      const scoreText = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '50';
-      const score = parseInt(scoreText, 10);
+        const scoreText = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '50';
+        const score = parseInt(scoreText, 10);
 
-      // 确保分数在0-100之间
-      if (isNaN(score)) {
-        return 0.5; // 默认中等重要性
-      }
+        // 确保分数在0-100之间
+        if (isNaN(score)) {
+          return 0.5; // 默认中等重要性
+        }
 
-      return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+        return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+      })());
     } catch (error) {
       console.error('AI importance calculation failed, using fallback:', error);
       // 降级到简单算法
@@ -384,35 +427,39 @@ class AnthropicProvider extends AIProvider {
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    return this.withTimeout((async () => {
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
 
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text.slice(0, 8191),
-    });
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text.slice(0, 8191),
+      });
 
-    return {
-      embedding: response.data[0].embedding,
-      tokensUsed: response.usage.total_tokens,
-    };
+      return {
+        embedding: response.data[0].embedding,
+        tokensUsed: response.usage.total_tokens,
+      };
+    })());
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {
-    const response = await this.client.messages.create({
-      model: options.model,
-      max_tokens: options.max_tokens || this.config.maxTokens || 2000,
-      temperature: options.temperature ?? this.config.temperature ?? 0.7,
-      system: options.messages.find(m => m.role === 'system')?.content,
-      messages: options.messages.filter(m => m.role !== 'system') as any,
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.messages.create({
+        model: options.model,
+        max_tokens: options.max_tokens || this.config.maxTokens || 2000,
+        temperature: options.temperature ?? this.config.temperature ?? 0.7,
+        system: options.messages.find(m => m.role === 'system')?.content,
+        messages: options.messages.filter(m => m.role !== 'system') as any,
+      });
 
-    const content = response.content[0];
-    return {
-      content: content.type === 'text' ? content.text : '',
-      tokensUsed: response.usage?.input_tokens + response.usage?.output_tokens,
-    };
+      const content = response.content[0];
+      return {
+        content: content.type === 'text' ? content.text : '',
+        tokensUsed: response.usage?.input_tokens + response.usage?.output_tokens,
+      };
+    })());
   }
 }
 
@@ -431,92 +478,101 @@ class DeepSeekProvider extends AIProvider {
   }
 
   async generateSummary(content: string): Promise<string> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'deepseek-chat',
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，3-5句话概括核心内容。',
-        },
-        {
-          role: 'user',
-          content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
-        },
-      ],
-      max_tokens: this.config.maxTokens || 500,
-      temperature: this.config.temperature || 0.7,
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'deepseek-chat',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的文章摘要助手。请用中文生成简洁的文章摘要，3-5句话概括核心内容。',
+          },
+          {
+            role: 'user',
+            content: `请为以下文章生成摘要：\n\n${content.slice(0, 8000)}`,
+          },
+        ],
+        max_tokens: this.config.maxTokens || 500,
+        temperature: this.config.temperature || 0.7,
+      });
 
-    return response.choices[0].message.content || '';
+      return response.choices[0].message.content || '';
+    })());
   }
 
   async extractKeywords(content: string): Promise<string[]> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'deepseek-chat',
-      messages: [
-        {
-          role: 'system',
-          content: '请从文章中提取5-10个最重要的关键词，用逗号分隔。',
-        },
-        {
-          role: 'user',
-          content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
-        },
-      ],
-      max_tokens: 200,
-      temperature: 0.3,
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'deepseek-chat',
+        messages: [
+          {
+            role: 'system',
+            content: '请从文章中提取5-10个最重要的关键词，用逗号分隔。',
+          },
+          {
+            role: 'user',
+            content: `请提取关键词：\n\n${content.slice(0, 4000)}`,
+          },
+        ],
+        max_tokens: 200,
+        temperature: 0.3,
+      });
 
-    const text = response.choices[0].message.content || '';
-    return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+      const text = response.choices[0].message.content || '';
+      return text.split(/[,，]/).map(k => k.trim()).filter(k => k.length > 0);
+    })());
   }
 
   async categorize(content: string): Promise<string> {
-    const categories = `AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps, 数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业, 行业新闻, 技术趋势, 工具/资源, 教程/指南`;
+    return this.withTimeout((async () => {
+      const categories = `AI/机器学习, 前端开发, 后端开发, 移动开发, 云计算/DevOps, 数据库, 网络安全, 区块链, 游戏, 产品设计, 创业/商业, 行业新闻, 技术趋势, 工具/资源, 教程/指南`;
 
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'deepseek-chat',
-      messages: [
-        {
-          role: 'user',
-          content: `请将文章分类到以下类别之一：${categories}\n\n文章内容：\n${content.slice(0, 2000)}`,
-        },
-      ],
-      max_tokens: 50,
-      temperature: 0.3,
-    });
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'deepseek-chat',
+        messages: [
+          {
+            role: 'user',
+            content: `请将文章分类到以下类别之一：${categories}\n\n文章内容：\n${content.slice(0, 2000)}`,
+          },
+        ],
+        max_tokens: 50,
+        temperature: 0.3,
+      });
 
-    return (response.choices[0].message.content || '').trim();
+      return (response.choices[0].message.content || '').trim();
+    })());
   }
 
   async analyzeSentiment(content: string): Promise<'positive' | 'neutral' | 'negative'> {
-    const response = await this.client.chat.completions.create({
-      model: this.config.model || 'deepseek-chat',
-      messages: [
-        {
-          role: 'user',
-          content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
-        },
-      ],
-      max_tokens: 20,
-      temperature: 0.1,
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: this.config.model || 'deepseek-chat',
+        messages: [
+          {
+            role: 'user',
+            content: `分析文章的情感倾向，只返回以下三个词之一：positive、neutral、negative\n\n文章内容：\n${content.slice(0, 1000)}`,
+          },
+        ],
+        max_tokens: 20,
+        temperature: 0.1,
+      });
 
-    const sentiment = (response.choices[0].message.content || '').trim().toLowerCase();
-    if (sentiment.includes('positive')) return 'positive';
-    if (sentiment.includes('negative')) return 'negative';
-    return 'neutral';
+      const sentiment = (response.choices[0].message.content || '').trim().toLowerCase();
+      if (sentiment.includes('positive')) return 'positive';
+      if (sentiment.includes('negative')) return 'negative';
+      return 'neutral';
+    })());
   }
 
   async calculateImportance(content: string): Promise<number> {
     try {
-      // 使用 AI 评估内容重要性
-      const response = await this.client.chat.completions.create({
-        model: this.config.model || 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
+      return await this.withTimeout((async () => {
+        // 使用 AI 评估内容重要性
+        const response = await this.client.chat.completions.create({
+          model: this.config.model || 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: `你是一个内容价值评估专家。请根据以下标准评估文章的重要性（0-100分）：
 
 1. 实用性（30分）：内容是否提供有用的信息、技能或见解
 2. 独创性（25分）：内容是否独特、有新意，而非老生常谈
@@ -524,25 +580,26 @@ class DeepSeekProvider extends AIProvider {
 4. 时效性（20分）：内容是否具有时效价值或长期参考价值
 
 请只返回一个0-100之间的数字分数，不要其他文字。`,
-          },
-          {
-            role: 'user',
-            content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
-          },
-        ],
-        max_tokens: 10,
-        temperature: 0.3,
-      });
+            },
+            {
+              role: 'user',
+              content: `请评估以下文章的重要性：\n\n${content.slice(0, 3000)}`,
+            },
+          ],
+          max_tokens: 10,
+          temperature: 0.3,
+        });
 
-      const scoreText = response.choices[0]?.message?.content?.trim() || '50';
-      const score = parseInt(scoreText, 10);
+        const scoreText = response.choices[0]?.message?.content?.trim() || '50';
+        const score = parseInt(scoreText, 10);
 
-      // 确保分数在0-100之间
-      if (isNaN(score)) {
-        return 0.5; // 默认中等重要性
-      }
+        // 确保分数在0-100之间
+        if (isNaN(score)) {
+          return 0.5; // 默认中等重要性
+        }
 
-      return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+        return Math.min(Math.max(score, 0), 100) / 100; // 转换为0-1范围
+      })());
     } catch (error) {
       console.error('AI importance calculation failed, using fallback:', error);
       // 降级到简单算法
@@ -559,34 +616,38 @@ class DeepSeekProvider extends AIProvider {
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    return this.withTimeout((async () => {
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
 
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text.slice(0, 8191),
-    });
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text.slice(0, 8191),
+      });
 
-    return {
-      embedding: response.data[0].embedding,
-      tokensUsed: response.usage.total_tokens,
-    };
+      return {
+        embedding: response.data[0].embedding,
+        tokensUsed: response.usage.total_tokens,
+      };
+    })());
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {
-    const response = await this.client.chat.completions.create({
-      model: options.model,
-      messages: options.messages as any,
-      max_tokens: options.max_tokens || this.config.maxTokens || 2000,
-      temperature: options.temperature ?? this.config.temperature ?? 0.7,
-      response_format: options.response_format as any,
-    });
+    return this.withTimeout((async () => {
+      const response = await this.client.chat.completions.create({
+        model: options.model,
+        messages: options.messages as any,
+        max_tokens: options.max_tokens || this.config.maxTokens || 2000,
+        temperature: options.temperature ?? this.config.temperature ?? 0.7,
+        response_format: options.response_format as any,
+      });
 
-    return {
-      content: response.choices[0].message.content || '',
-      tokensUsed: response.usage?.total_tokens,
-    };
+      return {
+        content: response.choices[0].message.content || '',
+        tokensUsed: response.usage?.total_tokens,
+      };
+    })());
   }
 }
 
@@ -739,7 +800,8 @@ export class AIService {
   }
 
   async generateEmbedding(text: string): Promise<EmbeddingResult> {
-    return this.provider.generateEmbedding(text);
+    // 使用缓存避免重复调用 API
+    return EmbeddingCache.getOrCompute(text, () => this.provider.generateEmbedding(text));
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {

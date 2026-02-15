@@ -139,8 +139,8 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
             {/* 头部 */}
             <div className="flex items-center justify-between p-4 border-b border-border/60">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-lg">R</span>
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center overflow-hidden">
+                  <img src="/logo-small.png" alt="Rss-Easy" className="w-7 h-7 object-contain" />
                 </div>
                 <div>
                   <h2 className="font-semibold">Rss-Easy</h2>

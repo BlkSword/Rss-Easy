@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   ScrollText,
   RefreshCw,
@@ -20,14 +20,18 @@ import {
   Clock,
   Filter,
   Download,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Tooltip } from '@/components/ui/tooltip';
 import { Select, Space } from 'antd';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { notifySuccess } from '@/lib/feedback';
 
 const levelColors: Record<string, { bg: string; text: string; icon: any }> = {
   debug: { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-600 dark:text-slate-400', icon: FileJson },
@@ -52,7 +56,21 @@ export function LogsSettings() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
+
+  // 复制到剪贴板
+  const handleCopy = useCallback(async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      notifySuccess('已复制到剪贴板');
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
+  }, []);
 
   // 获取日志列表
   const {
@@ -159,34 +177,46 @@ export function LogsSettings() {
                 共 {stats?.totalCount.toLocaleString() || 0} 条日志
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  refetch();
-                  refetchStats();
-                }}
-              >
-                <RefreshCw className="h-4 w-4" />
-                刷新
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleExportLogs}
-              >
-                <Download className="h-4 w-4" />
-                导出
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearLogs}
-              >
-                <Trash2 className="h-4 w-4 text-red-500" />
-                清空
-              </Button>
+            <div className="flex items-center gap-1">
+              <Tooltip content="刷新" position="bottom">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={async () => {
+                    setIsRefreshing(true);
+                    await Promise.all([refetch(), refetchStats()]);
+                    setTimeout(() => setIsRefreshing(false), 300);
+                  }}
+                  disabled={isRefreshing}
+                  className={cn(
+                    'transition-all duration-200',
+                    isRefreshing && 'hover:bg-transparent'
+                  )}
+                >
+                  <RefreshCw className={cn(
+                    'h-4 w-4 transition-transform duration-500',
+                    isRefreshing && 'animate-spin'
+                  )} />
+                </Button>
+              </Tooltip>
+              <Tooltip content="导出日志" position="bottom">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleExportLogs}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip content="清空日志" position="bottom">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleClearLogs}
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </Tooltip>
             </div>
           </div>
 
@@ -315,9 +345,30 @@ export function LogsSettings() {
                           {isExpanded && (
                             <div className="mt-3 space-y-3 text-sm">
                               {log.details && (
-                                <div className="bg-muted rounded-lg p-3 overflow-x-auto">
-                                  <div className="text-xs font-medium text-muted-foreground mb-1">
-                                    详细数据
+                                <div className="bg-muted rounded-lg p-3 overflow-x-auto relative group">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="text-xs font-medium text-muted-foreground">
+                                      详细数据
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCopy(JSON.stringify(log.details, null, 2), `details-${log.id}`);
+                                      }}
+                                      className={cn(
+                                        'p-1.5 rounded-md transition-all',
+                                        'opacity-0 group-hover:opacity-100',
+                                        copiedId === `details-${log.id}`
+                                          ? 'bg-green-500/10 text-green-500'
+                                          : 'hover:bg-background text-muted-foreground hover:text-foreground'
+                                      )}
+                                    >
+                                      {copiedId === `details-${log.id}` ? (
+                                        <Check className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <Copy className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
                                   </div>
                                   <pre className="text-xs">
                                     {JSON.stringify(log.details, null, 2)}
@@ -325,9 +376,30 @@ export function LogsSettings() {
                                 </div>
                               )}
                               {log.stackTrace && (
-                                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 overflow-x-auto">
-                                  <div className="text-xs font-medium text-red-600 mb-1">
-                                    错误堆栈
+                                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 overflow-x-auto relative group">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="text-xs font-medium text-red-600">
+                                      错误堆栈
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCopy(log.stackTrace || '', `stack-${log.id}`);
+                                      }}
+                                      className={cn(
+                                        'p-1.5 rounded-md transition-all',
+                                        'opacity-0 group-hover:opacity-100',
+                                        copiedId === `stack-${log.id}`
+                                          ? 'bg-green-500/10 text-green-500'
+                                          : 'hover:bg-red-100 dark:hover:bg-red-800/30 text-red-500'
+                                      )}
+                                    >
+                                      {copiedId === `stack-${log.id}` ? (
+                                        <Check className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <Copy className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
                                   </div>
                                   <pre className="text-xs text-red-600 whitespace-pre-wrap">
                                     {log.stackTrace}
@@ -389,13 +461,29 @@ export function LogsSettings() {
               {stats.recentErrors.map((error) => (
                 <div
                   key={error.id}
-                  className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm"
+                  className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm group relative"
                 >
-                  <div className="flex items-center gap-2 text-red-600 font-medium">
-                    <XCircle className="h-4 w-4" />
-                    {error.message}
+                  <div className="flex items-start gap-2 text-red-600 font-medium">
+                    <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <span className="flex-1">{error.message}</span>
+                    <button
+                      onClick={() => handleCopy(error.message, `error-${error.id}`)}
+                      className={cn(
+                        'p-1.5 rounded-md transition-all flex-shrink-0',
+                        'opacity-0 group-hover:opacity-100',
+                        copiedId === `error-${error.id}`
+                          ? 'bg-green-500/10 text-green-500'
+                          : 'hover:bg-red-100 dark:hover:bg-red-800/30 text-red-500'
+                      )}
+                    >
+                      {copiedId === `error-${error.id}` ? (
+                        <Check className="h-3.5 w-3.5" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </button>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">
+                  <div className="text-xs text-muted-foreground mt-1 ml-6">
                     {formatDistanceToNow(new Date(error.createdAt), {
                       addSuffix: true,
                       locale: zhCN,
