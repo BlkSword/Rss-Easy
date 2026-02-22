@@ -102,16 +102,17 @@ Rss-Easy 是一款面向深度阅读者的智能资讯聚合平台，旨在通�
 ```bash
 # 克隆项目
 git clone https://github.com/BlkSword/Rss-Easy.git
+(国内：git clone https://gh-proxy.org/https://github.com/BlkSword/Rss-Easy.git)
 cd Rss-Easy
 
 # 启动所有服务（数据库 + Redis + 应用）
-docker-compose up -d
+docker compose up -d
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 
 # 停止服务
-docker-compose down
+docker compose down
 ```
 
 访问 http://localhost:3000 即可使用。
