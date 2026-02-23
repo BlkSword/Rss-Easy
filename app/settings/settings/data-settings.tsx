@@ -5,7 +5,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Database, Download, Upload, Trash2, AlertTriangle } from 'lucide-react';
+import { Database, Download, Upload, Trash2, AlertTriangle, FileText, CheckCircle, XCircle, SkipForward, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
@@ -16,13 +16,39 @@ interface DataSettingsProps {
   onOpenDeleteModal: () => void;
 }
 
+interface PreviewFeed {
+  url: string;
+  title: string;
+  category?: string;
+}
+
 export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
   const [importContent, setImportContent] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewData, setPreviewData] = useState<{
+    title: string;
+    feeds: PreviewFeed[];
+    categories: string[];
+  } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    created: number;
+    skipped: number;
+    failed: number;
+    total: number;
+    details: Array<{
+      url: string;
+      title: string;
+      status: 'imported' | 'skipped' | 'failed';
+      message?: string;
+    }>;
+  } | null>(null);
 
   const { mutateAsync: exportOPML } = trpc.settings.exportOPML.useMutation();
+  const { mutateAsync: previewOPML } = trpc.settings.previewOPML.useMutation();
   const { mutateAsync: importOPML } = trpc.settings.importOPML.useMutation();
   const { mutate: clearAllEntries } = trpc.settings.clearAllEntries.useMutation();
 
@@ -48,13 +74,35 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
-      setImportContent(event.target?.result as string);
+    reader.onload = async (event) => {
+      const content = event.target?.result as string;
+      setImportContent(content);
+      setImportResult(null);
+      setPreviewData(null);
+
+      // 自动预览
+      setIsPreviewing(true);
+      try {
+        const preview = await previewOPML({ opmlContent: content });
+        if (preview.success) {
+          setPreviewData({
+            title: preview.title,
+            feeds: preview.feeds,
+            categories: preview.categories,
+          });
+        } else {
+          notifyError(preview.error || '预览失败');
+        }
+      } catch (error) {
+        notifyError(error instanceof Error ? error.message : '预览失败');
+      } finally {
+        setIsPreviewing(false);
+      }
     };
     reader.readAsText(file);
   };
@@ -66,13 +114,28 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
     }
 
     setIsImporting(true);
+    setImportResult(null);
     try {
-      const result = await importOPML({ opmlContent: importContent });
-      notifySuccess(`导入成功：新增 ${result.created} 个订阅源，跳过 ${result.skipped} 个`);
-      setImportContent('');
-      // 重置文件输入
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
+      const result = await importOPML({
+        opmlContent: importContent,
+        skipDiscovery: false, // 使用智能发现
+      });
+
+      setImportResult(result);
+
+      if (result.success) {
+        notifySuccess(`导入完成：新增 ${result.created} 个，跳过 ${result.skipped} 个，失败 ${result.failed} 个`);
+      } else {
+        notifyError('部分订阅源导入失败');
+      }
+
+      // 如果全部成功，清空状态
+      if (result.success && result.failed === 0) {
+        setImportContent('');
+        setPreviewData(null);
+        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+      }
     } catch (error) {
       notifyError(error instanceof Error ? error.message : '导入失败');
     } finally {
@@ -92,6 +155,14 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
     } finally {
       setIsClearing(false);
     }
+  };
+
+  const resetImport = () => {
+    setImportContent('');
+    setPreviewData(null);
+    setImportResult(null);
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
   };
 
   return (
@@ -137,26 +208,33 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
                 导入 OPML
               </h4>
               <p className="text-sm text-muted-foreground mt-1">
-                从 OPML 文件导入订阅源，重复的订阅源将被跳过
+                从 OPML 文件导入订阅源，支持智能识别订阅源信息
               </p>
             </div>
             <div className="space-y-3">
               <label
                 htmlFor="opml-file"
                 className={cn(
-                  'flex flex-col items-center justify-center w-full h-32 rounded-xl border-2 border-dashed',
+                  'flex flex-col items-center justify-center w-full h-24 rounded-xl border-2 border-dashed',
                   'hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer',
                   importContent ? 'border-primary/30 bg-primary/5' : 'border-border'
                 )}
               >
-                <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                <span className="text-sm text-muted-foreground">
-                  {importContent ? '已选择文件' : '点击选择 OPML 文件'}
-                </span>
-                {importContent && (
-                  <span className="text-xs text-primary mt-1">
-                    {importContent.slice(0, 50)}...
-                  </span>
+                {isPreviewing ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <span className="text-sm text-muted-foreground">正在解析文件...</span>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="h-6 w-6 text-muted-foreground mb-1" />
+                    <span className="text-sm text-muted-foreground">
+                      {importContent ? '点击更换文件' : '点击选择 OPML 文件'}
+                    </span>
+                    <span className="text-xs text-muted-foreground mt-1">
+                      支持 .opml 和 .xml 格式
+                    </span>
+                  </>
                 )}
                 <input
                   id="opml-file"
@@ -164,17 +242,139 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
                   accept=".opml,.xml"
                   onChange={handleFileUpload}
                   className="hidden"
+                  disabled={isPreviewing || isImporting}
                 />
               </label>
-              <Button
-                variant="outline"
-                onClick={handleImport}
-                isLoading={isImporting}
-                disabled={!importContent || isImporting}
-                leftIcon={<Upload className="h-4 w-4" />}
-              >
-                导入 OPML
-              </Button>
+
+              {/* 预览区域 */}
+              {previewData && !importResult && (
+                <div className="border border-border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">{previewData.title || 'OPML 文件'}</span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={resetImport}>
+                      取消
+                    </Button>
+                  </div>
+
+                  <div className="text-sm text-muted-foreground">
+                    发现 <span className="font-medium text-foreground">{previewData.feeds.length}</span> 个订阅源
+                    {previewData.categories.length > 0 && (
+                      <span>，<span className="font-medium text-foreground">{previewData.categories.length}</span> 个分类</span>
+                    )}
+                  </div>
+
+                  {/* 订阅源列表预览 */}
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {previewData.feeds.slice(0, 20).map((feed, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 text-xs py-1.5 px-2 rounded bg-muted/50"
+                      >
+                        <span className="truncate flex-1 font-medium">{feed.title || feed.url}</span>
+                        {feed.category && (
+                          <span className="text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {feed.category}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {previewData.feeds.length > 20 && (
+                      <div className="text-xs text-muted-foreground text-center py-1">
+                        还有 {previewData.feeds.length - 20} 个订阅源...
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={resetImport}
+                      disabled={isImporting}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      onClick={handleImport}
+                      isLoading={isImporting}
+                      disabled={isImporting}
+                      className="flex-1"
+                    >
+                      {isImporting ? '正在导入...' : `导入 ${previewData.feeds.length} 个订阅源`}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* 导入结果 */}
+              {importResult && (
+                <div className="border border-border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {importResult.success ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      )}
+                      <span className="font-medium text-sm">
+                        {importResult.success ? '导入完成' : '导入完成（部分失败）'}
+                      </span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={resetImport}>
+                      继续导入
+                    </Button>
+                  </div>
+
+                  {/* 统计 */}
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <div className="text-lg font-bold text-foreground">{importResult.total}</div>
+                      <div className="text-xs text-muted-foreground">总计</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-green-500/10">
+                      <div className="text-lg font-bold text-green-600">{importResult.created}</div>
+                      <div className="text-xs text-green-600">成功</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-amber-500/10">
+                      <div className="text-lg font-bold text-amber-600">{importResult.skipped}</div>
+                      <div className="text-xs text-amber-600">跳过</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-red-500/10">
+                      <div className="text-lg font-bold text-red-600">{importResult.failed}</div>
+                      <div className="text-xs text-red-600">失败</div>
+                    </div>
+                  </div>
+
+                  {/* 详细结果列表 */}
+                  {importResult.details.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {importResult.details.map((item, index) => (
+                        <div
+                          key={index}
+                          className={cn(
+                            "flex items-center gap-2 text-xs py-1.5 px-2 rounded",
+                            item.status === 'imported' && "bg-green-500/10",
+                            item.status === 'skipped' && "bg-amber-500/10",
+                            item.status === 'failed' && "bg-red-500/10"
+                          )}
+                        >
+                          {item.status === 'imported' && <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />}
+                          {item.status === 'skipped' && <SkipForward className="h-3 w-3 text-amber-500 flex-shrink-0" />}
+                          {item.status === 'failed' && <XCircle className="h-3 w-3 text-red-500 flex-shrink-0" />}
+                          <span className="truncate flex-1">{item.title}</span>
+                          {item.message && (
+                            <span className="text-muted-foreground truncate max-w-[120px]">
+                              {item.message}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </CardContent>

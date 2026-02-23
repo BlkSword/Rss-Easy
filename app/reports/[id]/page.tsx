@@ -35,12 +35,13 @@ import {
   Mail,
   Settings,
 } from 'lucide-react';
-import { Button, Card, Row, Col, Select, Space, Modal, Typography, Tag, Progress, Steps, Tooltip } from 'antd';
+import { Button, Card as AntCard, Row, Col, Select, Space, Modal, Typography, Tag, Progress, Steps, Tooltip } from 'antd';
 import { useToast } from '@/components/ui/toast';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
+import { Card } from '@/components/ui/card';
 
 // 动画组件
 import { Fade, StaggerContainer, ListItemFade, HoverLift } from '@/components/animation/fade';
@@ -91,7 +92,7 @@ function ReportDetailSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-10 w-32" />
-      <Card className="border-border/60">
+      <Card>
         <div className="space-y-6">
           <div className="flex items-center gap-4">
             <Skeleton className="w-14 h-14 rounded-2xl" />
@@ -107,7 +108,7 @@ function ReportDetailSkeleton() {
           </div>
         </div>
       </Card>
-      <Card className="border-border/60">
+      <Card>
         <Skeleton className="h-64 rounded-xl" />
       </Card>
     </div>
@@ -145,7 +146,7 @@ function GeneratingState({
   const currentStepIndex = steps.findIndex((s) => s.status === 'doing');
 
   return (
-    <Card className="border-border/60 mb-6">
+    <Card className="mb-6">
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center animate-pulse">
           <Loader2 className="h-6 w-6 text-amber-500 animate-spin" />
@@ -558,7 +559,7 @@ export default function ReportDetailPage() {
             {/* 头部 */}
             {!isGenerating && (
               <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={100}>
-                <Card
+                <AntCard
                   className={cn(
                     'mb-6 border-border/60 overflow-hidden relative',
                     'bg-gradient-to-br',
@@ -681,14 +682,14 @@ export default function ReportDetailPage() {
                       delay={150}
                     />
                   </div>
-                </Card>
+                </AntCard>
               </Fade>
             )}
 
             {/* 报告内容 - 只在生成完成时显示 */}
             {report.status === 'completed' && (
               <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={200}>
-                <Card
+                <AntCard
                   className="mb-6 border-border/60 overflow-hidden"
                   title={
                     <div className="flex items-center gap-2">
@@ -702,14 +703,14 @@ export default function ReportDetailPage() {
                       {report.content || '暂无内容'}
                     </pre>
                   </div>
-                </Card>
+                </AntCard>
               </Fade>
             )}
 
             {/* 主题分析 - 只在生成完成时显示 */}
             {report.status === 'completed' && topics.length > 0 && (
               <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={300}>
-                <Card
+                <AntCard
                   className="mb-6 border-border/60"
                   title={
                     <div className="flex items-center gap-2">
@@ -732,14 +733,14 @@ export default function ReportDetailPage() {
                       />
                     ))}
                   </div>
-                </Card>
+                </AntCard>
               </Fade>
             )}
 
             {/* 精选文章 - 只在生成完成时显示 */}
             {report.status === 'completed' && report.entries && report.entries.length > 0 && (
               <Fade in={isPageLoaded} direction="up" distance={20} duration={500} delay={400}>
-                <Card
+                <AntCard
                   className="border-border/60"
                   title={
                     <div className="flex items-center gap-2">
@@ -766,7 +767,7 @@ export default function ReportDetailPage() {
                       )}
                     </div>
                   </StaggerContainer>
-                </Card>
+                </AntCard>
               </Fade>
             )}
           </div>

@@ -19,53 +19,53 @@ export function AntdThemeProvider({ children }: AntdThemeProviderProps) {
   const themeConfig = {
     algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     token: {
-      colorPrimary: '#ea580c', // orange-600
-      colorBgBase: isDark ? '#12100e' : '#faf9f7',
-      colorTextBase: isDark ? '#f5f5f4' : '#292524',
-      colorBorder: isDark ? '#44403c' : '#e7e5e4',
+      colorPrimary: '#3b82f6', // blue-500 - 更适合深蓝背景的强调色
+      colorBgBase: isDark ? '#0f172a' : '#faf9f7', // slate-900
+      colorTextBase: isDark ? '#e2e8f0' : '#292524', // slate-200
+      colorBorder: isDark ? '#334155' : '#e7e5e4', // slate-700
       borderRadius: 8,
       wireframe: false,
     },
     components: {
       Card: {
-        colorBgContainer: isDark ? '#1c1917' : '#ffffff',
+        colorBgContainer: isDark ? '#1e293b' : '#ffffff', // slate-800
       },
       Modal: {
-        colorBgElevated: isDark ? '#1c1917' : '#ffffff',
+        colorBgElevated: isDark ? '#1e293b' : '#ffffff',
       },
       Drawer: {
-        colorBgElevated: isDark ? '#1c1917' : '#ffffff',
+        colorBgElevated: isDark ? '#1e293b' : '#ffffff',
       },
       Menu: {
-        colorItemBg: isDark ? '#1c1917' : '#ffffff',
-        colorItemBgSelected: isDark ? '#ea580c20' : '#fff7ed',
-        colorItemTextSelected: '#ea580c',
+        colorItemBg: isDark ? '#1e293b' : '#ffffff',
+        colorItemBgSelected: isDark ? '#3b82f620' : '#eff6ff',
+        colorItemTextSelected: '#3b82f6',
       },
       Input: {
-        colorBgContainer: isDark ? '#1c1917' : '#ffffff',
+        colorBgContainer: isDark ? '#1e293b' : '#ffffff',
       },
       Select: {
-        colorBgContainer: isDark ? '#1c1917' : '#ffffff',
-        optionSelectedBg: isDark ? '#ea580c20' : '#fff7ed',
+        colorBgContainer: isDark ? '#1e293b' : '#ffffff',
+        optionSelectedBg: isDark ? '#3b82f620' : '#eff6ff',
       },
       Button: {
         primaryColor: '#ffffff',
       },
       Table: {
-        colorBgContainer: isDark ? '#1c1917' : '#ffffff',
-        headerBg: isDark ? '#292524' : '#fafaf9',
+        colorBgContainer: isDark ? '#1e293b' : '#ffffff',
+        headerBg: isDark ? '#334155' : '#fafaf9',
       },
       Tooltip: {
-        colorBgElevated: isDark ? '#44403c' : '#1c1917',
+        colorBgElevated: isDark ? '#475569' : '#1e293b',
       },
       Popover: {
-        colorBgElevated: isDark ? '#1c1917' : '#ffffff',
+        colorBgElevated: isDark ? '#1e293b' : '#ffffff',
       },
       Tag: {
-        defaultBg: isDark ? '#292524' : '#f5f5f4',
+        defaultBg: isDark ? '#334155' : '#f5f5f4',
       },
       Badge: {
-        colorBgContainer: isDark ? '#1c1917' : '#ffffff',
+        colorBgContainer: isDark ? '#1e293b' : '#ffffff',
       },
     },
   };

@@ -23,7 +23,7 @@ import {
   AlertCircle,
   Inbox,
 } from 'lucide-react';
-import { Button, Card, Row, Col, Statistic, Empty, Dropdown, Modal, Input, Select, Switch, Space, Form, Badge, Tag } from 'antd';
+import { Button, Card as AntCard, Row, Col, Statistic, Empty, Dropdown, Modal, Input, Select, Switch, Space, Form, Badge, Tag } from 'antd';
 const { TextArea } = Input;
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
@@ -31,6 +31,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
 
 // 动画组件
 import { Fade, ListItemFade, Scale, HoverLift } from '@/components/animation/fade';
@@ -206,7 +207,7 @@ export default function FeedPage() {
 
             {/* 订阅源头部 - 带渐变背景 */}
             <Fade in={isLoaded} delay={100} direction="up" distance={20}>
-              <Card 
+              <AntCard 
                 className="mb-6 border-border/60 overflow-hidden"
                 bodyStyle={{ padding: 0 }}
               >
@@ -373,7 +374,7 @@ export default function FeedPage() {
                     </Col>
                   </Row>
                 </div>
-              </Card>
+              </AntCard>
             </Fade>
 
             {/* 文章列表 */}

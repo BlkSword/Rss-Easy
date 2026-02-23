@@ -235,6 +235,209 @@ export const entriesRouter = router({
     }),
 
   /**
+   * 获取相关阅读文章
+   * 基于标签、分类、关键词匹配
+   */
+  relatedEntries: protectedProcedure
+    .input(z.object({
+      entryId: z.string().uuid(),
+      limit: z.number().min(1).max(10).default(5),
+    }))
+    .output(z.array(z.object({
+      id: z.string(),
+      title: z.string(),
+      url: z.string(),
+      publishedAt: z.date().nullable(),
+      aiOneLineSummary: z.string().nullable(),
+      aiImportanceScore: z.number(),
+      feed: z.object({
+        id: z.string(),
+        title: z.string(),
+        iconUrl: z.string().nullable(),
+      }),
+      relevanceScore: z.number(),
+      relevanceReason: z.string(),
+    })))
+    .query(async ({ input, ctx }) => {
+      // 获取当前文章
+      const currentEntry = await ctx.db.entry.findFirst({
+        where: {
+          id: input.entryId,
+          feed: { userId: ctx.userId },
+        },
+        select: {
+          id: true,
+          aiKeywords: true,
+          aiCategory: true,
+          feedId: true,
+          feed: { select: { categoryId: true } },
+        },
+      });
+
+      if (!currentEntry) {
+        return [];
+      }
+
+      // 先查询 ArticleRelation 表中的关系
+      const articleRelations = await ctx.db.articleRelation.findMany({
+        where: {
+          sourceId: input.entryId,
+          strength: { gte: 0.3 },
+        },
+        select: {
+          targetId: true,
+          relationType: true,
+          strength: true,
+        },
+        orderBy: { strength: 'desc' },
+        take: input.limit,
+      });
+
+      // 如果有关系数据，直接返回
+      if (articleRelations.length > 0) {
+        const relatedIds = articleRelations.map(r => r.targetId);
+        const relatedEntries = await ctx.db.entry.findMany({
+          where: {
+            id: { in: relatedIds },
+            feed: { userId: ctx.userId },
+          },
+          select: {
+            id: true,
+            title: true,
+            url: true,
+            publishedAt: true,
+            aiOneLineSummary: true,
+            aiImportanceScore: true,
+            feed: {
+              select: {
+                id: true,
+                title: true,
+                iconUrl: true,
+              },
+            },
+          },
+        });
+
+        // 合并关系强度
+        const relationMap = new Map(articleRelations.map(r => [r.targetId, r]));
+        const typeLabels: Record<string, string> = {
+          'similar': '内容相似',
+          'prerequisite': '前置知识',
+          'contradiction': '不同观点',
+          'extension': '延伸阅读',
+        };
+
+        return relatedEntries
+          .map(e => ({
+            ...e,
+            relevanceScore: relationMap.get(e.id)?.strength || 0.5,
+            relevanceReason: typeLabels[relationMap.get(e.id)?.relationType || 'similar'] || '相关推荐',
+          }))
+          .sort((a, b) => b.relevanceScore - a.relevanceScore);
+      }
+
+      // 没有关系数据，基于标签和分类推荐
+      const keywords = currentEntry.aiKeywords || [];
+      const category = currentEntry.aiCategory;
+
+      // 构建查询条件
+      const relatedEntries = await ctx.db.entry.findMany({
+        where: {
+          AND: [
+            { id: { not: input.entryId } },
+            { feed: { userId: ctx.userId } },
+            {
+              OR: [
+                // 匹配关键词
+                ...(keywords.length > 0 ? [{
+                  aiKeywords: { hasSome: keywords },
+                }] : []),
+                // 匹配 AI 分类
+                ...(category ? [{
+                  aiCategory: category,
+                }] : []),
+                // 同一订阅源的其他文章
+                {
+                  feedId: currentEntry.feedId,
+                },
+              ],
+            },
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          url: true,
+          publishedAt: true,
+          aiOneLineSummary: true,
+          aiImportanceScore: true,
+          aiKeywords: true,
+          aiCategory: true,
+          feedId: true,
+          feed: {
+            select: {
+              id: true,
+              title: true,
+              iconUrl: true,
+            },
+          },
+        },
+        take: 20, // 多取一些用于计算相关性
+        orderBy: { publishedAt: 'desc' },
+      });
+
+      // 计算相关性分数
+      const scored = relatedEntries.map(entry => {
+        let score = 0;
+        let reason = '相关推荐';
+
+        // 关键词匹配分数
+        if (keywords.length > 0 && entry.aiKeywords) {
+          const matchingKeywords = entry.aiKeywords.filter(k => keywords.includes(k));
+          if (matchingKeywords.length > 0) {
+            score += (matchingKeywords.length / keywords.length) * 0.5;
+            reason = `${matchingKeywords.length} 个共同标签`;
+          }
+        }
+
+        // 分类匹配分数
+        if (category && entry.aiCategory === category) {
+          score += 0.3;
+          reason = '同分类文章';
+        }
+
+        // 同订阅源分数
+        if (entry.feedId === currentEntry.feedId) {
+          score += 0.2;
+          reason = '同一来源';
+        }
+
+        // 重要度加分
+        if (entry.aiImportanceScore > 0.7) {
+          score += 0.1;
+        }
+
+        return {
+          id: entry.id,
+          title: entry.title,
+          url: entry.url,
+          publishedAt: entry.publishedAt,
+          aiOneLineSummary: entry.aiOneLineSummary,
+          aiImportanceScore: entry.aiImportanceScore,
+          feed: entry.feed,
+          relevanceScore: Math.min(1, score),
+          relevanceReason: reason,
+        };
+      });
+
+      // 按相关性排序并返回
+      return scored
+        .filter(e => e.relevanceScore > 0)
+        .sort((a, b) => b.relevanceScore - a.relevanceScore)
+        .slice(0, input.limit);
+    }),
+
+  /**
    * 标记为已读（优化版：批量操作避免 N+1 查询）
    */
   markAsRead: protectedProcedure

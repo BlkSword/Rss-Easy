@@ -30,13 +30,14 @@ import {
   CheckCircle,
   AlertTriangle,
 } from 'lucide-react';
-import { Button, Card, Tag, Space, Modal, Dropdown, Progress, Tooltip } from 'antd';
+import { Button, Card as AntCard, Tag, Space, Modal, Dropdown, Progress, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
 import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
+import { Card } from '@/components/ui/card';
 
 // 动画组件
 import { Fade, StaggerContainer, ListItemFade, HoverLift } from '@/components/animation/fade';
@@ -81,7 +82,7 @@ function StatCard({
 }) {
   return (
     <Fade delay={delay} direction="up" distance={15}>
-      <Card className="border-border/60 hover:border-primary/30 transition-all duration-300 hover:shadow-md">
+      <Card isHoverable>
         <AnimatedCounter value={value} label={label} icon={icon} duration={1200} />
       </Card>
     </Fade>
@@ -93,7 +94,7 @@ function ReportsListSkeleton() {
   return (
     <div className="space-y-4">
       {Array.from({ length: 4 }).map((_, i) => (
-        <Card key={i} className="border-border/60">
+        <AntCard key={i} className="border-border/60">
           <div className="flex items-start gap-4">
             <Skeleton className="w-10 h-10 rounded-xl flex-shrink-0" />
             <div className="flex-1 space-y-3">
@@ -105,7 +106,7 @@ function ReportsListSkeleton() {
               <Skeleton className="h-3 w-1/3" />
             </div>
           </div>
-        </Card>
+        </AntCard>
       ))}
     </div>
   );
@@ -300,7 +301,7 @@ function ReportCard({
   return (
     <ListItemFade index={index} baseDelay={80}>
       <HoverLift lift={4} shadow={false}>
-        <Card className="border-border/60 hover:border-primary/30 transition-all duration-300 hover:shadow-lg cursor-pointer group">
+        <Card isClickable>
           <div className="flex items-start justify-between">
             <Link href={`/reports/${report.id}`} className="flex-1 min-w-0">
               <div className="flex items-start gap-4">

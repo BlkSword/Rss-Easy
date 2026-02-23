@@ -15,7 +15,7 @@ import {
   Clock,
   FileText,
 } from 'lucide-react';
-import { Button, Card, Space, Typography, Dropdown, Tag, Progress, Spin } from 'antd';
+import { Button, Card as AntCard, Space, Typography, Dropdown, Tag, Progress, Spin } from 'antd';
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { Fade } from '@/components/animation/fade';
 import { usePageLoadAnimation } from '@/hooks/use-animation';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Card } from '@/components/ui/card';
 
 const { Title, Text } = Typography;
 
@@ -157,8 +158,8 @@ export default function FeedsPage() {
                       delay={100 + categoryIndex * 50}
                       duration={400}
                     >
-                      <Card
-                        className="border-border/60 hover:border-primary/30 transition-colors"
+                      <AntCard
+                        className="border-border/60"
                         title={
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{categoryName}</span>
@@ -177,7 +178,7 @@ export default function FeedsPage() {
                             />
                           ))}
                         </div>
-                      </Card>
+                      </AntCard>
                     </Fade>
                   ))}
                 </div>
@@ -206,8 +207,10 @@ function FeedCard({
 
   return (
     <Fade in direction="up" distance={10} duration={300} delay={delay}>
-      <div
-        className="p-4 rounded-xl border border-border/60 bg-card/50 hover:bg-card hover:border-primary/30 hover:shadow-md transition-all duration-200 cursor-pointer group"
+      <Card
+        variant="elevated"
+        isClickable
+        className="p-4 hover:shadow-md transition-shadow cursor-pointer"
         onClick={onClick}
       >
         <div className="flex items-start gap-3">
@@ -264,7 +267,7 @@ function FeedCard({
             </div>
           </div>
         </div>
-      </div>
+      </Card>
     </Fade>
   );
 }

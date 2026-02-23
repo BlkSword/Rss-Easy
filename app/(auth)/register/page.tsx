@@ -141,10 +141,10 @@ export default function RegisterPage() {
             }}
           />
         ))}
-        
+
         <div className="absolute top-0 right-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse-soft" />
         <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse-soft" style={{ animationDelay: '1s' }} />
-        
+
         <div className="absolute top-20 left-20 opacity-30">
           <MorphingShape size={280} duration={12} />
         </div>
@@ -282,25 +282,6 @@ export default function RegisterPage() {
                 </div>
               )}
 
-              {/* 密码强度指示器 */}
-              {passwordStrength > 0 && allRequirementsMet && (
-                <div className="mb-4 -mt-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-muted-foreground">密码强度</span>
-                    <span className="text-xs font-medium" style={{ color: strengthInfo.color }}>
-                      {strengthInfo.text}
-                    </span>
-                  </div>
-                  <Progress
-                    percent={passwordStrength}
-                    showInfo={false}
-                    strokeColor={strengthInfo.color}
-                    railColor="hsl(var(--muted))"
-                    size="small"
-                  />
-                </div>
-              )}
-
               <Form.Item
                 name="confirmPassword"
                 label={<span className="text-sm font-medium">确认密码</span>}
@@ -369,8 +350,8 @@ export default function RegisterPage() {
             {/* 登录链接 */}
             <div className="text-center text-sm">
               <span className="text-muted-foreground">已有账号？</span>{' '}
-              <Link 
-                href="/login" 
+              <Link
+                href="/login"
                 className="text-primary hover:text-primary/80 font-medium hover:underline transition-colors inline-flex items-center gap-1 group"
               >
                 立即登录

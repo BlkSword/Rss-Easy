@@ -74,6 +74,10 @@ export function FeedsManagePageContent() {
   const deleteFeed = trpc.feeds.delete.useMutation();
   const bulkAction = trpc.feeds.bulkAction.useMutation();
   const discoverFeed = trpc.feeds.discover.useMutation();
+  const refreshFeed = trpc.feeds.refresh.useMutation();
+
+  // 正在抓取的订阅源 ID 集合
+  const [fetchingFeedIds, setFetchingFeedIds] = useState<Set<string>>(new Set());
 
   const feeds = feedsData?.items || [];
 
@@ -289,6 +293,33 @@ export function FeedsManagePageContent() {
       notifySuccess('刷新成功');
     } finally {
       setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
+
+  // 手动抓取单个订阅源
+  const handleFetchFeed = async (feedId: string, feedTitle: string) => {
+    setFetchingFeedIds(prev => new Set(prev).add(feedId));
+
+    try {
+      await refreshFeed.mutateAsync({ id: feedId });
+      notifySuccess('抓取任务已提交', `正在抓取「${feedTitle}」的新内容...`);
+
+      // 3秒后刷新列表
+      setTimeout(() => {
+        refetch();
+        setFetchingFeedIds(prev => {
+          const next = new Set(prev);
+          next.delete(feedId);
+          return next;
+        });
+      }, 3000);
+    } catch (error) {
+      notifyError('抓取失败', error instanceof Error ? error.message : '请稍后重试');
+      setFetchingFeedIds(prev => {
+        const next = new Set(prev);
+        next.delete(feedId);
+        return next;
+      });
     }
   };
 
@@ -606,10 +637,23 @@ export function FeedsManagePageContent() {
                         </div>
 
                         {/* 操作按钮 - 阻止冒泡 */}
-                        <div 
+                        <div
                           className="col-span-1 flex items-center justify-end gap-1"
                           onClick={(e) => e.stopPropagation()}
                         >
+                          <Tooltip title="手动抓取">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={fetchingFeedIds.has(feed.id)
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <RefreshCw className="h-3.5 w-3.5" />
+                              }
+                              onClick={() => handleFetchFeed(feed.id, feed.title)}
+                              disabled={fetchingFeedIds.has(feed.id)}
+                              className="hover:bg-blue-500/10 hover:text-blue-500 transition-colors"
+                            />
+                          </Tooltip>
                           <Tooltip title="编辑">
                             <Button
                               type="text"

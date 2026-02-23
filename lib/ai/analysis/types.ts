@@ -49,6 +49,14 @@ export interface ScoreDimensions {
   novelty: number;      // 新颖性 1-10
 }
 
+export interface OpenSourceInfo {
+  isOpenSource: boolean;
+  repo?: string;           // 仓库地址
+  license?: string;        // 许可证类型
+  stars?: number;          // Star 数
+  language?: string;       // 主要编程语言
+}
+
 export interface ArticleAnalysisResult {
   // 基础分析
   oneLineSummary: string;
@@ -64,6 +72,12 @@ export interface ArticleAnalysisResult {
   // 评分
   aiScore: number; // 1-10
   scoreDimensions: ScoreDimensions;
+
+  // 文章元信息
+  contentLength?: number;   // 内容长度
+  wordCount?: number;       // 字数
+  readingTimeMinutes?: number; // 预估阅读时间（分钟）
+  openSource?: OpenSourceInfo; // 开源信息
 
   // 元数据
   analysisModel: string;

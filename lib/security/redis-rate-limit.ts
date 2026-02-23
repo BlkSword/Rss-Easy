@@ -19,17 +19,17 @@ interface RateLimitConfig {
 
 // 预定义的速率限制器配置
 const RATE_LIMIT_CONFIGS = {
-  // 登录：每 15 分钟最多 10 次
+  // 登录：每 15 分钟最多 30 次
   login: {
     windowMs: 15 * 60 * 1000,
-    maxRequests: 10,
+    maxRequests: 30,
     keyPrefix: 'ratelimit:login:',
     skipOnFailure: true,
   },
-  // 注册：每小时最多 5 次
+  // 注册：每小时最多 20 次
   register: {
     windowMs: 60 * 60 * 1000,
-    maxRequests: 5,
+    maxRequests: 20,
     keyPrefix: 'ratelimit:register:',
     skipOnFailure: true,
   },

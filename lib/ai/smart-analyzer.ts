@@ -8,7 +8,7 @@
 
 import { SegmentedAnalyzer } from '@/lib/ai/analysis/segmented-analyzer';
 import type { AIProvider } from '@/lib/ai/client';
-import type { ArticleAnalysisResult } from '@/lib/ai/analysis/types';
+import type { ArticleAnalysisResult, OpenSourceInfo } from '@/lib/ai/analysis/types';
 
 // =====================================================
 // 类型定义
@@ -62,21 +62,136 @@ export class SmartAnalyzer {
 
     console.log(`文章长度: ${contentLength} 字符`);
 
+    // 计算文章统计信息
+    const stats = this.calculateContentStats(content);
+
+    // 检测开源信息
+    const openSourceInfo = this.detectOpenSource(content, metadata);
+
     // 路径 1: 短文直接分析
     if (contentLength <= this.config.shortThreshold) {
       console.log('使用短文直接分析路径');
-      return await this.analyzeShort(content, metadata);
+      const result = await this.analyzeShort(content, metadata);
+      return {
+        ...result,
+        contentLength: stats.contentLength,
+        wordCount: stats.wordCount,
+        readingTimeMinutes: stats.readingTimeMinutes,
+        openSource: openSourceInfo,
+        processingTime: Date.now() - startTime,
+      };
     }
 
     // 路径 2: 中等文章分段分析
     if (contentLength <= this.config.segmentThreshold) {
       console.log('使用分段分析路径');
-      return await this.analyzeSegmented(content, metadata);
+      const result = await this.analyzeSegmented(content, metadata);
+      return {
+        ...result,
+        contentLength: stats.contentLength,
+        wordCount: stats.wordCount,
+        readingTimeMinutes: stats.readingTimeMinutes,
+        openSource: openSourceInfo,
+      };
     }
 
     // 路径 3: 长文章分段分析 + 合并
     console.log('使用长文分析路径（带合并）');
-    return await this.analyzeLong(content, metadata);
+    const result = await this.analyzeLong(content, metadata);
+    return {
+      ...result,
+      contentLength: stats.contentLength,
+      wordCount: stats.wordCount,
+      readingTimeMinutes: stats.readingTimeMinutes,
+      openSource: openSourceInfo,
+    };
+  }
+
+  /**
+   * 计算文章统计信息
+   */
+  private calculateContentStats(content: string): {
+    contentLength: number;
+    wordCount: number;
+    readingTimeMinutes: number;
+  } {
+    const contentLength = content.length;
+
+    // 计算字数（中英文混合）
+    // 中文按字符数，英文按单词数
+    const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
+    const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
+    const wordCount = chineseChars + englishWords;
+
+    // 计算阅读时间（中文 300 字/分钟，英文 200 词/分钟）
+    const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 300));
+
+    return { contentLength, wordCount, readingTimeMinutes };
+  }
+
+  /**
+   * 检测开源信息
+   */
+  private detectOpenSource(
+    content: string,
+    metadata?: AnalyzeMetadata
+  ): OpenSourceInfo | undefined {
+    const url = metadata?.url || '';
+
+    // GitHub 仓库检测
+    const githubPatterns = [
+      /github\.com\/([a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+)/g,
+      /repository[:\s]+([a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+)/gi,
+    ];
+
+    for (const pattern of githubPatterns) {
+      const match = pattern.exec(url) || pattern.exec(content);
+      if (match) {
+        return {
+          isOpenSource: true,
+          repo: match[1] ? `https://github.com/${match[1]}` : undefined,
+        };
+      }
+    }
+
+    // 许可证检测
+    const licensePatterns = [
+      { pattern: /MIT\s+License/i, license: 'MIT' },
+      { pattern: /Apache\s+License.*2\.0/i, license: 'Apache-2.0' },
+      { pattern: /GNU\s+General\s+Public\s+License/i, license: 'GPL' },
+      { pattern: /BSD\s+3[-\s]Clause/i, license: 'BSD-3-Clause' },
+      { pattern: /ISC\s+License/i, license: 'ISC' },
+      { pattern: /Mozilla\s+Public\s+License/i, license: 'MPL-2.0' },
+    ];
+
+    for (const { pattern, license } of licensePatterns) {
+      if (pattern.test(content)) {
+        return {
+          isOpenSource: true,
+          license,
+        };
+      }
+    }
+
+    // 编程语言检测（基于代码块）
+    const codeBlockPattern = /```(\w+)\n/g;
+    const languages: string[] = [];
+    let codeMatch;
+    while ((codeMatch = codeBlockPattern.exec(content)) !== null) {
+      if (codeMatch[1] && !languages.includes(codeMatch[1])) {
+        languages.push(codeMatch[1]);
+      }
+    }
+
+    // 如果有多个代码块，可能是技术文章
+    if (languages.length > 0) {
+      return {
+        isOpenSource: false,
+        language: languages[0], // 主要语言
+      };
+    }
+
+    return undefined;
   }
 
   /**

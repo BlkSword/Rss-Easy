@@ -211,6 +211,21 @@ model Entry {
   aiAnalyzedAt       DateTime? @map("ai_analyzed_at")                           // 深度分析时间
 
   // =====================================================
+  // 文章元信息（新增）
+  // =====================================================
+
+  // 文章统计信息
+  contentLength      Int?      @map("content_length")                           // 内容长度（字符数）
+  wordCount          Int?      @map("word_count")                               // 字数统计
+
+  // 开源信息
+  isOpenSource       Boolean?  @map("is_open_source")                           // 是否开源项目
+  openSourceRepo     String?   @map("open_source_repo")                         // 开源仓库地址
+  openSourceLicense  String?   @map("open_source_license")                      // 开源许可证类型
+  openSourceStars    Int?      @map("open_source_stars")                        // Star 数
+  openSourceLanguage String?   @map("open_source_language")                     // 主要编程语言
+
+  // =====================================================
   // 初评字段（BestBlogs 改进）
   // =====================================================
 

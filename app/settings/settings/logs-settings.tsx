@@ -345,63 +345,65 @@ export function LogsSettings() {
                           {isExpanded && (
                             <div className="mt-3 space-y-3 text-sm">
                               {log.details && (
-                                <div className="bg-muted rounded-lg p-3 overflow-x-auto relative group">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <div className="text-xs font-medium text-muted-foreground">
+                                <div className="rounded-lg overflow-hidden relative group">
+                                  <div className="bg-slate-800 dark:bg-slate-900 px-3 py-2 flex items-center justify-between">
+                                    <div className="text-xs font-medium text-slate-400">
                                       详细数据
                                     </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleCopy(JSON.stringify(log.details, null, 2), `details-${log.id}`);
-                                      }}
-                                      className={cn(
-                                        'p-1.5 rounded-md transition-all',
-                                        'opacity-0 group-hover:opacity-100',
-                                        copiedId === `details-${log.id}`
-                                          ? 'bg-green-500/10 text-green-500'
-                                          : 'hover:bg-background text-muted-foreground hover:text-foreground'
-                                      )}
-                                    >
-                                      {copiedId === `details-${log.id}` ? (
-                                        <Check className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <Copy className="h-3.5 w-3.5" />
-                                      )}
-                                    </button>
+                                    <Tooltip content={copiedId === `details-${log.id}` ? '已复制' : '复制到剪贴板'} position="left">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopy(JSON.stringify(log.details, null, 2), `details-${log.id}`);
+                                        }}
+                                        className={cn(
+                                          'p-1.5 rounded-md transition-all',
+                                          copiedId === `details-${log.id}`
+                                            ? 'bg-green-500/20 text-green-400'
+                                            : 'hover:bg-slate-700 text-slate-400 hover:text-slate-200'
+                                        )}
+                                      >
+                                        {copiedId === `details-${log.id}` ? (
+                                          <Check className="h-3.5 w-3.5" />
+                                        ) : (
+                                          <Copy className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    </Tooltip>
                                   </div>
-                                  <pre className="text-xs">
+                                  <pre className="text-xs bg-slate-900 dark:bg-slate-950 text-slate-300 p-3 overflow-x-auto font-mono">
                                     {JSON.stringify(log.details, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {log.stackTrace && (
-                                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 overflow-x-auto relative group">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <div className="text-xs font-medium text-red-600">
+                                <div className="rounded-lg overflow-hidden relative group">
+                                  <div className="bg-red-900/80 dark:bg-red-950/80 px-3 py-2 flex items-center justify-between">
+                                    <div className="text-xs font-medium text-red-300">
                                       错误堆栈
                                     </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleCopy(log.stackTrace || '', `stack-${log.id}`);
-                                      }}
-                                      className={cn(
-                                        'p-1.5 rounded-md transition-all',
-                                        'opacity-0 group-hover:opacity-100',
-                                        copiedId === `stack-${log.id}`
-                                          ? 'bg-green-500/10 text-green-500'
-                                          : 'hover:bg-red-100 dark:hover:bg-red-800/30 text-red-500'
-                                      )}
-                                    >
-                                      {copiedId === `stack-${log.id}` ? (
-                                        <Check className="h-3.5 w-3.5" />
-                                      ) : (
-                                        <Copy className="h-3.5 w-3.5" />
-                                      )}
-                                    </button>
+                                    <Tooltip content={copiedId === `stack-${log.id}` ? '已复制' : '复制到剪贴板'} position="left">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopy(log.stackTrace || '', `stack-${log.id}`);
+                                        }}
+                                        className={cn(
+                                          'p-1.5 rounded-md transition-all',
+                                          copiedId === `stack-${log.id}`
+                                            ? 'bg-green-500/20 text-green-400'
+                                            : 'hover:bg-red-800/50 text-red-300 hover:text-red-100'
+                                        )}
+                                      >
+                                        {copiedId === `stack-${log.id}` ? (
+                                          <Check className="h-3.5 w-3.5" />
+                                        ) : (
+                                          <Copy className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    </Tooltip>
                                   </div>
-                                  <pre className="text-xs text-red-600 whitespace-pre-wrap">
+                                  <pre className="text-xs bg-slate-900 dark:bg-slate-950 text-red-400 p-3 overflow-x-auto font-mono whitespace-pre-wrap">
                                     {log.stackTrace}
                                   </pre>
                                 </div>

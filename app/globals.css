@@ -42,41 +42,43 @@
   }
 
   .dark {
-    /* 暗色模式：温暖的深色背景 */
-    --background: 30 15% 8%;
-    --foreground: 40 20% 92%;
+    /* 暗色模式：深蓝黑色系 - 深邃的墨蓝色调 */
+    /* 主背景：深邃的墨蓝色/近黑色，带有轻微的蓝色倾向 (类似 slate-900 / #0f172a) */
+    --background: 222 47% 11%;
+    --foreground: 215 20% 90%;
 
-    /* 卡片 */
-    --card: 30 10% 12%;
-    --card-foreground: 40 20% 92%;
+    /* 卡片/内容区背景：比主背景稍亮的深灰蓝色 (类似 slate-800 / #1e293b) */
+    --card: 222 47% 15%;
+    --card-foreground: 215 20% 92%;
 
-    --popover: 30 10% 12%;
-    --popover-foreground: 40 20% 92%;
+    /* 弹出层：稍浅的深蓝灰 */
+    --popover: 222 47% 14%;
+    --popover-foreground: 215 20% 92%;
 
-    /* 主色调：保持温暖橙红色 */
-    --primary: 24 85% 60%;
-    --primary-foreground: 0 0% 100%;
+    /* 主色调：调整为更适合深蓝背景的明亮蓝色 */
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
 
-    /* 次要色 */
-    --secondary: 30 10% 18%;
-    --secondary-foreground: 40 20% 92%;
+    /* 次要色：深灰蓝色调 */
+    --secondary: 222 30% 20%;
+    --secondary-foreground: 215 20% 90%;
 
-    /* 静音色 */
-    --muted: 30 8% 20%;
-    --muted-foreground: 40 10% 65%;
+    /* 静音色：深蓝灰背景元素 */
+    --muted: 222 30% 22%;
+    --muted-foreground: 215 16% 57%;
 
-    /* 强调色 */
-    --accent: 30 15% 20%;
-    --accent-foreground: 40 20% 92%;
+    /* 强调色：深蓝灰调 */
+    --accent: 222 35% 24%;
+    --accent-foreground: 215 20% 92%;
 
-    --destructive: 0 65% 55%;
+    --destructive: 0 63% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    /* 边框 */
-    --border: 30 10% 22%;
-    --input: 30 10% 22%;
+    /* 边框：深蓝灰色调，柔和过渡 */
+    --border: 222 30% 24%;
+    --input: 222 30% 24%;
 
-    --ring: 24 85% 60%;
+    --ring: 217 91% 60%;
   }
 
   * {

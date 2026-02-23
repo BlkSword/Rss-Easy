@@ -15,7 +15,7 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import { Button, Card, Row, Col, Statistic, Spin, Empty, Space, Modal, Form, Input, Dropdown } from 'antd';
+import { Button, Card as AntCard, Row, Col, Statistic, Spin, Empty, Space, Modal, Form, Input, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
@@ -23,6 +23,7 @@ import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { Card } from '@/components/ui/card';
 
 export default function CategoryPage() {
   const params = useParams();
@@ -149,7 +150,7 @@ export default function CategoryPage() {
             </Button>
 
             {/* 分类头部 */}
-            <Card className="mb-6 border-border/60">
+            <Card className="mb-6">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4 flex-1">
                   {/* 图标 */}
@@ -307,7 +308,7 @@ function FeedsList({ categoryId }: { categoryId: string }) {
           href={`/feeds/${feed.id}`}
           className="block"
         >
-          <Card
+          <AntCard
             className="border-border/60 hover:border-primary/50 transition-colors h-full"
             size="small"
           >
@@ -332,7 +333,7 @@ function FeedsList({ categoryId }: { categoryId: string }) {
                 </div>
               </div>
             </div>
-          </Card>
+          </AntCard>
         </Link>
       ))}
     </div>

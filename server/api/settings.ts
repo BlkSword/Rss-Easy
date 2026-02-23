@@ -520,74 +520,77 @@ export const settingsRouter = router({
   }),
 
   /**
-   * 导入OPML
+   * 预览 OPML 文件
+   * 解析 OPML 并返回将要导入的订阅源列表，不执行实际导入
+   */
+  previewOPML: protectedProcedure
+    .input(
+      z.object({
+        opmlContent: z.string(),
+      })
+    )
+    .output(
+      z.object({
+        success: z.boolean(),
+        title: z.string(),
+        feeds: z.array(z.object({
+          url: z.string(),
+          title: z.string(),
+          category: z.string().optional(),
+        })),
+        categories: z.array(z.string()),
+        error: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { previewOPML } = await import('@/lib/opml/importer');
+      return previewOPML(input.opmlContent);
+    }),
+
+  /**
+   * 导入OPML（智能版）
+   * 与添加订阅源流程对齐，使用智能发现功能
    */
   importOPML: protectedProcedure
     .input(
       z.object({
         opmlContent: z.string(),
         categoryId: z.string().optional(),
+        skipDiscovery: z.boolean().optional(), // 跳过智能发现
       })
     )
     .output(
       z.object({
+        success: z.boolean(),
         created: z.number(),
         skipped: z.number(),
+        failed: z.number(),
         total: z.number(),
+        details: z.array(z.object({
+          url: z.string(),
+          title: z.string(),
+          status: z.enum(['imported', 'skipped', 'failed']),
+          message: z.string().optional(),
+        })),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { opmlContent, categoryId } = input;
+      const { opmlContent, categoryId, skipDiscovery } = input;
 
-      // 简单的OPML解析
-      const feedUrls: string[] = [];
-      const urlRegex = /xmlUrl="([^"]+)"/g;
-      let match;
-      while ((match = urlRegex.exec(opmlContent)) !== null) {
-        feedUrls.push(match[1]);
-      }
-
-      // 去重
-      const uniqueUrls = [...new Set(feedUrls)];
-
-      let created = 0;
-      let skipped = 0;
-
-      for (const url of uniqueUrls) {
-        try {
-          // 检查是否已存在
-          const existing = await ctx.db.feed.findFirst({
-            where: {
-              userId: ctx.userId,
-              feedUrl: url,
-            },
-          });
-
-          if (existing) {
-            skipped++;
-            continue;
-          }
-
-          // 创建订阅源（后台任务会处理抓取）
-          await ctx.db.feed.create({
-            data: {
-              userId: ctx.userId,
-              feedUrl: url,
-              title: url,
-              categoryId,
-            },
-          });
-
-          created++;
-        } catch (error) {
-          console.error(`导入失败: ${url}`, error);
-        }
-      }
+      const { smartImportOPML } = await import('@/lib/opml/importer');
+      const result = await smartImportOPML(opmlContent, {
+        userId: ctx.userId,
+        categoryId,
+        skipDiscovery,
+      });
 
       return {
-        created,
-        skipped,
-        total: uniqueUrls.length,
+        success: result.success,
+        created: result.imported,
+        skipped: result.skipped,
+        failed: result.failed,
+        total: result.total,
+        details: result.details,
       };
     }),
 

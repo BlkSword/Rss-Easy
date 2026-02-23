@@ -2,7 +2,8 @@
  * 文章详情页面 - 全屏布局（优化版）
  *
  * 功能：
- * - 左侧：文章内容（完整内容，支持自动抓取）
+ * - 左侧：导航侧边栏（可折叠）
+ * - 中间：文章内容（完整内容，支持自动抓取）
  * - 右侧：AI 总结侧栏（包含所有 AI 分析功能）
  * - 阅读进度条
  * - 返回顶部按钮
@@ -37,8 +38,9 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  PanelLeft,
 } from 'lucide-react';
-import { Button, Card, Empty, Tag, Space, Tooltip, Divider, Typography, Badge, Skeleton } from 'antd';
+import { Button, Card as AntCard, Empty, Tag, Space, Tooltip, Divider, Typography, Badge, Skeleton } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
@@ -50,6 +52,10 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Spinner, LoadingDots } from '@/components/animation/loading';
 import { usePageLoadAnimation, useScrollProgress, useRipple } from '@/hooks/use-animation';
 import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
+import { useIsMobile } from '@/hooks/use-media-query';
+import { useUserPreferences } from '@/hooks/use-local-storage';
+import { AIAnalysisSidebar } from '@/components/entries/ai-analysis-sidebar';
+import { Card } from '@/components/ui/card';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -187,294 +193,19 @@ function AIKeywords({ keywords, delay = 0 }: { keywords?: string[] | null; delay
 }
 
 /**
- * AI 侧栏组件
- */
-function AISidebar({ entry }: { entry: any }) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'analysis' | 'keywords'>('summary');
-
-  // 获取分析状态
-  const { data: analysisStatus, refetch: refetchStatus } = trpc.queue.entryAnalysisStatus.useQuery(
-    { entryId: entry.id },
-    { enabled: !!entry.id }
-  );
-
-  // 触发分析
-  const triggerAnalysis = trpc.queue.triggerAnalysis.useMutation({
-    onSuccess: () => {
-      refetchStatus();
-    },
-  });
-
-  // 检查是否有任何AI分析结果（排除默认值）
-  const hasAIAnalysis = !!(
-    entry.aiSummary ||
-    entry.aiCategory ||
-    (entry.aiKeywords && entry.aiKeywords.length > 0) ||
-    entry.aiSentiment ||
-    (entry.aiImportanceScore && entry.aiImportanceScore > 0)
-  );
-
-  // 判断分析状态原因
-  const getAnalysisStatusInfo = () => {
-    if (hasAIAnalysis) {
-      return { type: 'completed', message: '分析完成', icon: CheckCircle, color: 'text-green-500' };
-    }
-
-    if (!analysisStatus) {
-      return { type: 'loading', message: '检查状态中...', icon: Loader2, color: 'text-muted-foreground' };
-    }
-
-    switch (analysisStatus.status) {
-      case 'processing':
-        return { type: 'processing', message: '正在分析中...', icon: Loader2, color: 'text-blue-500' };
-      case 'pending':
-        return { type: 'queued', message: `排队中 (第 ${(analysisStatus.queuePosition || 0) + 1} 位)`, icon: Clock, color: 'text-orange-500' };
-      case 'failed':
-        return { type: 'failed', message: '分析失败', icon: XCircle, color: 'text-red-500', detail: analysisStatus.errorMessage };
-      case 'not_analyzed':
-        if (analysisStatus.reason === 'no_config') {
-          return { type: 'no_config', message: 'AI 未配置', icon: Settings, color: 'text-yellow-500' };
-        }
-        if (analysisStatus.reason === 'old_article') {
-          return { type: 'old', message: '历史文章', icon: Clock, color: 'text-muted-foreground' };
-        }
-        return { type: 'not_queued', message: '等待分析', icon: Clock, color: 'text-muted-foreground' };
-      default:
-        return { type: 'unknown', message: '未知状态', icon: HelpCircle, color: 'text-muted-foreground' };
-    }
-  };
-
-  const statusInfo = getAnalysisStatusInfo();
-  const StatusIcon = statusInfo.icon;
-
-  return (
-    <aside className="w-80 flex-shrink-0 border-l border-border/60 bg-muted/30 overflow-y-auto">
-      <div className="p-6 space-y-6">
-        {/* AI 标题 */}
-        <div className="flex items-center gap-3 pb-4 border-b border-border/60">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/70">
-            <Brain className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-foreground">AI 分析</h3>
-            <p className="text-xs text-muted-foreground">智能内容理解</p>
-          </div>
-        </div>
-
-        {/* 分析状态 */}
-        {!hasAIAnalysis && (
-          <>
-            <Card size="small" className="bg-muted/30 border-dashed">
-              <div className="flex flex-col items-center gap-3 py-4">
-                <StatusIcon className={cn(
-                  'w-6 h-6',
-                  statusInfo.color,
-                  (statusInfo.type === 'processing' || statusInfo.type === 'loading') && 'animate-spin'
-                )} />
-                <p className="text-sm text-muted-foreground text-center">
-                  {statusInfo.message}
-                </p>
-
-                {/* 根据不同状态显示不同的提示和操作 */}
-                {statusInfo.type === 'no_config' && (
-                  <>
-                    <p className="text-xs text-muted-foreground/60 text-center">
-                      请先在设置中配置 AI API 密钥
-                    </p>
-                    <Button
-                      type="primary"
-                      size="small"
-                      onClick={() => window.location.href = '/settings'}
-                    >
-                      前往设置
-                    </Button>
-                  </>
-                )}
-
-                {statusInfo.type === 'failed' && (
-                  <>
-                    {statusInfo.detail && (
-                      <p className="text-xs text-red-500/80 text-center max-w-full truncate">
-                        {statusInfo.detail}
-                      </p>
-                    )}
-                    <Button
-                      size="small"
-                      onClick={() => triggerAnalysis.mutate({ entryId: entry.id })}
-                      loading={triggerAnalysis.isPending}
-                    >
-                      重新分析
-                    </Button>
-                  </>
-                )}
-
-                {(statusInfo.type === 'old' || statusInfo.type === 'not_queued') && (
-                  <>
-                    <p className="text-xs text-muted-foreground/60 text-center">
-                      {statusInfo.type === 'old' ? '历史文章不会自动分析' : '点击下方按钮开始分析'}
-                    </p>
-                    <Button
-                      type="primary"
-                      size="small"
-                      onClick={() => triggerAnalysis.mutate({ entryId: entry.id })}
-                      loading={triggerAnalysis.isPending}
-                      icon={<Sparkles className="w-3 h-3" />}
-                    >
-                      开始分析
-                    </Button>
-                  </>
-                )}
-
-                {statusInfo.type === 'queued' && (
-                  <p className="text-xs text-muted-foreground/60 text-center">
-                    系统将自动处理，请稍候
-                  </p>
-                )}
-
-                {statusInfo.type === 'processing' && (
-                  <p className="text-xs text-muted-foreground/60 text-center">
-                    正在智能分析内容...
-                  </p>
-                )}
-              </div>
-            </Card>
-          </>
-        )}
-
-        {/* AI 摘要 */}
-        {entry.aiSummary && (
-          <Card
-            size="small"
-            className={cn(
-              'bg-gradient-to-br from-primary/5 via-purple-500/5 to-blue-500/5',
-              'border-primary/10'
-            )}
-            title={
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">AI 摘要</span>
-              </div>
-            }
-          >
-            <div className="text-foreground/80 leading-relaxed text-sm">
-              <Typewriter
-                text={entry.aiSummary}
-                speed={20}
-                delay={400}
-                showCursor={false}
-              />
-            </div>
-          </Card>
-        )}
-
-        {/* AI 分类 */}
-        {entry.aiCategory && (
-          <Card
-            size="small"
-            className="bg-card/50"
-            title={
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">分类</span>
-              </div>
-            }
-          >
-            <Tag
-              icon={<Sparkles className="h-3 w-3" />}
-              className="rounded-full border-primary/30 bg-primary/5 text-primary/80"
-            >
-              {entry.aiCategory}
-            </Tag>
-          </Card>
-        )}
-
-        {/* 重要度 */}
-        {entry.aiImportanceScore && entry.aiImportanceScore > 0 && (
-          <Card
-            size="small"
-            className="bg-card/50"
-            title={
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">重要度</span>
-              </div>
-            }
-          >
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-primary to-primary/70 transition-all duration-500"
-                    style={{ width: `${entry.aiImportanceScore * 100}%` }}
-                  />
-                </div>
-              </div>
-              <span className="text-sm font-medium text-primary">
-                {Math.round(entry.aiImportanceScore * 100)}
-              </span>
-            </div>
-          </Card>
-        )}
-
-        {/* 关键词 */}
-        {entry.aiKeywords && entry.aiKeywords.length > 0 && (
-          <Card
-            size="small"
-            className="bg-card/50"
-            title={
-              <div className="flex items-center gap-2">
-                <Hash className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">关键词</span>
-              </div>
-            }
-          >
-            <div className="flex flex-wrap gap-1.5">
-              {entry.aiKeywords.slice(0, 10).map((keyword: string) => (
-                <Tag
-                  key={keyword}
-                  className="rounded-full text-xs border-primary/20 bg-primary/5 text-primary/80"
-                >
-                  {keyword}
-                </Tag>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* 情感分析 */}
-        {entry.aiSentiment && (
-          <Card
-            size="small"
-            className="bg-card/50"
-            title={
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">情感倾向</span>
-              </div>
-            }
-          >
-            <Badge
-              status={entry.aiSentiment === 'positive' ? 'success' : entry.aiSentiment === 'negative' ? 'error' : 'default'}
-              text={entry.aiSentiment === 'positive' ? '积极' : entry.aiSentiment === 'negative' ? '消极' : '中性'}
-            />
-          </Card>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-/**
  * 加载状态组件
  */
-function LoadingState() {
+function LoadingState({ isMobile }: { isMobile: boolean }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
-      <div className="flex-1 flex">
-        <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 hidden lg:block">
-          <AppSidebar />
-        </aside>
+      <div className="flex-1 flex overflow-hidden">
+        {/* 侧边栏 - 只在非移动端显示 */}
+        {!isMobile && (
+          <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/20">
+            <AppSidebar />
+          </aside>
+        )}
         <main className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <Spinner size="lg" variant="primary" />
@@ -489,14 +220,17 @@ function LoadingState() {
 /**
  * 空状态组件
  */
-function EmptyState() {
+function EmptyState({ isMobile }: { isMobile: boolean }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
-      <div className="flex-1 flex">
-        <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 hidden lg:block">
-          <AppSidebar />
-        </aside>
+      <div className="flex-1 flex overflow-hidden">
+        {/* 侧边栏 - 只在非移动端显示 */}
+        {!isMobile && (
+          <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/20">
+            <AppSidebar />
+          </aside>
+        )}
         <main className="flex-1 flex items-center justify-center">
           <Empty
             description={
@@ -517,6 +251,11 @@ export default function EntryPage() {
   const router = useRouter();
   const entryId = params.id as string;
   const isLoaded = usePageLoadAnimation(150);
+  const isMobile = useIsMobile();
+  const { sidebarCollapsed } = useUserPreferences();
+
+  // 侧边栏折叠状态（非移动端可折叠）
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(sidebarCollapsed);
 
   const { data: entry, isLoading, error, refetch } = trpc.entries.byId.useQuery({ id: entryId });
   const toggleStar = trpc.entries.toggleStar.useMutation();
@@ -529,24 +268,32 @@ export default function EntryPage() {
   // 使用乐观值或原始值
   const displayEntry = entry
     ? {
-        ...entry,
-        isStarred: optimisticStarred ?? entry.isStarred,
-        isRead: optimisticRead ?? entry.isRead,
-      }
+      ...entry,
+      isStarred: optimisticStarred ?? entry.isStarred,
+      isRead: optimisticRead ?? entry.isRead,
+    }
     : null;
 
+  // 切换侧边栏折叠状态
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarCollapsed(prev => !prev);
+  }, []);
+
   if (isLoading) {
-    return <LoadingState />;
+    return <LoadingState isMobile={isMobile} />;
   }
 
   if (error) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <AppHeader />
-        <div className="flex-1 flex">
-          <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 hidden lg:block">
-            <AppSidebar />
-          </aside>
+        <div className="flex-1 flex overflow-hidden">
+          {/* 侧边栏 - 只在非移动端显示 */}
+          {!isMobile && (
+            <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/20">
+              <AppSidebar />
+            </aside>
+          )}
           <main className="flex-1 flex items-center justify-center">
             <Empty
               description={
@@ -569,7 +316,7 @@ export default function EntryPage() {
   }
 
   if (!entry || !displayEntry) {
-    return <EmptyState />;
+    return <EmptyState isMobile={isMobile} />;
   }
 
   const handleToggleStar = async () => {
@@ -615,36 +362,57 @@ export default function EntryPage() {
       <ReadingProgressBar />
       <AppHeader />
 
-      <div className="flex-1 flex">
-        {/* 左侧边栏 */}
-        <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/5 hidden lg:block">
-          <AppSidebar />
-        </aside>
+      <div className="flex-1 flex overflow-hidden">
+        {/* 左侧边栏 - 响应式：移动端隐藏，桌面端可折叠 */}
+        {!isMobile && (
+          <aside 
+            className={cn(
+              "flex-shrink-0 border-r border-border/60 bg-muted/20 transition-all duration-300 ease-in-out",
+              isSidebarCollapsed ? "w-16" : "w-60"
+            )}
+          >
+            <AppSidebar collapsed={isSidebarCollapsed} />
+          </aside>
+        )}
 
         {/* 主内容区 - 分为文章内容和 AI 侧栏 */}
-        <main className="flex-1 flex bg-background/30">
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-4xl mx-auto px-6 py-8">
-              {/* 返回按钮 */}
+        <main className="flex-1 flex bg-background/30 overflow-hidden">
+          {/* 文章内容区 - 响应式：无 AI 侧栏时占满，有 AI 侧栏时自适应 */}
+          <div className={cn(
+            "flex-1 overflow-y-auto",
+            !isMobile && displayEntry && "max-w-full xl:max-w-[calc(100%-20rem)]"
+          )}>
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+              {/* 返回按钮和侧边栏切换 */}
               <Fade in={isLoaded} direction="right" distance={15} duration={400}>
-                <Button
-                  type="text"
-                  icon={<ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />}
-                  onClick={() => router.back()}
-                  className="group mb-6 hover:bg-muted/40 transition-all duration-300 rounded-lg px-3 py-2 -ml-2"
-                >
-                  <span className="ml-1">返回</span>
-                </Button>
+                <div className="flex items-center gap-2 mb-6">
+                  {/* 侧边栏折叠/展开按钮 - 只在桌面端显示 */}
+                  {!isMobile && (
+                    <Tooltip title={isSidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"}>
+                      <Button
+                        type="text"
+                        icon={<PanelLeft className="w-4 h-4" />}
+                        onClick={toggleSidebar}
+                        className="hover:bg-muted/40 transition-all duration-300 rounded-lg px-3 py-2 -ml-2"
+                      />
+                    </Tooltip>
+                  )}
+                  <Button
+                    type="text"
+                    icon={<ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />}
+                    onClick={() => router.back()}
+                    className="group hover:bg-muted/40 transition-all duration-300 rounded-lg px-3 py-2"
+                  >
+                    <span className="ml-1">返回</span>
+                  </Button>
+                </div>
               </Fade>
 
               {/* 文章头部 */}
               <Fade in={isLoaded} delay={100} direction="up" distance={20} duration={500}>
                 <Card
-                  className={cn(
-                    'mb-6 border-border/60',
-                    'hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5',
-                    'transition-all duration-500'
-                  )}
+                  isHoverable
+                  className="mb-6"
                 >
                   <StaggerContainer staggerDelay={80} initialDelay={200}>
                     {/* 订阅源信息 */}
@@ -801,17 +569,14 @@ export default function EntryPage() {
 
               {/* 文章内容 */}
               <Fade in={isLoaded} delay={300} direction="up" distance={20} duration={500}>
-                <Card
+                <AntCard
                   title={
                     <div className="flex items-center gap-2">
                       <FileText className="w-4 h-4 text-muted-foreground" />
                       <span className="text-sm font-medium">文章内容</span>
                     </div>
                   }
-                  className={cn(
-                    'border-border/60',
-                    'hover:border-primary/10 transition-all duration-500'
-                  )}
+                  className="border-border/60"
                 >
                   {displayEntry.content ? (
                     <RichContentRenderer html={displayEntry.content} />
@@ -826,15 +591,15 @@ export default function EntryPage() {
                       className="py-12"
                     />
                   )}
-                </Card>
+                </AntCard>
               </Fade>
             </div>
           </div>
 
-          {/* AI 侧栏 */}
-          <AISidebar
-            entry={displayEntry}
-          />
+          {/* AI 侧栏 - 只在桌面端显示 */}
+          {!isMobile && (
+            <AIAnalysisSidebar entry={displayEntry} />
+          )}
         </main>
       </div>
 

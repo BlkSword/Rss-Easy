@@ -1,7 +1,7 @@
 /**
  * 队列状态指示器组件
  * 显示实时队列状态，包括 AI 分析队列和 Feed 抓取状态
- * 优化版：增加待更新订阅源详细列表
+ * 优化版：增加待更新订阅源详细列表，AI 配置联动
  */
 
 'use client';
@@ -24,6 +24,7 @@ import {
   RefreshCw,
   ExternalLink,
   X,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
@@ -56,6 +57,12 @@ function QueueStatusIndicatorComponent() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'feeds'>('overview');
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  // 获取 AI 配置状态（优先检查）
+  const { data: aiConfigStatus } = trpc.queue.aiConfigStatus.useQuery();
+
+  // AI 是否已配置
+  const isAIConfigured = aiConfigStatus?.hasApiKey && aiConfigStatus?.configValid;
 
   // 获取详细监控数据（每5秒刷新）
   const { data: monitor, isLoading } = trpc.queue.detailedMonitor.useQuery(undefined, {
@@ -100,7 +107,14 @@ function QueueStatusIndicatorComponent() {
   const health = monitor?.health ?? { status: 'healthy', message: '' };
 
   // 判断是否有活跃任务
-  const hasActivity = queue.processing > 0 || queue.pending > 0 || feeds.toUpdate > 0;
+  // AI 队列任务只在配置有效时计入
+  // 待更新订阅源只在数量大于 0 且用户有活跃订阅源时计入
+  const aiQueueActivity = isAIConfigured ? (queue.processing > 0 || queue.pending > 0) : false;
+  const hasFeedsToUpdate = feeds.toUpdate > 0 && feeds.active > 0;
+  const hasActivity = aiQueueActivity || hasFeedsToUpdate;
+
+  // 计算显示的数字
+  const displayNumber = (isAIConfigured ? queue.processing + queue.pending : 0) + (hasFeedsToUpdate ? feeds.toUpdate : 0);
 
   // 状态颜色
   const getStatusColor = useCallback(() => {
@@ -116,9 +130,11 @@ function QueueStatusIndicatorComponent() {
       {/* 主按钮 */}
       <Tooltip
         content={
-          hasActivity
-            ? `处理中: ${queue.processing}, 待处理: ${queue.pending}, 待更新订阅源: ${feeds.toUpdate}`
-            : '系统状态正常'
+          !isAIConfigured
+            ? 'AI 未配置，请前往设置'
+            : hasActivity
+              ? `处理中: ${queue.processing}, 待处理: ${queue.pending}, 待更新订阅源: ${feeds.toUpdate}`
+              : '系统状态正常'
         }
         position="bottom"
       >
@@ -128,17 +144,18 @@ function QueueStatusIndicatorComponent() {
           onClick={() => setIsExpanded(!isExpanded)}
           className={cn(
             'relative transition-all duration-300',
-            hasActivity && 'animate-pulse-soft'
+            hasActivity && 'animate-pulse-soft',
+            !isAIConfigured && 'text-yellow-500'
           )}
         >
           <Activity className={cn('h-4 w-4', getStatusColor())} />
-          {(queue.processing > 0 || queue.pending > 0 || feeds.toUpdate > 0) && (
+          {hasActivity && displayNumber > 0 && (
             <motion.span
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center"
             >
-              {queue.processing + queue.pending + (feeds.toUpdate > 0 ? 1 : 0)}
+              {displayNumber}
             </motion.span>
           )}
         </Button>
@@ -230,40 +247,70 @@ function QueueStatusIndicatorComponent() {
                           <Brain className="h-4 w-4 text-purple-500" />
                           <span className="text-sm font-medium">AI 分析队列</span>
                         </div>
-                        <span className="text-xs text-muted-foreground">
-                          共 {queue.total} 个任务
-                        </span>
+                        {!isAIConfigured ? (
+                          <span className="text-xs text-yellow-500 flex items-center gap-1">
+                            <Settings className="h-3 w-3" />
+                            未配置
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            共 {queue.total} 个任务
+                          </span>
+                        )}
                       </div>
-                      <div className="grid grid-cols-4 gap-2">
-                        <QueueStatCard
-                          label="处理中"
-                          value={queue.processing}
-                          icon={<Loader2 className="h-3 w-3 animate-spin" />}
-                          color="green"
-                        />
-                        <QueueStatCard
-                          label="待处理"
-                          value={queue.pending}
-                          icon={<Clock className="h-3 w-3" />}
-                          color="blue"
-                        />
-                        <QueueStatCard
-                          label="已完成"
-                          value={queue.completed}
-                          icon={<CheckCircle className="h-3 w-3" />}
-                          color="muted"
-                        />
-                        <QueueStatCard
-                          label="失败"
-                          value={queue.failed}
-                          icon={<XCircle className="h-3 w-3" />}
-                          color="red"
-                        />
-                      </div>
+
+                      {!isAIConfigured ? (
+                        /* AI 未配置时显示提示 */
+                        <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Settings className="h-4 w-4 text-yellow-500" />
+                            <span className="text-sm font-medium text-yellow-600">AI 功能未启用</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            请先在设置中配置 AI API 密钥以启用智能分析功能
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7"
+                            onClick={() => window.location.href = '/settings'}
+                          >
+                            前往设置
+                          </Button>
+                        </div>
+                      ) : (
+                        /* AI 已配置时显示队列状态 */
+                        <div className="grid grid-cols-4 gap-2">
+                          <QueueStatCard
+                            label="处理中"
+                            value={queue.processing}
+                            icon={<Loader2 className="h-3 w-3 animate-spin" />}
+                            color="green"
+                          />
+                          <QueueStatCard
+                            label="待处理"
+                            value={queue.pending}
+                            icon={<Clock className="h-3 w-3" />}
+                            color="blue"
+                          />
+                          <QueueStatCard
+                            label="已完成"
+                            value={queue.completed}
+                            icon={<CheckCircle className="h-3 w-3" />}
+                            color="muted"
+                          />
+                          <QueueStatCard
+                            label="失败"
+                            value={queue.failed}
+                            icon={<XCircle className="h-3 w-3" />}
+                            color="red"
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    {/* 当前活跃任务 */}
-                    {queue.activeTasks && queue.activeTasks.length > 0 && (
+                    {/* 当前活跃任务 - 只在 AI 配置有效时显示 */}
+                    {isAIConfigured && queue.activeTasks && queue.activeTasks.length > 0 && (
                       <div>
                         <div className="flex items-center gap-2 mb-2">
                           <Cpu className="h-4 w-4 text-blue-500" />
