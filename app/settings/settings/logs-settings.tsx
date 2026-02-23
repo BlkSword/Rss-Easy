@@ -22,13 +22,16 @@ import {
   Download,
   Copy,
   Check,
+  Calendar,
+  Database,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Select, Space } from 'antd';
+import { Select, Space, Modal } from 'antd';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { notifySuccess } from '@/lib/feedback';
@@ -58,6 +61,7 @@ export function LogsSettings() {
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showClearCard, setShowClearCard] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // 复制到剪贴板
@@ -113,9 +117,25 @@ export function LogsSettings() {
       )
     : allLogs;
 
-  const handleClearLogs = async () => {
-    if (confirm('确定要清空所有日志吗？此操作不可恢复。')) {
-      await clearLogs.mutateAsync({});
+  // 清理14天前的日志
+  const handleClearOldLogs = async () => {
+    try {
+      const result = await clearLogs.mutateAsync({ olderThanDays: 14 });
+      notifySuccess(`已清理 ${result.deleted} 条日志`);
+      setShowClearCard(false);
+    } catch (err) {
+      console.error('清理失败:', err);
+    }
+  };
+
+  // 清理所有日志
+  const handleClearAllLogs = async () => {
+    try {
+      const result = await clearLogs.mutateAsync({ clearAll: true });
+      notifySuccess(`已清理 ${result.deleted} 条日志`);
+      setShowClearCard(false);
+    } catch (err) {
+      console.error('清理失败:', err);
     }
   };
 
@@ -212,7 +232,7 @@ export function LogsSettings() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={handleClearLogs}
+                  onClick={() => setShowClearCard(true)}
                 >
                   <Trash2 className="h-4 w-4 text-red-500" />
                 </Button>
@@ -497,6 +517,99 @@ export function LogsSettings() {
           </CardContent>
         </Card>
       )}
+
+      {/* 清空日志确认弹窗 */}
+      <Modal
+        open={showClearCard}
+        onCancel={() => setShowClearCard(false)}
+        footer={null}
+        centered
+        width={420}
+      >
+        <div className="py-2">
+          {/* 标题区域 */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold">清空日志</h3>
+              <p className="text-sm text-muted-foreground">选择要清理的日志范围</p>
+            </div>
+          </div>
+
+          {/* 提示信息 */}
+          <p className="text-sm text-muted-foreground mb-5 px-1">
+            清理后日志将永久删除，此操作不可恢复，请谨慎操作。
+          </p>
+
+          {/* 选项按钮 */}
+          <div className="space-y-3">
+            <button
+              onClick={handleClearOldLogs}
+              disabled={clearLogs.isPending}
+              className={cn(
+                'w-full p-4 rounded-xl border-2 text-left transition-all duration-200',
+                'hover:border-primary/30 hover:bg-primary/5',
+                'disabled:opacity-50 disabled:cursor-not-allowed'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                  <Calendar className="h-4 w-4 text-blue-500" />
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium">清理 14 天前的日志</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    保留最近 14 天的日志记录
+                  </div>
+                </div>
+                {clearLogs.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                )}
+              </div>
+            </button>
+
+            <button
+              onClick={handleClearAllLogs}
+              disabled={clearLogs.isPending}
+              className={cn(
+                'w-full p-4 rounded-xl border-2 text-left transition-all duration-200',
+                'border-red-200 hover:border-red-300 hover:bg-red-50',
+                'dark:border-red-800 dark:hover:bg-red-900/20',
+                'disabled:opacity-50 disabled:cursor-not-allowed'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                  <Database className="h-4 w-4 text-red-500" />
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium text-red-600 dark:text-red-400">清理全部日志</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    删除所有日志记录，包括系统日志
+                  </div>
+                </div>
+                {clearLogs.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                )}
+              </div>
+            </button>
+          </div>
+
+          {/* 取消按钮 */}
+          <div className="mt-5 pt-4 border-t border-border">
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setShowClearCard(false)}
+              disabled={clearLogs.isPending}
+            >
+              取消
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

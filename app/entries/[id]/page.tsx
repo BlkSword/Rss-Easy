@@ -38,11 +38,9 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  PanelLeft,
 } from 'lucide-react';
 import { Button, Card as AntCard, Empty, Tag, Space, Tooltip, Divider, Typography, Badge, Skeleton } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
-import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
@@ -53,9 +51,7 @@ import { Spinner, LoadingDots } from '@/components/animation/loading';
 import { usePageLoadAnimation, useScrollProgress, useRipple } from '@/hooks/use-animation';
 import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
 import { useIsMobile } from '@/hooks/use-media-query';
-import { useUserPreferences } from '@/hooks/use-local-storage';
 import { AIAnalysisSidebar } from '@/components/entries/ai-analysis-sidebar';
-import { Card } from '@/components/ui/card';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -195,17 +191,11 @@ function AIKeywords({ keywords, delay = 0 }: { keywords?: string[] | null; delay
 /**
  * 加载状态组件
  */
-function LoadingState({ isMobile }: { isMobile: boolean }) {
+function LoadingState() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
       <div className="flex-1 flex overflow-hidden">
-        {/* 侧边栏 - 只在非移动端显示 */}
-        {!isMobile && (
-          <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/20">
-            <AppSidebar />
-          </aside>
-        )}
         <main className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <Spinner size="lg" variant="primary" />
@@ -220,17 +210,11 @@ function LoadingState({ isMobile }: { isMobile: boolean }) {
 /**
  * 空状态组件
  */
-function EmptyState({ isMobile }: { isMobile: boolean }) {
+function EmptyState() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
       <div className="flex-1 flex overflow-hidden">
-        {/* 侧边栏 - 只在非移动端显示 */}
-        {!isMobile && (
-          <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/20">
-            <AppSidebar />
-          </aside>
-        )}
         <main className="flex-1 flex items-center justify-center">
           <Empty
             description={
@@ -252,10 +236,6 @@ export default function EntryPage() {
   const entryId = params.id as string;
   const isLoaded = usePageLoadAnimation(150);
   const isMobile = useIsMobile();
-  const { sidebarCollapsed } = useUserPreferences();
-
-  // 侧边栏折叠状态（非移动端可折叠）
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(sidebarCollapsed);
 
   const { data: entry, isLoading, error, refetch } = trpc.entries.byId.useQuery({ id: entryId });
   const toggleStar = trpc.entries.toggleStar.useMutation();
@@ -274,13 +254,8 @@ export default function EntryPage() {
     }
     : null;
 
-  // 切换侧边栏折叠状态
-  const toggleSidebar = useCallback(() => {
-    setIsSidebarCollapsed(prev => !prev);
-  }, []);
-
   if (isLoading) {
-    return <LoadingState isMobile={isMobile} />;
+    return <LoadingState />;
   }
 
   if (error) {
@@ -288,12 +263,6 @@ export default function EntryPage() {
       <div className="min-h-screen flex flex-col bg-background">
         <AppHeader />
         <div className="flex-1 flex overflow-hidden">
-          {/* 侧边栏 - 只在非移动端显示 */}
-          {!isMobile && (
-            <aside className="w-60 flex-shrink-0 border-r border-border/60 bg-muted/20">
-              <AppSidebar />
-            </aside>
-          )}
           <main className="flex-1 flex items-center justify-center">
             <Empty
               description={
@@ -316,7 +285,7 @@ export default function EntryPage() {
   }
 
   if (!entry || !displayEntry) {
-    return <EmptyState isMobile={isMobile} />;
+    return <EmptyState />;
   }
 
   const handleToggleStar = async () => {
@@ -363,18 +332,6 @@ export default function EntryPage() {
       <AppHeader />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* 左侧边栏 - 响应式：移动端隐藏，桌面端可折叠 */}
-        {!isMobile && (
-          <aside 
-            className={cn(
-              "flex-shrink-0 border-r border-border/60 bg-muted/20 transition-all duration-300 ease-in-out",
-              isSidebarCollapsed ? "w-16" : "w-60"
-            )}
-          >
-            <AppSidebar collapsed={isSidebarCollapsed} />
-          </aside>
-        )}
-
         {/* 主内容区 - 分为文章内容和 AI 侧栏 */}
         <main className="flex-1 flex bg-background/30 overflow-hidden">
           {/* 文章内容区 - 响应式：无 AI 侧栏时占满，有 AI 侧栏时自适应 */}
@@ -383,20 +340,9 @@ export default function EntryPage() {
             !isMobile && displayEntry && "max-w-full xl:max-w-[calc(100%-20rem)]"
           )}>
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-              {/* 返回按钮和侧边栏切换 */}
+              {/* 返回按钮 */}
               <Fade in={isLoaded} direction="right" distance={15} duration={400}>
                 <div className="flex items-center gap-2 mb-6">
-                  {/* 侧边栏折叠/展开按钮 - 只在桌面端显示 */}
-                  {!isMobile && (
-                    <Tooltip title={isSidebarCollapsed ? "展开侧边栏" : "折叠侧边栏"}>
-                      <Button
-                        type="text"
-                        icon={<PanelLeft className="w-4 h-4" />}
-                        onClick={toggleSidebar}
-                        className="hover:bg-muted/40 transition-all duration-300 rounded-lg px-3 py-2 -ml-2"
-                      />
-                    </Tooltip>
-                  )}
                   <Button
                     type="text"
                     icon={<ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />}
@@ -408,12 +354,9 @@ export default function EntryPage() {
                 </div>
               </Fade>
 
-              {/* 文章头部 */}
+              {/* 文章头部 - 无卡片包装 */}
               <Fade in={isLoaded} delay={100} direction="up" distance={20} duration={500}>
-                <Card
-                  isHoverable
-                  className="mb-6"
-                >
+                <div className="mb-6">
                   <StaggerContainer staggerDelay={80} initialDelay={200}>
                     {/* 订阅源信息 */}
                     <div className="flex items-center gap-3 mb-5 pb-4 border-b border-border/60">
@@ -564,7 +507,7 @@ export default function EntryPage() {
                       </Space>
                     </Fade>
                   </StaggerContainer>
-                </Card>
+                </div>
               </Fade>
 
               {/* 文章内容 */}

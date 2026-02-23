@@ -7,8 +7,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format, startOfWeek, endOfWeek, addDays, subDays } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import dayjs from 'dayjs';
 import {
   FileText,
   Calendar,
@@ -29,8 +30,10 @@ import {
   Brain,
   CheckCircle,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
-import { Button, Card as AntCard, Tag, Space, Modal, Dropdown, Progress, Tooltip } from 'antd';
+import { Button, Card as AntCard, Tag, Space, Modal, Dropdown, Progress, Tooltip, DatePicker, Radio, Segmented } from 'antd';
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
@@ -65,6 +68,251 @@ function ReportTypeIcon({ type }: { type: string }) {
     <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
       <BarChart3 className="h-5 w-5 text-purple-500" />
     </div>
+  );
+}
+
+// 生成报告 Modal 组件
+function GenerateReportModal({
+  open,
+  onClose,
+  onGenerate,
+  isLoading,
+  aiConfigured,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onGenerate: (type: 'daily' | 'weekly', date: Date) => void;
+  isLoading: boolean;
+  aiConfigured: boolean;
+}) {
+  const [reportType, setReportType] = useState<'daily' | 'weekly'>('daily');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // 获取可用时间范围
+  const { data: dateRange, isLoading: loadingRange } = trpc.reports.getAvailableDateRange.useQuery(undefined, {
+    enabled: open,
+  });
+
+  // 可选日期范围
+  const minDate = dateRange?.earliestDate ? new Date(dateRange.earliestDate) : subDays(new Date(), 30);
+  const maxDate = dateRange?.latestDate ? new Date(dateRange.latestDate) : new Date();
+
+  // 获取当前周的日期范围
+  const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
+
+  // 切换日期
+  const handlePrevDay = () => {
+    if (reportType === 'daily') {
+      setSelectedDate(prev => subDays(prev, 1));
+    } else {
+      setSelectedDate(prev => subDays(prev, 7));
+    }
+  };
+
+  const handleNextDay = () => {
+    if (reportType === 'daily') {
+      setSelectedDate(prev => addDays(prev, 1));
+    } else {
+      setSelectedDate(prev => addDays(prev, 7));
+    }
+  };
+
+  // 检查日期是否有文章
+  const getDayEntryCount = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return dateRange?.daysWithEntries.find(d => d.date === dateStr)?.count || 0;
+  };
+
+  const getWeekEntryCount = (date: Date) => {
+    const weekStartStr = format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    return dateRange?.weeksWithEntries.find(w => w.weekStart === weekStartStr)?.count || 0;
+  };
+
+  const currentEntryCount = reportType === 'daily'
+    ? getDayEntryCount(selectedDate)
+    : getWeekEntryCount(selectedDate);
+
+  const handleGenerate = () => {
+    onGenerate(reportType, selectedDate);
+  };
+
+  return (
+    <Modal
+      open={open}
+      onCancel={onClose}
+      title={null}
+      footer={null}
+      centered
+      width={480}
+      destroyOnClose
+    >
+      <div className="py-2">
+        {/* 标题 */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold">生成报告</h3>
+            <p className="text-sm text-muted-foreground">选择报告类型和时间范围</p>
+          </div>
+        </div>
+
+        {/* AI 配置提示 */}
+        {!aiConfigured && (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="text-sm font-medium">AI 服务未配置</span>
+            </div>
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+              生成报告需要配置 AI 服务，将使用基础模板生成
+            </p>
+          </div>
+        )}
+
+        {/* 报告类型选择 */}
+        <div className="mb-4">
+          <label className="text-sm font-medium mb-2 block">报告类型</label>
+          <Segmented
+            value={reportType}
+            onChange={(value) => {
+              setReportType(value as 'daily' | 'weekly');
+              setSelectedDate(new Date());
+            }}
+            options={[
+              {
+                value: 'daily',
+                label: (
+                  <div className="flex items-center gap-2 py-1">
+                    <Calendar className="h-4 w-4" />
+                    <span>日报</span>
+                  </div>
+                ),
+              },
+              {
+                value: 'weekly',
+                label: (
+                  <div className="flex items-center gap-2 py-1">
+                    <BarChart3 className="h-4 w-4" />
+                    <span>周报</span>
+                  </div>
+                ),
+              },
+            ]}
+            block
+          />
+        </div>
+
+        {/* 日期选择 */}
+        <div className="mb-4">
+          <label className="text-sm font-medium mb-2 block">
+            {reportType === 'daily' ? '选择日期' : '选择周'}
+          </label>
+
+          {loadingRange ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                type="text"
+                icon={<ChevronLeft className="h-4 w-4" />}
+                onClick={handlePrevDay}
+                disabled={selectedDate <= minDate}
+              />
+              <div className="flex-1 text-center">
+                {reportType === 'daily' ? (
+                  <div>
+                    <div className="text-lg font-medium">
+                      {format(selectedDate, 'yyyy年MM月dd日', { locale: zhCN })}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {format(selectedDate, 'EEEE', { locale: zhCN })}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-lg font-medium">
+                      {format(weekStart, 'MM月dd日')} - {format(weekEnd, 'MM月dd日')}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      本周
+                    </div>
+                  </div>
+                )}
+              </div>
+              <Button
+                type="text"
+                icon={<ChevronRight className="h-4 w-4" />}
+                onClick={handleNextDay}
+                disabled={selectedDate >= maxDate}
+              />
+            </div>
+          )}
+
+          {/* 文章数量提示 */}
+          <div className="mt-3 text-center">
+            {currentEntryCount > 0 ? (
+              <Tag color="blue">
+                该{reportType === 'daily' ? '日' : '周'}有 {currentEntryCount} 篇文章
+              </Tag>
+            ) : (
+              <Tag color="warning">
+                该{reportType === 'daily' ? '日' : '周'}暂无文章
+              </Tag>
+            )}
+          </div>
+        </div>
+
+        {/* 日期选择器 */}
+        <div className="mb-4">
+          <label className="text-sm font-medium mb-2 block">快速选择</label>
+          <DatePicker
+            value={dayjs(selectedDate)}
+            onChange={(date) => date && setSelectedDate(date.toDate())}
+            picker={reportType === 'daily' ? 'date' : 'week'}
+            disabledDate={(current) => {
+              if (!current) return false;
+              return current.isBefore(minDate) || current.isAfter(maxDate);
+            }}
+            format={reportType === 'daily' ? 'YYYY-MM-DD' : 'YYYY-[第]wo[周]'}
+            className="w-full"
+            placeholder="选择日期"
+          />
+        </div>
+
+        {/* 可用时间范围提示 */}
+        {dateRange && (
+          <div className="mb-4 p-3 rounded-lg bg-muted/50">
+            <div className="text-xs text-muted-foreground">
+              可用数据范围：
+              <span className="font-medium text-foreground ml-1">
+                {format(minDate, 'yyyy-MM-dd')} 至 {format(maxDate, 'yyyy-MM-dd')}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 操作按钮 */}
+        <div className="flex gap-3 pt-2">
+          <Button onClick={onClose} className="flex-1">
+            取消
+          </Button>
+          <Button
+            type="primary"
+            onClick={handleGenerate}
+            loading={isLoading}
+            disabled={currentEntryCount === 0}
+            className="flex-1"
+          >
+            {isLoading ? '生成中...' : '开始生成'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -199,9 +447,6 @@ function GeneratingReportCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2 flex-wrap">
               <h3 className="text-lg font-semibold text-foreground/70">{report.title}</h3>
-              <Tag color="processing" icon={<Loader2 className="animate-spin" />}>
-                生成中
-              </Tag>
             </div>
 
             <div className="mb-3">
@@ -388,6 +633,8 @@ export default function ReportsPage() {
   const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [generateModalOpen, setGenerateModalOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // 页面加载动画
   const isPageLoaded = usePageLoadAnimation(100);
@@ -425,11 +672,12 @@ export default function ReportsPage() {
   };
 
   const startGenerateDaily = trpc.reports.startGenerateDaily.useMutation();
+  const startGenerateWeekly = trpc.reports.startGenerateWeekly.useMutation();
   const cancelGeneration = trpc.reports.cancelGeneration.useMutation();
   const deleteReport = trpc.reports.delete.useMutation();
   const sendByEmail = trpc.reports.sendByEmail.useMutation();
   const { data: emailConfig } = trpc.reports.checkEmailConfig.useQuery();
-  const { data: aiConfigStatus, refetch: refetchAIConfig } = trpc.reports.checkAIConfig.useQuery(undefined, {
+  const { data: aiConfigStatus } = trpc.reports.checkAIConfig.useQuery(undefined, {
     enabled: true,
   });
   const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
@@ -438,32 +686,24 @@ export default function ReportsPage() {
   const isAIConfigured = aiConfigStatus?.success ?? false;
   const isEmailConfigured = emailConfig?.enabled && emailConfig?.configured;
 
-  const handleGenerate = async () => {
-    const date = new Date();
-
-    // 1. 先检查AI配置
-    const configResult = await refetchAIConfig();
-    if (configResult.data && !configResult.data.success) {
-      Modal.confirm({
-        title: 'AI服务未配置',
-        content: configResult.data.error || '生成报告需要配置AI服务。是否前往设置页面配置？',
-        okText: '前往设置',
-        cancelText: '取消',
-        onOk: () => {
-          window.location.href = '/settings?tab=ai';
-        },
-      });
-      return;
-    }
+  // 处理生成报告
+  const handleGenerate = async (type: 'daily' | 'weekly', date: Date) => {
+    setIsGenerating(true);
 
     try {
-      // 2. 启动异步生成（使用日报接口，但概念上只是"生成报告"）
-      await startGenerateDaily.mutateAsync({ reportDate: date });
+      if (type === 'daily') {
+        await startGenerateDaily.mutateAsync({ reportDate: date });
+      } else {
+        await startGenerateWeekly.mutateAsync({ reportDate: date });
+      }
 
       notifySuccess('已开始生成报告', '请稍候，报告生成完成后会自动刷新');
+      setGenerateModalOpen(false);
       refetch();
     } catch (error: any) {
       handleApiError(error, '启动生成失败');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -603,7 +843,7 @@ export default function ReportsPage() {
                   <Button
                     type="primary"
                     icon={<Plus className="h-4 w-4" />}
-                    onClick={handleGenerate}
+                    onClick={() => setGenerateModalOpen(true)}
                     className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-shadow"
                   >
                     生成报告
@@ -671,7 +911,7 @@ export default function ReportsPage() {
                   description="生成您的第一份报告来查看阅读统计和分析"
                   action={{
                     label: '生成报告',
-                    onClick: handleGenerate,
+                    onClick: () => setGenerateModalOpen(true),
                   }}
                   variant="card"
                 />
@@ -699,6 +939,15 @@ export default function ReportsPage() {
       <ReportScheduleSettings
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      {/* 生成报告弹窗 */}
+      <GenerateReportModal
+        open={generateModalOpen}
+        onClose={() => setGenerateModalOpen(false)}
+        onGenerate={handleGenerate}
+        isLoading={isGenerating}
+        aiConfigured={isAIConfigured}
       />
     </div>
   );

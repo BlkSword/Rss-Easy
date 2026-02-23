@@ -8,7 +8,6 @@ import { AIService } from '../ai/client';
 import { checkAIConfig, getUserAIConfig } from '../ai/health-check';
 import { getNotificationService } from '../notifications/service';
 import { info, error } from '../logger';
-import { safeDecrypt } from '../crypto/encryption';
 import type { Report, ReportEntry } from '@prisma/client';
 
 // 收集的文章条目（用于AI生成）
@@ -200,13 +199,7 @@ export class AsyncReportGenerator {
 
         aiConfig = await getUserAIConfig(userId, db);
 
-        // 解密 apiKey（如果存在）
-        let decryptedApiKey: string | undefined;
-        if (aiConfig?.apiKey) {
-          decryptedApiKey = safeDecrypt(aiConfig.apiKey);
-        }
-
-        // 创建 AI 服务配置
+        // 创建 AI 服务配置（getUserAIConfig 已解密 apiKey）
         const serviceConfig: any = {
           provider: (aiConfig?.provider as any) || 'openai',
           model: aiConfig?.model || 'gpt-4o',
@@ -216,8 +209,8 @@ export class AsyncReportGenerator {
         };
 
         // 只有当有 apiKey 时才添加（Ollama 不需要）
-        if (decryptedApiKey && serviceConfig.provider !== 'ollama') {
-          serviceConfig.apiKey = decryptedApiKey;
+        if (aiConfig?.apiKey && serviceConfig.provider !== 'ollama') {
+          serviceConfig.apiKey = aiConfig.apiKey;
         }
 
         const aiService = new AIService(serviceConfig);

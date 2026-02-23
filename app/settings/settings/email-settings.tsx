@@ -68,10 +68,43 @@ export function EmailSettings({ user }: EmailSettingsProps) {
     }
   };
 
+  // 检查必填字段是否完整，返回缺失字段列表
+  const getMissingFields = () => {
+    const missing: string[] = [];
+    if (!smtpHost) missing.push('SMTP 服务器地址');
+    if (!smtpUser) missing.push('用户名');
+    // 密码：如果新输入了就用新的，否则检查是否有已保存的
+    if (!smtpPassword && !emailConfig.smtpPassword) missing.push('密码');
+    if (!fromEmail) missing.push('发件人邮箱');
+    return missing;
+  };
+
+  const canTest = () => {
+    // 至少需要服务器地址和用户名才能尝试测试
+    return smtpHost && smtpUser;
+  };
+
   const handleTest = async () => {
+    // 检查缺失字段
+    const missing = getMissingFields();
+    if (missing.length > 0) {
+      notifyError(`请填写以下必填项: ${missing.join('、')}`);
+      return;
+    }
+
     setIsTesting(true);
     try {
-      const result = await testEmailConfig.mutateAsync();
+      const result = await testEmailConfig.mutateAsync({
+        config: {
+          smtpHost,
+          smtpPort,
+          smtpSecure,
+          smtpUser,
+          smtpPassword: smtpPassword || undefined,
+          fromEmail,
+          fromName,
+        },
+      });
       if (result.success) {
         notifySuccess(result.message);
       } else {
@@ -201,6 +234,7 @@ export function EmailSettings({ user }: EmailSettingsProps) {
                 <label className="text-sm font-medium flex items-center gap-2">
                   <Server className="h-4 w-4 text-muted-foreground" />
                   SMTP 服务器地址
+                  <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -273,7 +307,10 @@ export function EmailSettings({ user }: EmailSettingsProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">用户名 / 邮箱地址</label>
+                  <label className="text-sm font-medium">
+                    用户名 / 邮箱地址
+                    <span className="text-red-500 ml-1">*</span>
+                  </label>
                   <input
                     type="text"
                     value={smtpUser}
@@ -289,7 +326,10 @@ export function EmailSettings({ user }: EmailSettingsProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">密码 / 授权码</label>
+                  <label className="text-sm font-medium">
+                    密码 / 授权码
+                    <span className="text-red-500 ml-1">*</span>
+                  </label>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
@@ -330,7 +370,10 @@ export function EmailSettings({ user }: EmailSettingsProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">发件人邮箱</label>
+                    <label className="text-sm font-medium">
+                      发件人邮箱
+                      <span className="text-red-500 ml-1">*</span>
+                    </label>
                     <input
                       type="email"
                       value={fromEmail}
@@ -404,7 +447,7 @@ export function EmailSettings({ user }: EmailSettingsProps) {
             variant="ghost"
             onClick={handleTest}
             isLoading={isTesting}
-            disabled={!smtpHost || !smtpUser}
+            disabled={!canTest()}
             leftIcon={<Send className="h-4 w-4" />}
           >
             发送测试邮件

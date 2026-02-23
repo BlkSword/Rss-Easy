@@ -11,6 +11,7 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   isClickable?: boolean;
   isActive?: boolean;
   variant?: 'default' | 'elevated' | 'outlined' | 'ghost';
+  noPadding?: boolean; // 是否移除默认 padding
 }
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
@@ -21,6 +22,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
       isClickable = false,
       isActive = false,
       variant = 'default',
+      noPadding = false,
       children,
       ...props
     },
@@ -47,6 +49,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
         className={cn(
           baseStyles,
           variants[variant],
+          !noPadding && 'p-4',
           isHoverable && states.hoverable,
           isClickable && states.clickable,
           isActive && states.active,
@@ -68,7 +71,7 @@ export const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex flex-col space-y-1.5 p-6', className)}
+    className={cn('flex flex-col space-y-1.5', className)}
     {...props}
   />
 ));
@@ -102,7 +105,7 @@ export const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+  <div ref={ref} className={cn('pt-4', className)} {...props} />
 ));
 CardContent.displayName = 'CardContent';
 
@@ -112,7 +115,7 @@ export const CardFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex items-center p-6 pt-0 gap-3', className)}
+    className={cn('flex items-center pt-4 gap-3', className)}
     {...props}
   />
 ));

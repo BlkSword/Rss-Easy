@@ -233,9 +233,6 @@ function RelatedEntryCard({ entry }: { entry: RelatedEntry }) {
           </h4>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-muted-foreground">{entry.feed.title}</span>
-            {entry.relevanceReason && (
-              <Tag variant="outline">{entry.relevanceReason}</Tag>
-            )}
           </div>
           {entry.aiOneLineSummary && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
@@ -254,11 +251,14 @@ function RelatedEntryCard({ entry }: { entry: RelatedEntry }) {
 // =====================================================
 
 export function AIAnalysisSidebar({ entry }: AIAnalysisSidebarProps) {
-  // 获取 AI 配置状态
-  const { data: aiConfigStatus } = trpc.queue.aiConfigStatus.useQuery();
-  const isAIConfigured = aiConfigStatus?.hasApiKey && aiConfigStatus?.configValid;
+  // 获取 AI 配置状态（优先检查）
+  const { data: aiConfigStatus, isLoading: isLoadingConfig } = trpc.queue.aiConfigStatus.useQuery();
 
-  // 获取分析状态
+  // AI 是否已配置（明确的判断）
+  const isAIConfigured = !!(aiConfigStatus?.hasApiKey && aiConfigStatus?.configValid);
+  const isConfigLoading = isLoadingConfig || aiConfigStatus === undefined;
+
+  // 获取分析状态（只有 AI 配置后才查询）
   const { data: analysisStatus, refetch: refetchStatus } = trpc.queue.entryAnalysisStatus.useQuery(
     { entryId: entry.id },
     { enabled: !!entry.id && isAIConfigured }
@@ -293,38 +293,42 @@ export function AIAnalysisSidebar({ entry }: AIAnalysisSidebarProps) {
     wordCount: entry.wordCount || 0,
   };
 
-  // 获取分析状态信息
+  // 获取分析状态信息（优先检查 AI 配置）
   const getAnalysisStatusInfo = () => {
-    if (!aiConfigStatus) {
-      return { type: 'loading', message: '检查配置中...', icon: Loader2, color: 'text-muted-foreground' };
+    // 优先级 1：检查 AI 配置是否有效
+    if (!isConfigLoading && !isAIConfigured) {
+      return { type: 'no_config' as const, message: 'AI 未配置', icon: Settings, color: 'text-yellow-500' };
     }
 
-    if (!isAIConfigured) {
-      return { type: 'no_config', message: 'AI 未配置', icon: Settings, color: 'text-yellow-500' };
+    // 优先级 2：配置加载中
+    if (isConfigLoading) {
+      return { type: 'loading' as const, message: '检查配置中...', icon: Loader2, color: 'text-muted-foreground' };
     }
 
+    // 优先级 3：已有分析结果
     if (hasAnalysis) {
-      return { type: 'completed', message: '分析完成', icon: CheckCircle, color: 'text-green-500' };
+      return { type: 'completed' as const, message: '分析完成', icon: CheckCircle, color: 'text-green-500' };
     }
 
+    // 优先级 4：AI 已配置但没有分析结果，检查队列状态
     if (!analysisStatus) {
-      return { type: 'loading', message: '检查状态中...', icon: Loader2, color: 'text-muted-foreground' };
+      return { type: 'loading' as const, message: '检查状态中...', icon: Loader2, color: 'text-muted-foreground' };
     }
 
     switch (analysisStatus.status) {
       case 'processing':
-        return { type: 'processing', message: '正在分析中...', icon: Loader2, color: 'text-blue-500' };
+        return { type: 'processing' as const, message: '正在分析中...', icon: Loader2, color: 'text-blue-500' };
       case 'pending':
-        return { type: 'queued', message: `排队中 (第 ${(analysisStatus.queuePosition || 0) + 1} 位)`, icon: Clock, color: 'text-orange-500' };
+        return { type: 'queued' as const, message: `排队中 (第 ${(analysisStatus.queuePosition || 0) + 1} 位)`, icon: Clock, color: 'text-orange-500' };
       case 'failed':
-        return { type: 'failed', message: '分析失败', icon: XCircle, color: 'text-red-500' };
+        return { type: 'failed' as const, message: '分析失败', icon: XCircle, color: 'text-red-500' };
       case 'not_analyzed':
         if (analysisStatus.reason === 'old_article') {
-          return { type: 'old', message: '历史文章', icon: Clock, color: 'text-muted-foreground' };
+          return { type: 'old' as const, message: '历史文章', icon: Clock, color: 'text-muted-foreground' };
         }
-        return { type: 'not_queued', message: '等待分析', icon: Sparkles, color: 'text-muted-foreground' };
+        return { type: 'not_queued' as const, message: '等待分析', icon: Sparkles, color: 'text-muted-foreground' };
       default:
-        return { type: 'unknown', message: '未知状态', icon: AlertTriangle, color: 'text-muted-foreground' };
+        return { type: 'unknown' as const, message: '未知状态', icon: AlertTriangle, color: 'text-muted-foreground' };
     }
   };
 

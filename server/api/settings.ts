@@ -433,9 +433,8 @@ export const settingsRouter = router({
 
   /**
    * 删除API密钥
-   * 安全增强：使用 CSRF 保护
    */
-  deleteApiKey: protectedMutation
+  deleteApiKey: protectedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -595,6 +594,37 @@ export const settingsRouter = router({
     }),
 
   /**
+   * 获取 OPML 导入进度
+   */
+  getImportProgress: protectedProcedure
+    .output(z.object({
+      phase: z.enum(['parsing', 'discovering', 'creating', 'fetching', 'completed']),
+      current: z.number(),
+      total: z.number(),
+      currentItem: z.string().optional(),
+      message: z.string(),
+      stats: z.object({
+        imported: z.number(),
+        skipped: z.number(),
+        failed: z.number(),
+      }),
+    }).nullable())
+    .query(async ({ ctx }) => {
+      const { getImportProgress } = await import('@/lib/opml/importer');
+      return getImportProgress(ctx.userId);
+    }),
+
+  /**
+   * 清除导入进度
+   */
+  clearImportProgress: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const { clearImportProgress } = await import('@/lib/opml/importer');
+      clearImportProgress(ctx.userId);
+      return { success: true };
+    }),
+
+  /**
    * 更新邮件配置
    * 安全修复：加密 SMTP 密码
    */
@@ -716,6 +746,7 @@ export const settingsRouter = router({
 
           // 标记配置已验证
           (updatedConfig as any).configValid = true;
+          (updatedConfig as any).lastTestedAt = new Date().toISOString();
 
           // 如果是第一次测试成功，设置默认值
           if ((updatedConfig as any).autoSummary === undefined) {
@@ -752,10 +783,23 @@ export const settingsRouter = router({
 
   /**
    * 测试邮件配置
+   * 支持传入配置参数进行测试（无需先保存）
    */
   testEmailConfig: protectedProcedure
+    .input(z.object({
+      // 可选传入配置参数，不传则从数据库读取
+      config: z.object({
+        smtpHost: z.string().optional(),
+        smtpPort: z.number().optional(),
+        smtpSecure: z.boolean().optional(),
+        smtpUser: z.string().optional(),
+        smtpPassword: z.string().optional(),
+        fromEmail: z.string().optional(),
+        fromName: z.string().optional(),
+      }).optional(),
+    }).optional())
     .output(z.object({ success: z.boolean(), message: z.string() }))
-    .mutation(async ({ ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         const user = await ctx.db.user.findUnique({
           where: { id: ctx.userId },
@@ -766,13 +810,38 @@ export const settingsRouter = router({
           return { success: false, message: '用户不存在' };
         }
 
-        const config = user.emailConfig as any;
-        if (!config?.enabled || !config?.smtpHost || !config?.smtpUser) {
-          return { success: false, message: '邮件配置未完成，请填写所有必填项' };
+        // 使用传入的配置或数据库中的配置
+        const dbConfig = (user.emailConfig as any) || {};
+        const inputConfig = input?.config || {};
+
+        const config = {
+          enabled: dbConfig.enabled ?? true,
+          smtpHost: inputConfig.smtpHost || dbConfig.smtpHost,
+          smtpPort: inputConfig.smtpPort || dbConfig.smtpPort || 587,
+          smtpSecure: inputConfig.smtpSecure ?? dbConfig.smtpSecure ?? false,
+          smtpUser: inputConfig.smtpUser || dbConfig.smtpUser,
+          smtpPassword: inputConfig.smtpPassword || dbConfig.smtpPassword,
+          fromEmail: inputConfig.fromEmail || dbConfig.fromEmail,
+          fromName: inputConfig.fromName || dbConfig.fromName,
+        };
+
+        // 详细验证缺失字段
+        const missingFields: string[] = [];
+        if (!config.smtpHost) missingFields.push('SMTP 服务器地址');
+        if (!config.smtpUser) missingFields.push('用户名');
+        if (!config.smtpPassword && !dbConfig.smtpPassword) missingFields.push('密码');
+        if (!config.fromEmail) missingFields.push('发件人邮箱');
+        if (!user.email) missingFields.push('用户邮箱（接收测试邮件）');
+
+        if (missingFields.length > 0) {
+          return {
+            success: false,
+            message: `请填写以下必填项: ${missingFields.join('、')}`,
+          };
         }
 
         // 创建邮件服务并发送测试邮件
-        const emailService = createEmailServiceFromUser(user.emailConfig);
+        const emailService = createEmailServiceFromUser(config as any);
 
         if (!emailService) {
           return { success: false, message: '邮件服务未启用' };
@@ -787,15 +856,16 @@ export const settingsRouter = router({
         // 发送测试邮件
         const sendResult = await emailService.sendTestEmail(user.email, user.username);
 
+        // 记录日志（不阻塞返回）
         if (sendResult.success) {
-          await info('system', '测试邮件发送成功', { userId: ctx.userId, email: user.email });
+          info('system', '测试邮件发送成功', { userId: ctx.userId, email: user.email }).catch(() => {});
         } else {
-          await error('system', '测试邮件发送失败', undefined, { userId: ctx.userId, error: sendResult.message });
+          error('system', '测试邮件发送失败', undefined, { userId: ctx.userId, error: sendResult.message }).catch(() => {});
         }
 
         return sendResult;
       } catch (err: any) {
-        await error('system', '测试邮件配置异常', err, { userId: ctx.userId, error: err.message });
+        error('system', '测试邮件配置异常', err, { userId: ctx.userId, error: err.message }).catch(() => {});
         return { success: false, message: err.message || '发送测试邮件失败' };
       }
     }),

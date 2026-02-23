@@ -113,9 +113,6 @@ function QueueStatusIndicatorComponent() {
   const hasFeedsToUpdate = feeds.toUpdate > 0 && feeds.active > 0;
   const hasActivity = aiQueueActivity || hasFeedsToUpdate;
 
-  // 计算显示的数字
-  const displayNumber = (isAIConfigured ? queue.processing + queue.pending : 0) + (hasFeedsToUpdate ? feeds.toUpdate : 0);
-
   // 状态颜色
   const getStatusColor = useCallback(() => {
     if (health.status === 'warning') return 'text-amber-500';
@@ -149,15 +146,6 @@ function QueueStatusIndicatorComponent() {
           )}
         >
           <Activity className={cn('h-4 w-4', getStatusColor())} />
-          {hasActivity && displayNumber > 0 && (
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center"
-            >
-              {displayNumber}
-            </motion.span>
-          )}
         </Button>
       </Tooltip>
 

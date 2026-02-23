@@ -98,7 +98,15 @@ export async function checkAIConfig(config?: any): Promise<HealthCheckResult> {
     };
   }
 
-  const apiKey = config?.apiKey;
+  // 解密 API Key（如果需要）
+  let apiKey = config?.apiKey;
+  if (apiKey) {
+    const { safeDecrypt, isEncrypted } = await import('@/lib/crypto/encryption');
+    if (isEncrypted(apiKey)) {
+      apiKey = safeDecrypt(apiKey);
+    }
+  }
+
   const baseURL = config?.baseURL;
 
   try {
@@ -219,7 +227,7 @@ export async function checkAIConfigQuick(config?: any): Promise<HealthCheckResul
 }
 
 /**
- * 获取用户的AI配置
+ * 获取用户的AI配置（解密API密钥）
  */
 export async function getUserAIConfig(userId: string, db: any) {
   const user = await db.user.findUnique({
@@ -227,10 +235,22 @@ export async function getUserAIConfig(userId: string, db: any) {
     select: { aiConfig: true }
   });
 
-  return user?.aiConfig as {
+  const aiConfig = user?.aiConfig as {
     provider?: string;
     model?: string;
     apiKey?: string;
     baseURL?: string;
   } | null;
+
+  if (!aiConfig) {
+    return null;
+  }
+
+  // 解密 API Key（如果已加密）
+  if (aiConfig.apiKey) {
+    const { safeDecrypt } = await import('@/lib/crypto/encryption');
+    aiConfig.apiKey = safeDecrypt(aiConfig.apiKey);
+  }
+
+  return aiConfig;
 }

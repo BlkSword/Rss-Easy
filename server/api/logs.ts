@@ -164,26 +164,39 @@ export const logsRouter = router({
 
   /**
    * 清空日志
-   * 用户只能清空自己的日志，系统级日志需要特殊权限
+   * 支持清空指定时间之前的日志或所有日志
    */
   clear: protectedProcedure
     .input(z.object({
-      before: z.date().optional(),
-      category: z.enum(['rss', 'ai', 'auth', 'email']).optional(), // 只允许清空用户级分类
+      before: z.date().optional().nullable(), // 清理此时间之前的日志
+      olderThanDays: z.number().optional().nullable(), // 或清理 N 天前的日志
+      clearAll: z.boolean().optional(), // 清理所有（包括系统日志）
     }))
     .mutation(async ({ input, ctx }) => {
       const userId = ctx.userId!;
+      const { before, olderThanDays, clearAll } = input;
 
-      const where: any = {
-        userId: userId, // 只能删除自己的日志
-      };
+      const where: any = {};
 
-      if (input.before) {
-        where.createdAt = { lt: input.before };
+      // 时间条件
+      if (olderThanDays) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+        where.createdAt = { lt: cutoffDate };
+      } else if (before) {
+        where.createdAt = { lt: before };
       }
 
-      if (input.category) {
-        where.category = input.category;
+      // 权限控制
+      if (clearAll) {
+        // 清理所有日志（包括系统日志）- 仅删除符合时间条件的
+        // 如果没有时间条件，则删除所有
+      } else {
+        // 默认只删除用户自己的日志
+        where.OR = [
+          { category: { in: SYSTEM_CATEGORIES } },
+          { userId: userId },
+        ];
       }
 
       const { count } = await ctx.db.systemLog.deleteMany({ where });
@@ -191,7 +204,8 @@ export const logsRouter = router({
       await info('system', '用户清空日志', {
         userId,
         deletedCount: count,
-        category: input.category || 'all_user_logs',
+        olderThanDays: olderThanDays || null,
+        clearAll: clearAll || false,
       });
 
       return { deleted: count };

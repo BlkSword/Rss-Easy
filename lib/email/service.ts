@@ -128,7 +128,7 @@ export class EmailService {
       // 验证配置
       const validation = this.validateConfig();
       if (!validation.valid) {
-        await warn('email', '邮件配置验证失败', { message: validation.message });
+        warn('email', '邮件配置验证失败', { message: validation.message }).catch(() => {});
         return { success: false, message: validation.message };
       }
 
@@ -154,18 +154,38 @@ export class EmailService {
       // 发送邮件
       const info = await transporter.sendMail(mailOptions);
 
-      await info('email', '邮件发送成功', {
+      // 检查 SMTP 响应，判断是否真正发送成功
+      // 成功响应通常包含 250 状态码，如 "250 OK" 或 "250 2.0.0 OK"
+      const response = info.response || '';
+      const isSuccess = response.includes('250') ||
+                        response.toLowerCase().includes('ok') ||
+                        response.includes('2.0.0') ||
+                        // 某些服务器返回 235 (认证成功后) 或其他 2xx 状态
+                        /^2\d{2}/.test(response.trim());
+
+      if (!isSuccess && response) {
+        // 有响应但不是成功状态
+        warn('email', 'SMTP 响应异常', { response, messageId: info.messageId }).catch(() => {});
+        return {
+          success: false,
+          message: `SMTP 响应异常: ${response || '无响应'}`
+        };
+      }
+
+      // 记录日志（不阻塞返回）
+      info('email', '邮件发送成功', {
         to,
         subject,
         messageId: info.messageId,
+        response: response.substring(0, 100), // 只记录前100字符
         hasAttachments: !!attachments?.length,
-      });
+      }).catch(() => {});
 
       return { success: true, message: '邮件发送成功' };
     } catch (err: any) {
       const errorMessage = err.message || '发送失败';
-      await error('email', '邮件发送失败', err, { to, subject, error: errorMessage });
-      return { success: false, message: '邮件发送失败', error: errorMessage };
+      error('email', '邮件发送失败', err, { to, subject, error: errorMessage }).catch(() => {});
+      return { success: false, message: `邮件发送失败: ${errorMessage}` };
     }
   }
 
@@ -601,12 +621,12 @@ export class EmailService {
       const transporter = this.initTransporter();
       await transporter.verify();
 
-      await info('email', 'SMTP 连接验证成功');
+      info('email', 'SMTP 连接验证成功').catch(() => {});
       return { success: true, message: 'SMTP 连接正常' };
     } catch (err: any) {
       const errorMessage = err.message || '连接失败';
-      await error('email', 'SMTP 连接验证失败', err, { error: errorMessage });
-      return { success: false, message: 'SMTP 连接失败', error: errorMessage };
+      error('email', 'SMTP 连接验证失败', err, { error: errorMessage }).catch(() => {});
+      return { success: false, message: `SMTP 连接失败: ${errorMessage}` };
     }
   }
 }

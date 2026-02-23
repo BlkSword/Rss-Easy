@@ -116,14 +116,14 @@ function ReportDetailSkeleton() {
 }
 
 // 生成中状态组件
-function GeneratingState({ 
-  progress, 
-  currentStep, 
+function GeneratingState({
+  progress,
+  currentStep,
   steps,
   errorMessage,
-  onCancel 
-}: { 
-  progress: number; 
+  onCancel
+}: {
+  progress: number;
   currentStep: string;
   steps: any[];
   errorMessage?: string;
@@ -166,8 +166,8 @@ function GeneratingState({
       </div>
 
       <div className="mb-6">
-        <Progress 
-          percent={progress} 
+        <Progress
+          percent={progress}
           strokeColor="#ea580c"
           showInfo={false}
           className="mb-2"
@@ -355,7 +355,7 @@ export default function ReportDetailPage() {
     }
   );
   const { data: emailConfig } = trpc.reports.checkEmailConfig.useQuery();
-  
+
   const deleteReport = trpc.reports.delete.useMutation();
   const cancelGeneration = trpc.reports.cancelGeneration.useMutation();
   const sendByEmail = trpc.reports.sendByEmail.useMutation();
@@ -569,16 +569,6 @@ export default function ReportDetailPage() {
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
-                        <div
-                          className={cn(
-                            'w-14 h-14 rounded-2xl flex items-center justify-center',
-                            typeConfig.bgColor,
-                            typeConfig.borderColor,
-                            'border-2'
-                          )}
-                        >
-                          <TypeIcon className={cn('h-7 w-7', typeConfig.textColor)} />
-                        </div>
                         <div>
                           <Title level={2} className="!mb-0 !text-2xl">
                             {report.title}
@@ -587,29 +577,13 @@ export default function ReportDetailPage() {
                             生成于 {format(new Date(report.createdAt), 'yyyy年MM月dd日 HH:mm', { locale: zhCN })}
                           </Text>
                         </div>
-                        {report.aiGenerated && (
-                          <StatusBadge status="processing" pulse className="ml-2">
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            AI 生成
-                          </StatusBadge>
-                        )}
                       </div>
-                      <Paragraph className="text-muted-foreground !mb-0 max-w-2xl">
+                      <Paragraph className="text-muted-foreground !mb-0">
                         {report.summary || '暂无摘要'}
                       </Paragraph>
                     </div>
 
                     <Space className="flex-shrink-0">
-                      <Select
-                        value={selectedFormat}
-                        onChange={(value) => setSelectedFormat(value as any)}
-                        className="w-32"
-                        dropdownStyle={{ animation: 'fadeIn 0.2s' }}
-                      >
-                        <Select.Option value="markdown">Markdown</Select.Option>
-                        <Select.Option value="html">HTML</Select.Option>
-                        <Select.Option value="json">JSON</Select.Option>
-                      </Select>
                       <Button
                         onClick={handleDownload}
                         icon={<Download className="h-4 w-4" />}
@@ -624,7 +598,7 @@ export default function ReportDetailPage() {
                       >
                         分享
                       </Button>
-                      <Tooltip 
+                      <Tooltip
                         title={!emailConfig?.enabled ? '邮件服务未配置' : `发送至 ${emailConfig.email}`}
                       >
                         <Button

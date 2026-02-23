@@ -61,6 +61,106 @@ export const reportsRouter = router({
     }),
 
   /**
+   * 获取可用的时间范围（有文章的日期）
+   * 用于生成报告时选择日期
+   */
+  getAvailableDateRange: protectedProcedure
+    .output(z.object({
+      earliestDate: z.string().nullable(),
+      latestDate: z.string().nullable(),
+      daysWithEntries: z.array(z.object({
+        date: z.string(),
+        count: z.number(),
+      })),
+      weeksWithEntries: z.array(z.object({
+        weekStart: z.string(),
+        weekEnd: z.string(),
+        count: z.number(),
+      })),
+    }))
+    .query(async ({ ctx }) => {
+      // 获取用户最早和最新的文章日期
+      const result = await ctx.db.entry.aggregate({
+        where: {
+          feed: {
+            userId: ctx.userId,
+          },
+        },
+        _min: {
+          createdAt: true,
+        },
+        _max: {
+          createdAt: true,
+        },
+      });
+
+      const earliestDate = result._min.createdAt;
+      const latestDate = result._max.createdAt;
+
+      // 如果没有文章，返回空
+      if (!earliestDate || !latestDate) {
+        return {
+          earliestDate: null,
+          latestDate: null,
+          daysWithEntries: [],
+          weeksWithEntries: [],
+        };
+      }
+
+      // 获取每天的文章数量（最近30天）
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+      const entriesByDay = await ctx.db.$queryRaw<Array<{ date: Date; count: bigint }>>`
+        SELECT DATE(created_at) as date, COUNT(*) as count
+        FROM entries
+        WHERE feed_id IN (SELECT id FROM feeds WHERE user_id = ${ctx.userId})
+          AND created_at >= ${thirtyDaysAgo}
+        GROUP BY DATE(created_at)
+        ORDER BY date DESC
+      `;
+
+      const daysWithEntries = entriesByDay.map(row => ({
+        date: row.date.toISOString().split('T')[0],
+        count: Number(row.count),
+      }));
+
+      // 获取每周的文章数量（最近12周）
+      const twelveWeeksAgo = new Date();
+      twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84); // 12周
+      twelveWeeksAgo.setHours(0, 0, 0, 0);
+
+      // 获取每周的文章数量
+      const entriesByWeek = await ctx.db.$queryRaw<Array<{ weekStart: Date; count: bigint }>>`
+        SELECT DATE_TRUNC('week', created_at) as "weekStart", COUNT(*) as count
+        FROM entries
+        WHERE feed_id IN (SELECT id FROM feeds WHERE user_id = ${ctx.userId})
+          AND created_at >= ${twelveWeeksAgo}
+        GROUP BY DATE_TRUNC('week', created_at)
+        ORDER BY "weekStart" DESC
+      `;
+
+      const weeksWithEntries = entriesByWeek.map(row => {
+        const weekStart = new Date(row.weekStart);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        return {
+          weekStart: weekStart.toISOString().split('T')[0],
+          weekEnd: weekEnd.toISOString().split('T')[0],
+          count: Number(row.count),
+        };
+      });
+
+      return {
+        earliestDate: earliestDate.toISOString(),
+        latestDate: latestDate.toISOString(),
+        daysWithEntries,
+        weeksWithEntries,
+      };
+    }),
+
+  /**
    * 启动异步生成日报
    */
   startGenerateDaily: protectedProcedure

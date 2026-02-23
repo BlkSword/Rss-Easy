@@ -4,13 +4,27 @@
 
 'use client';
 
-import { useState } from 'react';
-import { Database, Download, Upload, Trash2, AlertTriangle, FileText, CheckCircle, XCircle, SkipForward, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Database,
+  Download,
+  Upload,
+  Trash2,
+  AlertTriangle,
+  FileText,
+  CheckCircle,
+  XCircle,
+  SkipForward,
+  Loader2,
+  Search,
+  ArrowRight,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Modal } from '@/components/ui/modal';
 
 interface DataSettingsProps {
   onOpenDeleteModal: () => void;
@@ -21,6 +35,35 @@ interface PreviewFeed {
   title: string;
   category?: string;
 }
+
+interface ImportProgress {
+  phase: 'parsing' | 'discovering' | 'creating' | 'fetching' | 'completed';
+  current: number;
+  total: number;
+  currentItem?: string;
+  message: string;
+  stats: {
+    imported: number;
+    skipped: number;
+    failed: number;
+  };
+}
+
+const phaseLabels: Record<ImportProgress['phase'], string> = {
+  parsing: '解析文件',
+  discovering: '智能识别',
+  creating: '导入订阅源',
+  fetching: '触发抓取',
+  completed: '完成',
+};
+
+const phaseIcons: Record<ImportProgress['phase'], React.ReactNode> = {
+  parsing: <FileText className="h-4 w-4" />,
+  discovering: <Search className="h-4 w-4" />,
+  creating: <Database className="h-4 w-4" />,
+  fetching: <Loader2 className="h-4 w-4 animate-spin" />,
+  completed: <CheckCircle className="h-4 w-4" />,
+};
 
 export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
   const [importContent, setImportContent] = useState('');
@@ -47,16 +90,65 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
     }>;
   } | null>(null);
 
+  // 进度状态
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const { mutateAsync: exportOPML } = trpc.settings.exportOPML.useMutation();
   const { mutateAsync: previewOPML } = trpc.settings.previewOPML.useMutation();
   const { mutateAsync: importOPML } = trpc.settings.importOPML.useMutation();
   const { mutate: clearAllEntries } = trpc.settings.clearAllEntries.useMutation();
+  const { mutate: clearProgress } = trpc.settings.clearImportProgress.useMutation();
+  const utils = trpc.useUtils();
+
+  // 轮询进度
+  const startProgressPolling = useCallback(() => {
+    // 清除之前的轮询
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+
+    // 每 500ms 轮询一次
+    progressIntervalRef.current = setInterval(async () => {
+      try {
+        const result = await utils.settings.getImportProgress.fetch();
+        if (result) {
+          setProgress(result);
+
+          // 如果完成，停止轮询
+          if (result.phase === 'completed') {
+            if (progressIntervalRef.current) {
+              clearInterval(progressIntervalRef.current);
+              progressIntervalRef.current = null;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch progress:', err);
+      }
+    }, 500);
+  }, [utils]);
+
+  // 停止轮询
+  const stopProgressPolling = useCallback(() => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  }, []);
+
+  // 清理
+  useEffect(() => {
+    return () => {
+      stopProgressPolling();
+    };
+  }, [stopProgressPolling]);
 
   const handleExport = async () => {
     setIsExporting(true);
     try {
       const result = await exportOPML();
-      // 创建下载
       const blob = new Blob([result.opml], { type: 'application/xml' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -85,7 +177,6 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
       setImportResult(null);
       setPreviewData(null);
 
-      // 自动预览
       setIsPreviewing(true);
       try {
         const preview = await previewOPML({ opmlContent: content });
@@ -114,11 +205,17 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
     }
 
     setIsImporting(true);
+    setShowProgressModal(true);
+    setProgress(null);
     setImportResult(null);
+
+    // 开始轮询进度
+    startProgressPolling();
+
     try {
       const result = await importOPML({
         opmlContent: importContent,
-        skipDiscovery: false, // 使用智能发现
+        skipDiscovery: false,
       });
 
       setImportResult(result);
@@ -138,8 +235,17 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
       }
     } catch (error) {
       notifyError(error instanceof Error ? error.message : '导入失败');
+      setShowProgressModal(false);
     } finally {
       setIsImporting(false);
+      stopProgressPolling();
+    }
+  };
+
+  const handleCloseProgressModal = () => {
+    if (progress?.phase === 'completed') {
+      setShowProgressModal(false);
+      clearProgress();
     }
   };
 
@@ -164,6 +270,11 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     if (fileInput) fileInput.value = '';
   };
+
+  // 计算进度百分比
+  const progressPercent = progress && progress.total > 0
+    ? Math.round((progress.current / progress.total) * 100)
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -447,6 +558,124 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* 导入进度 Modal */}
+      <Modal
+        isOpen={showProgressModal}
+        onClose={handleCloseProgressModal}
+        title="正在导入订阅源"
+        size="md"
+        footer={
+          progress?.phase === 'completed' ? (
+            <Button variant="primary" onClick={handleCloseProgressModal}>
+              完成
+            </Button>
+          ) : null
+        }
+      >
+        <div className="space-y-4">
+          {/* 当前阶段 */}
+          {progress && (
+            <>
+              {/* 阶段指示器 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    'w-8 h-8 rounded-full flex items-center justify-center',
+                    progress.phase === 'completed' ? 'bg-green-500/10' : 'bg-primary/10'
+                  )}>
+                    {phaseIcons[progress.phase]}
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm">{phaseLabels[progress.phase]}</div>
+                    <div className="text-xs text-muted-foreground">{progress.message}</div>
+                  </div>
+                </div>
+                {progress.total > 0 && (
+                  <div className="text-right">
+                    <div className="text-lg font-bold">{progress.current}/{progress.total}</div>
+                    <div className="text-xs text-muted-foreground">{progressPercent}%</div>
+                  </div>
+                )}
+              </div>
+
+              {/* 进度条 */}
+              {progress.total > 0 && (
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full transition-all duration-300 rounded-full',
+                      progress.phase === 'completed' ? 'bg-green-500' : 'bg-primary'
+                    )}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              )}
+
+              {/* 当前处理的订阅源 */}
+              {progress.currentItem && progress.phase === 'creating' && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-sm">
+                  <ArrowRight className="h-4 w-4 text-primary flex-shrink-0" />
+                  <span className="truncate">{progress.currentItem}</span>
+                </div>
+              )}
+
+              {/* 实时统计 */}
+              <div className="grid grid-cols-3 gap-3 pt-2">
+                <div className="text-center p-2 rounded-lg bg-green-500/10">
+                  <div className="text-lg font-bold text-green-600">{progress.stats.imported}</div>
+                  <div className="text-xs text-green-600">成功</div>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-amber-500/10">
+                  <div className="text-lg font-bold text-amber-600">{progress.stats.skipped}</div>
+                  <div className="text-xs text-amber-600">跳过</div>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-red-500/10">
+                  <div className="text-lg font-bold text-red-600">{progress.stats.failed}</div>
+                  <div className="text-xs text-red-600">失败</div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 等待进度 */}
+          {!progress && (
+            <div className="py-8 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-primary" />
+              <p className="text-sm text-muted-foreground">正在初始化导入任务...</p>
+            </div>
+          )}
+
+          {/* 阶段流程说明 */}
+          <div className="pt-4 border-t border-border">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              {(['parsing', 'discovering', 'creating', 'fetching', 'completed'] as const).map((phase, index) => (
+                <div
+                  key={phase}
+                  className={cn(
+                    'flex flex-col items-center',
+                    progress && (
+                      Object.keys(phaseLabels).indexOf(progress.phase) >= index
+                        ? 'text-primary'
+                        : 'text-muted-foreground/50'
+                    )
+                  )}
+                >
+                  <div className={cn(
+                    'w-6 h-6 rounded-full flex items-center justify-center mb-1',
+                    progress && Object.keys(phaseLabels).indexOf(progress.phase) >= index
+                      ? 'bg-primary/10'
+                      : 'bg-muted'
+                  )}>
+                    {index + 1}
+                  </div>
+                  <span className="hidden md:block">{phaseLabels[phase]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

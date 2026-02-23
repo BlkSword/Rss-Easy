@@ -44,6 +44,25 @@ export const queueRouter = router({
         return { status: 'not_found' };
       }
 
+      // 检查用户 AI 配置（优先检查，用于所有分支）
+      const user = await db.user.findUnique({
+        where: { id: ctx.userId! },
+        select: { aiConfig: true },
+      });
+
+      const aiConfig = (user?.aiConfig as any) || {};
+      const hasUserApiKey = !!aiConfig.apiKey;
+      const hasEnvApiKey = !!(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.GEMINI_API_KEY);
+      const hasApiKey = hasUserApiKey || hasEnvApiKey;
+      const autoSummary = aiConfig.autoSummary !== false; // 默认开启
+
+      // configValid 必须是明确的 true（用户已测试通过）
+      // 或者如果使用环境变量且没有用户配置，则默认有效
+      const hasExplicitUserConfig = hasUserApiKey || !!aiConfig.provider;
+      const configValid = hasExplicitUserConfig
+        ? aiConfig.configValid === true
+        : hasEnvApiKey; // 如果只有环境变量配置，默认有效
+
       // 检查是否有分析结果
       const hasAnalysis = !!(
         entry.aiSummary ||
@@ -55,6 +74,18 @@ export const queueRouter = router({
 
       if (hasAnalysis) {
         return { status: 'completed', analyzedAt: entry.aiAnalyzedAt };
+      }
+
+      // AI 未配置时，直接返回 no_config，不检查队列状态
+      if (!hasApiKey || !configValid) {
+        return {
+          status: 'not_analyzed',
+          reason: 'no_config',
+          hasApiKey,
+          configValid,
+          autoSummary,
+          articleAge: Date.now() - entry.createdAt.getTime(),
+        };
       }
 
       // 检查是否在队列中
@@ -74,23 +105,10 @@ export const queueRouter = router({
         };
       }
 
-      // 检查用户 AI 配置
-      const user = await db.user.findUnique({
-        where: { id: ctx.userId! },
-        select: { aiConfig: true },
-      });
-
-      const aiConfig = (user?.aiConfig as any) || {};
-      const hasApiKey = !!(aiConfig.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY);
-      const autoSummary = aiConfig.autoSummary !== false; // 默认开启
-      const configValid = aiConfig.configValid !== false; // 默认有效
-
       // 判断原因
-      let reason: 'no_config' | 'not_queued' | 'old_article' = 'not_queued';
+      let reason: 'not_queued' | 'old_article' = 'not_queued';
 
-      if (!hasApiKey || !configValid) {
-        reason = 'no_config';
-      } else if (entry.createdAt < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)) {
+      if (entry.createdAt < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)) {
         // 文章超过7天
         reason = 'old_article';
       }
@@ -117,7 +135,7 @@ export const queueRouter = router({
 
       const aiConfig = (user?.aiConfig as any) || {};
 
-      // 检查各种 API Key
+      // 检查各种 API Key（需要是有效的解密后的密钥）
       const hasUserApiKey = !!aiConfig.apiKey;
       const hasEnvApiKey = !!(
         process.env.OPENAI_API_KEY ||
@@ -130,13 +148,20 @@ export const queueRouter = router({
       const provider = aiConfig.provider || process.env.AI_PROVIDER || 'openai';
       const model = aiConfig.model || process.env.AI_MODEL;
 
+      // configValid 必须是明确的 true（用户已测试通过）
+      // 或者如果使用环境变量且没有用户配置，则默认有效
+      const hasExplicitUserConfig = hasUserApiKey || !!aiConfig.provider;
+      const configValid = hasExplicitUserConfig
+        ? aiConfig.configValid === true
+        : hasEnvApiKey; // 如果只有环境变量配置，默认有效
+
       return {
         hasApiKey: hasUserApiKey || hasEnvApiKey,
         hasUserApiKey,
         hasEnvApiKey,
         provider,
         model,
-        configValid: aiConfig.configValid !== false,
+        configValid,
         autoSummary: aiConfig.autoSummary !== false,
         autoCategorize: aiConfig.autoCategorize !== false,
         aiQueueEnabled: aiConfig.aiQueueEnabled === true,
