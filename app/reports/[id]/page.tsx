@@ -42,6 +42,11 @@ import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
 import { Card } from '@/components/ui/card';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeRaw from 'rehype-raw';
+import 'highlight.js/styles/github-dark.css';
 
 // 动画组件
 import { Fade, StaggerContainer, ListItemFade, HoverLift } from '@/components/animation/fade';
@@ -112,6 +117,156 @@ function ReportDetailSkeleton() {
         <Skeleton className="h-64 rounded-xl" />
       </Card>
     </div>
+  );
+}
+
+// Markdown 渲染组件
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeHighlight, rehypeRaw]}
+      components={{
+        // 标题样式
+        h1: ({ children }) => (
+          <h1 className="text-2xl font-bold mt-6 mb-4 pb-2 border-b border-border/60 first:mt-0">
+            {children}
+          </h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="text-xl font-semibold mt-5 mb-3 pb-2 border-b border-border/40">
+            {children}
+          </h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="text-lg font-semibold mt-4 mb-2">
+            {children}
+          </h3>
+        ),
+        h4: ({ children }) => (
+          <h4 className="text-base font-semibold mt-3 mb-2">
+            {children}
+          </h4>
+        ),
+        // 段落样式
+        p: ({ children }) => (
+          <p className="my-3 leading-7 text-foreground/90">
+            {children}
+          </p>
+        ),
+        // 列表样式
+        ul: ({ children }) => (
+          <ul className="my-3 ml-6 space-y-1.5 list-disc marker:text-foreground/40">
+            {children}
+          </ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="my-3 ml-6 space-y-1.5 list-decimal marker:text-foreground/40">
+            {children}
+          </ol>
+        ),
+        li: ({ children }) => (
+          <li className="leading-7 text-foreground/90">
+            {children}
+          </li>
+        ),
+        // 代码样式
+        code: ({ className, children, ...props }) => {
+          const match = /language-(\w+)/.exec(className || '');
+          const isInline = !match;
+          return isInline ? (
+            <code
+              className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono text-foreground/90"
+              {...props}
+            >
+              {children}
+            </code>
+          ) : (
+            <code
+              className={cn(
+                "block px-4 py-3 rounded-lg bg-muted/50 text-sm font-mono overflow-x-auto",
+                className
+              )}
+              {...props}
+            >
+              {children}
+            </code>
+          );
+        },
+        pre: ({ children }) => (
+          <pre className="my-4 p-4 rounded-lg bg-muted/50 overflow-x-auto">
+            {children}
+          </pre>
+        ),
+        // 引用样式
+        blockquote: ({ children }) => (
+          <blockquote className="my-4 pl-4 border-l-4 border-primary/50 italic text-foreground/70">
+            {children}
+          </blockquote>
+        ),
+        // 链接样式
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:text-primary/80 underline underline-offset-4"
+          >
+            {children}
+          </a>
+        ),
+        // 表格样式
+        table: ({ children }) => (
+          <div className="my-4 overflow-x-auto">
+            <table className="min-w-full divide-y divide-border/60">
+              {children}
+            </table>
+          </div>
+        ),
+        thead: ({ children }) => (
+          <thead className="bg-muted/30">
+            {children}
+          </thead>
+        ),
+        tbody: ({ children }) => (
+          <tbody className="divide-y divide-border/40">
+            {children}
+          </tbody>
+        ),
+        tr: ({ children }) => (
+          <tr className="hover:bg-muted/20 transition-colors">
+            {children}
+          </tr>
+        ),
+        th: ({ children }) => (
+          <th className="px-4 py-2 text-left text-sm font-semibold text-foreground/90">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="px-4 py-2 text-sm text-foreground/80">
+            {children}
+          </td>
+        ),
+        // 分隔线样式
+        hr: () => (
+          <hr className="my-6 border-t border-border/60" />
+        ),
+        // 强调样式
+        strong: ({ children }) => (
+          <strong className="font-semibold text-foreground">
+            {children}
+          </strong>
+        ),
+        em: ({ children }) => (
+          <em className="italic text-foreground/80">
+            {children}
+          </em>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
 }
 
@@ -441,12 +596,6 @@ export default function ReportDetailPage() {
     }
   };
 
-  // 计算统计数据
-  const readRate =
-    report && report.totalEntries > 0
-      ? Math.round((report.totalRead / report.totalEntries) * 100)
-      : 0;
-
   // 获取报告类型配置
   const typeConfig = report
     ? reportTypeConfig[report.reportType as keyof typeof reportTypeConfig]
@@ -628,17 +777,10 @@ export default function ReportDetailPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <StatCard
                       value={report.totalEntries}
-                      label="新增文章"
+                      label="收录文章"
                       icon={<FileText className="h-5 w-5" />}
                       color={report.reportType === 'daily' ? 'blue' : 'purple'}
                       delay={0}
-                    />
-                    <StatCard
-                      value={report.totalRead}
-                      label="已阅读"
-                      icon={<CheckCircle2 className="h-5 w-5" />}
-                      color="green"
-                      delay={50}
                     />
                     <StatCard
                       value={report.totalFeeds}
@@ -646,14 +788,6 @@ export default function ReportDetailPage() {
                       icon={<BookOpen className="h-5 w-5" />}
                       color="orange"
                       delay={100}
-                    />
-                    <StatCard
-                      value={readRate}
-                      suffix="%"
-                      label="阅读率"
-                      icon={<BarChart3 className="h-5 w-5" />}
-                      color={readRate >= 50 ? 'green' : readRate >= 20 ? 'orange' : 'blue'}
-                      delay={150}
                     />
                   </div>
                 </AntCard>
@@ -672,10 +806,8 @@ export default function ReportDetailPage() {
                     </div>
                   }
                 >
-                  <div className="prose prose-sm max-w-none dark:prose-invert">
-                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed bg-transparent p-0 text-foreground/90">
-                      {report.content || '暂无内容'}
-                    </pre>
+                  <div className="max-w-none">
+                    <MarkdownContent content={report.content || '暂无内容'} />
                   </div>
                 </AntCard>
               </Fade>

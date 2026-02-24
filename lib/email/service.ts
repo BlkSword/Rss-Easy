@@ -242,7 +242,6 @@ export class EmailService {
       content: string | null;
       highlights: string[];
       totalEntries: number;
-      totalRead: number;
       totalFeeds: number;
     },
     pdfAttachment?: EmailAttachment
@@ -460,7 +459,6 @@ export class EmailService {
       content: string | null;
       highlights: string[];
       totalEntries: number;
-      totalRead: number;
       totalFeeds: number;
     }
   ): string {
@@ -544,11 +542,7 @@ export class EmailService {
       <div class="stats">
         <div class="stat-item">
           <div class="stat-value">${report.totalEntries}</div>
-          <div class="stat-label">新增文章</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-value">${report.totalRead}</div>
-          <div class="stat-label">已阅读</div>
+          <div class="stat-label">收录文章</div>
         </div>
         <div class="stat-item">
           <div class="stat-value">${report.totalFeeds}</div>

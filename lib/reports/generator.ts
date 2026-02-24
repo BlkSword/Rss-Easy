@@ -28,7 +28,6 @@ export interface ReportGenerateOptions {
 
 export interface ReportStats {
   totalEntries: number;
-  totalRead: number;
   totalFeeds: number;
   categories: Array<{ name: string; count: number }>;
   topTopics: Array<{ topic: string; count: number }>;
@@ -117,7 +116,6 @@ export class ReportGenerator {
         highlights,
         topics,
         totalEntries: stats.totalEntries,
-        totalRead: stats.totalRead,
         totalFeeds: stats.totalFeeds,
         format: 'markdown',
         content,
@@ -219,7 +217,6 @@ export class ReportGenerator {
         highlights,
         topics,
         totalEntries: stats.totalEntries,
-        totalRead: stats.totalRead,
         totalFeeds: stats.totalFeeds,
         format: 'markdown',
         content,
@@ -268,7 +265,6 @@ export class ReportGenerator {
     });
 
     const totalEntries = entries.length;
-    const totalRead = entries.filter((e) => e.isRead).length;
 
     // 获取订阅源数量
     const feeds = await db.feed.findMany({
@@ -308,7 +304,6 @@ export class ReportGenerator {
 
     return {
       totalEntries,
-      totalRead,
       totalFeeds,
       categories,
       topTopics,
@@ -520,9 +515,6 @@ export class ReportGenerator {
       const topCategory = sortedCategories[0];
       content += `3. **重点关注**：${topCategory[0]} 领域文章最多（${topCategory[1].length} 篇），建议优先关注。\n`;
     }
-
-    const readRate = stats.totalEntries > 0 ? Math.round((stats.totalRead / stats.totalEntries) * 100) : 0;
-    content += `4. **阅读进度**：已阅读 ${stats.totalRead} 篇（${readRate}%），继续保持阅读习惯。\n`;
 
     const summary = `${reportType === 'daily' ? '今日' : '本周'}共收录 ${stats.totalEntries} 篇文章，涵盖 ${sortedCategories.length} 个领域。热门话题：${stats.topTopics.slice(0, 3).map(t => t.topic).join('、')}。`;
 
@@ -763,7 +755,6 @@ export class ReportGenerator {
         topics: report.topics,
         stats: {
           totalEntries: report.totalEntries,
-          totalRead: report.totalRead,
           totalFeeds: report.totalFeeds,
         },
         content: report.content,
@@ -872,7 +863,6 @@ export class ReportGenerator {
         content: report.content,
         highlights: report.highlights as string[],
         totalEntries: report.totalEntries,
-        totalRead: report.totalRead,
         totalFeeds: report.totalFeeds,
       },
       pdfAttachment

@@ -36,36 +36,12 @@ services:
       timeout: 5s
       retries: 5
 
-  # 数据库初始化服务
-  init:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: rss-easy-init
-    user: root
-    environment:
-      DATABASE_URL: postgresql://rss_easy:rss_easy_password@postgres:5432/rss_easy
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: >
-      sh -c "
-        echo 'Running Prisma generate...' &&
-        npx prisma@6.19.2 generate &&
-        echo 'Running database migrations...' &&
-        npx prisma@6.19.2 db push --accept-data-loss &&
-        echo 'Seeding initial data...' &&
-        npx tsx prisma/seed.ts &&
-        echo 'Initialization complete!'
-      "
-    volumes:
-      - ./prisma:/app/prisma
-
-  # 应用服务
+  # 应用服务（构建镜像）
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    image: rss-easy-app:latest
     container_name: rss-easy-app
     ports:
       - "3000:3000"
@@ -95,6 +71,33 @@ services:
       init:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  # 数据库初始化服务（共享构建配置，Docker Compose 会自动缓存）
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rss-easy-app:latest
+    container_name: rss-easy-init
+    user: root
+    environment:
+      DATABASE_URL: postgresql://rss_easy:rss_easy_password@postgres:5432/rss_easy
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Running Prisma generate...' &&
+        npx prisma@6.19.2 generate &&
+        echo 'Running database migrations...' &&
+        npx prisma@6.19.2 db push --accept-data-loss &&
+        echo 'Seeding initial data...' &&
+        npx tsx prisma/seed.ts &&
+        echo 'Initialization complete!'
+      "
+    volumes:
+      - ./prisma:/app/prisma
+    restart: "no"
 
 volumes:
   postgres_data:

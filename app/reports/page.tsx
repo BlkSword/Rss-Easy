@@ -578,16 +578,6 @@ function ReportCard({
                       <FileText className="h-3.5 w-3.5" />
                       {report.totalEntries} 篇文章
                     </span>
-                    <span className="flex items-center gap-1">
-                      <BookOpen className="h-3.5 w-3.5" />
-                      已读 {report.totalRead} 篇
-                    </span>
-                    {report.totalEntries > 0 && (
-                      <span className="flex items-center gap-1">
-                        <BarChart3 className="h-3.5 w-3.5" />
-                        阅读率 {Math.round((report.totalRead / report.totalEntries) * 100)}%
-                      </span>
-                    )}
                   </div>
                 </div>
               </div>

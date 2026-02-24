@@ -386,7 +386,6 @@ model Report {
 
   // 统计数据
   totalEntries    Int       @default(0) @map("total_entries")
-  totalRead       Int       @default(0) @map("total_read")
   totalFeeds      Int       @default(0) @map("total_feeds")
 
   // 报告格式

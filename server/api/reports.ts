@@ -629,7 +629,6 @@ export const reportsRouter = router({
           content: report.content,
           highlights: report.highlights,
           totalEntries: report.totalEntries,
-          totalRead: report.totalRead,
           totalFeeds: report.totalFeeds,
         },
         pdfAttachment

@@ -11,9 +11,13 @@ RUN apk add --no-cache dumb-init
 FROM base AS deps
 WORKDIR /app
 
+# 使用淘宝 npm 镜像加速（国内环境）
+RUN npm config set registry https://registry.npmmirror.com
+
 # 安装 Prisma CLI (匹配项目版本)
 RUN npm install -g prisma@6.19.2
 
+# 先复制 package.json 以利用 Docker 缓存层
 COPY package*.json ./
 RUN npm ci --production=false
 

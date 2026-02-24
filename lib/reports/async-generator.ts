@@ -124,7 +124,6 @@ export class AsyncReportGenerator {
             status: 'pending',
           })) as any,
           totalEntries: 0,
-          totalRead: 0,
           totalFeeds: 0,
           format: 'markdown',
           aiGenerated,
@@ -175,7 +174,6 @@ export class AsyncReportGenerator {
         where: { id: reportId },
         data: {
           totalEntries: stats.totalEntries,
-          totalRead: stats.totalRead,
           totalFeeds: stats.totalFeeds,
           progress: 20,
         },
@@ -412,7 +410,6 @@ export class AsyncReportGenerator {
 
     return {
       totalEntries: entries.length,
-      totalRead: entries.filter(e => e.isRead).length,
       totalFeeds: new Set(entries.map(e => e.feedId)).size,
       categories: Object.entries(categories).map(([name, count]) => ({ name, count })),
     };
@@ -517,8 +514,6 @@ export class AsyncReportGenerator {
 
 ## 统计数据
 - 总文章数：${stats.totalEntries}
-- 已读文章：${stats.totalRead}
-- 阅读率：${stats.totalEntries > 0 ? Math.round((stats.totalRead / stats.totalEntries) * 100) : 0}%
 
 ## 文章列表
 ${entriesText}
@@ -573,8 +568,6 @@ ${entriesText}
 
 ## 概览
 - 总文章数：${stats.totalEntries}
-- 已读文章：${stats.totalRead}
-- 阅读率：${stats.totalEntries > 0 ? Math.round((stats.totalRead / stats.totalEntries) * 100) : 0}%
 
 ## 精选文章
 ${entries.slice(0, 5).map((e, i) => `${i + 1}. ${e.title}`).join('\n')}
@@ -582,7 +575,7 @@ ${entries.slice(0, 5).map((e, i) => `${i + 1}. ${e.title}`).join('\n')}
 
     return {
       content,
-      summary: `共阅读了 ${stats.totalEntries} 篇文章，其中 ${stats.totalRead} 篇已读。`,
+      summary: `共收录 ${stats.totalEntries} 篇文章。`,
       highlights: entries.slice(0, 3).map((e: any) => e.title),
       topics: { topTopics: stats.categories?.slice(0, 3).map((c: any) => ({ topic: c.name, count: c.count })) || [] },
     };
