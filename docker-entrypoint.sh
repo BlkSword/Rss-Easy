@@ -23,8 +23,8 @@ if [ -z "$CRON_SECRET" ]; then
 fi
 
 # 设置默认值
-: ${NEXTAUTH_URL:="http://localhost:3000"}
-: ${APP_URL:="http://localhost:3000"}
+: ${NEXTAUTH_URL:="http://localhost:8915"}
+: ${APP_URL:="http://localhost:8915"}
 : ${NODE_ENV:="production"}
 : ${AI_PROVIDER:="openai"}
 : ${AI_MODEL:="gpt-4o"}

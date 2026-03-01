@@ -203,8 +203,8 @@ echo ✓ 部署完成！
 echo ================================
 echo.
 echo 访问信息：
-echo   应用地址: http://localhost:3000
-echo   健康检查: http://localhost:3000/api/health
+echo   应用地址: http://localhost:8915
+echo   健康检查: http://localhost:8915/api/health
 echo.
 echo 常用命令：
 echo   查看日志: docker-compose -f %COMPOSE_FILE% logs -f
@@ -218,7 +218,7 @@ echo   运行备份: docker exec rss-easy-backup sh /scripts/backup.sh
 echo   查看备份: dir backups \
 echo.
 echo AI 分析管理：
-echo   查看队列状态: curl http://localhost:3000/api/scheduler/status
-echo   手动触发: curl -X POST http://localhost:3000/api/scheduler/trigger -H "Content-Type: application/json" -d "{\"type\":\"both\"}"
+echo   查看队列状态: curl http://localhost:8915/api/scheduler/status
+echo   手动触发: curl -X POST http://localhost:8915/api/scheduler/trigger -H "Content-Type: application/json" -d "{\"type\":\"both\"}"
 echo.
 pause

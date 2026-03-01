@@ -126,7 +126,7 @@ services:
       dockerfile: Dockerfile
     container_name: rss-easy-app
     ports:
-      - "3000:3000"
+      - "8915:3000"
     environment:
       # 数据库配置
       DATABASE_URL: postgresql://${POSTGRES_USER:-rss_easy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_easy}?connection_limit=10&pool_timeout=20

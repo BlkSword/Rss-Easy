@@ -161,7 +161,7 @@ LOG_LEVEL=info
   ```bash
   # 测试登录速率限制（10 次/10 分钟）
   for i in {1..12}; do
-    curl -X POST http://localhost:3000/api/auth/login \
+    curl -X POST http://localhost:8915/api/auth/login \
       -H "Content-Type: application/json" \
       -d '{"email":"test@test.com","password":"wrong"}'
   done
@@ -174,7 +174,7 @@ LOG_LEVEL=info
 
 - [ ] **安全头部**
   ```bash
-  curl -I http://localhost:3000
+  curl -I http://localhost:8915
   # 应包含：
   # - Strict-Transport-Security
   # - X-Frame-Options
@@ -185,19 +185,19 @@ LOG_LEVEL=info
 - [ ] **CORS 配置**
   ```bash
   curl -H "Origin: https://evil.com" \
-       -X OPTIONS http://localhost:3000/api/test
+       -X OPTIONS http://localhost:8915/api/test
   # 应该被拒绝或返回正确的 CORS 头部
   ```
 
 - [ ] **调度器 API 认证**
   ```bash
   # 无认证应该失败
-  curl http://localhost:3000/api/scheduler/status
+  curl http://localhost:8915/api/scheduler/status
   # 应返回 401
 
   # 使用 CRON_SECRET 应该成功
   curl -H "Authorization: Bearer $CRON_SECRET" \
-       http://localhost:3000/api/scheduler/status
+       http://localhost:8915/api/scheduler/status
   # 应返回 200
   ```
 
@@ -367,7 +367,7 @@ docker exec -i rss-easy-db psql \
 
 ```bash
 # 检查应用健康
-curl http://localhost:3000/api/health
+curl http://localhost:8915/api/health
 
 # 响应示例：
 {
@@ -456,10 +456,10 @@ docker-compose -f docker-compose.prod.yml up -d
 **解决方案**:
 ```bash
 # 检查队列状态
-curl http://localhost:3000/api/scheduler/status
+curl http://localhost:8915/api/scheduler/status
 
 # 手动触发分析
-curl -X POST http://localhost:3000/api/scheduler/trigger \
+curl -X POST http://localhost:8915/api/scheduler/trigger \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"type":"both"}'

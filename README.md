@@ -115,7 +115,7 @@ docker compose logs -f
 docker compose down
 ```
 
-访问 http://localhost:3000 即可使用。
+访问 http://localhost:8915 即可使用。
 
 **零配置启动**：无需修改任何配置，首次启动自动生成密钥，AI 配置可在应用设置界面中完成。
 
@@ -316,10 +316,10 @@ docker-compose logs -f deep-analysis-worker
 
 ```bash
 # 应用健康检查
-curl http://localhost:3000/api/health
+curl http://localhost:8915/api/health
 
 # 队列状态检查
-curl http://localhost:3000/api/scheduler/status
+curl http://localhost:8915/api/scheduler/status
 ```
 
 ### 数据库备份与恢复
