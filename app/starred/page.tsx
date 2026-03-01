@@ -1,17 +1,36 @@
 /**
- * 星标文章页面 - 三栏布局
+ * 星标文章页面 - 三栏布局（优化版）
+ * 使用懒加载优化首屏加载速度
  */
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, Suspense } from 'react';
 import { Star } from 'lucide-react';
 import { trpc } from '@/lib/trpc/client';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { CompactEntryList, CompactEntryItem, CompactEntryEmpty } from '@/components/entries/compact-entry-list';
-import { ArticlePreviewPanel } from '@/components/entries/article-preview-panel';
+import { LazyArticlePreviewPanel } from '@/components/lazy';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+
+/** 预览面板加载骨架屏 */
+function PreviewSkeleton() {
+  return (
+    <div className="h-full flex flex-col">
+      <div className="p-4 border-b border-border/60 space-y-2">
+        <Skeleton className="h-6 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+      <div className="flex-1 p-4 space-y-3">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="h-4 w-full" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function StarredPage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -99,15 +118,17 @@ export default function StarredPage() {
           </div>
         </section>
 
-        {/* 右侧栏 - 文章预览 */}
+        {/* 右侧栏 - 文章预览（使用懒加载） */}
         <aside className="flex-1 min-w-0 bg-background/10 hidden md:block">
-          <ArticlePreviewPanel
-            entryId={selectedEntryId}
-            onPrevious={handlePrevious}
-            onNext={handleNext}
-            hasPrevious={selectedIndex > 0}
-            hasNext={selectedIndex < displayEntries.length - 1}
-          />
+          <Suspense fallback={<PreviewSkeleton />}>
+            <LazyArticlePreviewPanel
+              entryId={selectedEntryId}
+              onPrevious={handlePrevious}
+              onNext={handleNext}
+              hasPrevious={selectedIndex > 0}
+              hasNext={selectedIndex < displayEntries.length - 1}
+            />
+          </Suspense>
         </aside>
       </div>
     </div>

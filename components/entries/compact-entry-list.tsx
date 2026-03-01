@@ -3,9 +3,14 @@
 /**
  * 紧凑型文章列表组件 - 主流RSS阅读器风格
  * 高密度信息展示，适合三栏布局
+ *
+ * 性能优化：
+ * - 使用 memo 避免不必要的重渲染
+ * - 使用 useCallback 缓存事件处理函数
+ * - 使用 useMemo 缓存计算结果
  */
 
-import { useState } from 'react';
+import { useState, memo, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { Star, ExternalLink, Bookmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,7 +30,26 @@ interface CompactEntryProps {
   onClick?: () => void;
 }
 
-export function CompactEntryItem({
+/** 时间格式化函数（提取到组件外部避免重复创建） */
+const formatTime = (date?: Date | null): string => {
+  if (!date) return '';
+  const now = new Date();
+  const diff = now.getTime() - new Date(date).getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+
+  if (days > 7) {
+    return new Date(date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  }
+  if (days > 0) return `${days}天前`;
+  if (hours > 0) return `${hours}h`;
+  const minutes = Math.floor(diff / (1000 * 60));
+  if (minutes > 0) return `${minutes}m`;
+  return '刚刚';
+};
+
+/** 使用 memo 优化 CompactEntryItem 组件 */
+export const CompactEntryItem = memo(function CompactEntryItem({
   id,
   title,
   url,
@@ -50,24 +74,11 @@ export function CompactEntryItem({
   const displayIsStarred = optimisticStarred ?? isStarred;
   const displayIsRead = optimisticRead ?? isRead;
 
-  const formatTime = (date?: Date | null) => {
-    if (!date) return '';
-    const now = new Date();
-    const diff = now.getTime() - new Date(date).getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
+  // 使用 useMemo 缓存格式化后的时间
+  const formattedTime = useMemo(() => formatTime(publishedAt), [publishedAt]);
 
-    if (days > 7) {
-      return new Date(date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-    }
-    if (days > 0) return `${days}天前`;
-    if (hours > 0) return `${hours}h`;
-    const minutes = Math.floor(diff / (1000 * 60));
-    if (minutes > 0) return `${minutes}m`;
-    return '刚刚';
-  };
-
-  const handleToggleStar = async (e: React.MouseEvent) => {
+  // 使用 useCallback 缓存事件处理函数
+  const handleToggleStar = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     const newStarredState = !displayIsStarred;
 
@@ -85,9 +96,9 @@ export function CompactEntryItem({
       setOptimisticStarred(null);
       addToast({ type: 'error', title: '操作失败' });
     }
-  };
+  }, [displayIsStarred, toggleStar, id, addToast]);
 
-  const handleToggleRead = async (e: React.MouseEvent) => {
+  const handleToggleRead = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     const newReadState = !displayIsRead;
 
@@ -105,7 +116,19 @@ export function CompactEntryItem({
       setOptimisticRead(null);
       addToast({ type: 'error', title: '操作失败' });
     }
-  };
+  }, [displayIsRead, toggleRead, id, addToast]);
+
+  const handleClick = useCallback(() => {
+    onClick?.();
+  }, [onClick]);
+
+  const handleImageError = useCallback(() => {
+    setImageError(true);
+  }, []);
+
+  const handleLinkClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
 
   return (
     <div
@@ -115,7 +138,7 @@ export function CompactEntryItem({
         isActive && 'bg-primary/10 border-l-2 border-l-primary',
         !isActive && 'border-l-2 border-l-transparent'
       )}
-      onClick={onClick}
+      onClick={handleClick}
     >
       {/* Feed图标 */}
       <div className="flex-shrink-0 mt-0.5">
@@ -124,7 +147,9 @@ export function CompactEntryItem({
             src={feedIconUrl}
             alt={feedTitle}
             className="w-5 h-5 rounded-sm object-cover"
-            onError={() => setImageError(true)}
+            onError={handleImageError}
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="w-5 h-5 rounded-sm bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
@@ -152,7 +177,7 @@ export function CompactEntryItem({
             <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
               <span className="truncate max-w-[120px]">{feedTitle}</span>
               <span>·</span>
-              <span>{formatTime(publishedAt)}</span>
+              <span>{formattedTime}</span>
             </div>
           </div>
 
@@ -186,7 +211,7 @@ export function CompactEntryItem({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
+              onClick={handleLinkClick}
               className="p-1.5 rounded-md hover:bg-muted transition-colors"
               title="在新窗口打开"
             >
@@ -204,7 +229,16 @@ export function CompactEntryItem({
       )}
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // 自定义比较函数：只在关键属性变化时重渲染
+  return (
+    prevProps.id === nextProps.id &&
+    prevProps.isRead === nextProps.isRead &&
+    prevProps.isStarred === nextProps.isStarred &&
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.title === nextProps.title
+  );
+});
 
 /**
  * 紧凑型文章列表容器

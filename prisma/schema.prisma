@@ -255,11 +255,15 @@ model Entry {
   @@index([isStarred])
   @@index([contentHash])
   // 复合索引优化常用查询
-  @@index([feedId, publishedAt])        // 按订阅源查询文章列表
-  @@index([feedId, isRead])             // 按订阅源查询未读文章
-  @@index([createdAt])                  // 按创建时间排序
-  @@index([aiImportanceScore])          // 按重要度排序
-  @@index([aiCategory])                 // 按AI分类筛选
+  @@index([feedId, publishedAt(sort: Desc)])        // 按订阅源查询文章列表（时间倒序）
+  @@index([feedId, isRead, publishedAt(sort: Desc)]) // 按订阅源查询未读文章（优化）
+  @@index([createdAt(sort: Desc)])                  // 按创建时间排序
+  @@index([aiImportanceScore(sort: Desc)])          // 按重要度排序
+  @@index([aiCategory])                             // 按AI分类筛选
+  @@index([isArchived, createdAt(sort: Desc)])      // 归档文章查询
+  @@index([isStarred, createdAt(sort: Desc)])       // 星标文章查询
+  @@index([aiPrelimStatus, aiPrelimValue(sort: Desc)]) // 初评文章查询优化
+  @@index([aiPrelimAnalyzedAt])                     // 初评时间索引
   @@map("entries")
 }
 
@@ -354,6 +358,8 @@ model AIAnalysisQueue {
   @@index([entryId])
   @@index([status])
   @@index([nextRetryAt])
+  @@index([status, priority(sort: Desc), createdAt(sort: Asc)]) // 队列处理优化
+  @@index([status, nextRetryAt]) // 重试队列优化
   @@map("ai_analysis_queue")
 }
 

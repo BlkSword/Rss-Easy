@@ -61,15 +61,27 @@ export function TRPCProvider({
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 1000 * 30, // 30秒
-        refetchOnWindowFocus: false,
+        // 🆕 优化缓存策略
+        staleTime: 1000 * 60 * 2,      // 2分钟内数据新鲜（从30秒增加）
+        gcTime: 1000 * 60 * 15,        // 15分钟后清理缓存（原 gcTime）
+        refetchOnWindowFocus: false,   // 窗口聚焦不重新请求
+        refetchOnReconnect: true,      // 网络重连时重新请求
         retry: (failureCount, error) => {
           // 如果是 UNAUTHORIZED 错误，不重试
           if (error && (error as any).code === 'UNAUTHORIZED') {
             return false;
           }
-          return failureCount < 3;
+          // 🆕 减少重试次数（从3次减少到1次）
+          return failureCount < 1;
         },
+        // 🆕 减少不必要的重新请求
+        refetchOnMount: true,          // 挂载时检查是否过期
+        // 🆕 结构化共享（减少重复渲染）
+        structuralSharing: true,
+      },
+      mutations: {
+        // 🆕 mutation 不重试
+        retry: 0,
       },
     },
   }));
