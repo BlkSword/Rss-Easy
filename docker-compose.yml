@@ -44,14 +44,14 @@ services:
     image: rss-easy-app:latest
     container_name: rss-easy-app
     ports:
-      - "3000:3000"
+      - "8915:3000"
     environment:
       # 数据库（容器内部通信）
       DATABASE_URL: postgresql://rss_easy:rss_easy_password@postgres:5432/rss_easy
       REDIS_URL: redis://redis:6379
       # 应用 URL（可按需修改）
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:8915}
+      APP_URL: ${APP_URL:-http://localhost:8915}
       # Cookie 安全设置（HTTP 环境设为 false，HTTPS 环境设为 true）
       SECURE_COOKIE: ${SECURE_COOKIE:-false}
       # AI 配置（启动后在界面中配置，此处仅设默认值）
