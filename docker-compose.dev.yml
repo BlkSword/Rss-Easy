@@ -1,6 +1,10 @@
 # =====================================================
 # Rss-Easy 开发环境配置
-# 支持热重载和代码同步
+# 使用方式：docker-compose -f docker-compose.dev.yml up -d
+# 特点：
+# 1. 代码热重载（挂载本地目录）
+# 2. 首次构建后启动快
+# 3. 使用 Turbopack 加速开发
 # =====================================================
 
 services:
@@ -38,9 +42,11 @@ services:
 
   # 开发模式应用 - 支持热重载
   app:
-    image: node:20-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: rss-easy-dev:latest
     container_name: rss-easy-app-dev
-    working_dir: /app
     ports:
       - "3000:3000"
     environment:
@@ -58,11 +64,18 @@ services:
       CUSTOM_API_KEY: ${CUSTOM_API_KEY}
       CUSTOM_API_MODEL: ${CUSTOM_API_MODEL}
       NODE_ENV: development
-    # 挂载源代码实现热重载
     volumes:
-      - ./:/app
-      - node_modules_dev:/app/node_modules
-      - /app/.next  # 防止 .next 目录被挂载覆盖
+      # 挂载源代码实现热重载
+      - ./app:/app/app
+      - ./components:/app/components
+      - ./lib:/app/lib
+      - ./hooks:/app/hooks
+      - ./server:/app/server
+      - ./prisma:/app/prisma
+      - ./public:/app/public
+      # 保留容器内的 node_modules 和 .next
+      - /app/node_modules
+      - /app/.next
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,14 +83,11 @@ services:
         condition: service_healthy
     command: >
       sh -c "
-        npm install &&
-        npx prisma@6.19.2 generate &&
-        npx prisma@6.19.2 db push --accept-data-loss &&
-        npm run dev
+        pnpm exec prisma db push --accept-data-loss &&
+        pnpm dev
       "
     restart: unless-stopped
 
 volumes:
   postgres_data_dev:
   redis_data_dev:
-  node_modules_dev:

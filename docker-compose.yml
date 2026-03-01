@@ -1,6 +1,7 @@
 # =====================================================
 # Rss-Easy Docker Compose 配置
 # 零配置启动：直接 docker-compose up -d 即可
+# 启用 BuildKit 加速：DOCKER_BUILDKIT=1 docker-compose build
 # =====================================================
 
 services:
@@ -41,6 +42,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # 启用 BuildKit 缓存
+      cache_from:
+        - type=local,src=/tmp/docker-cache
+      cache_to:
+        type=local,dest=/tmp/docker-cache
     image: rss-easy-app:latest
     container_name: rss-easy-app
     ports:
@@ -72,11 +78,8 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # 数据库初始化服务（共享构建配置，Docker Compose 会自动缓存）
+  # 数据库初始化服务（使用预构建镜像，不再重新构建）
   init:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: rss-easy-app:latest
     container_name: rss-easy-init
     user: root
@@ -88,15 +91,13 @@ services:
     command: >
       sh -c "
         echo 'Running Prisma generate...' &&
-        npx prisma@6.19.2 generate &&
+        pnpm exec prisma generate &&
         echo 'Running database migrations...' &&
-        npx prisma@6.19.2 db push --accept-data-loss &&
+        pnpm exec prisma db push --accept-data-loss &&
         echo 'Seeding initial data...' &&
-        npx tsx prisma/seed.ts &&
+        pnpm exec tsx prisma/seed.ts &&
         echo 'Initialization complete!'
       "
-    volumes:
-      - ./prisma:/app/prisma
     restart: "no"
 
 volumes:

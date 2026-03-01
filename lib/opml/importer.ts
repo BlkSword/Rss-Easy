@@ -7,7 +7,7 @@
  * - 并行智能发现，提升导入速度
  * - SSRF 防护
  * - 完整的 OPML 解析（支持分类）
- * - 进度追踪支持
+ * - 进度追踪支持（细粒度实时更新）
  * - 日志记录
  */
 
@@ -36,6 +36,12 @@ export interface ImportProgress {
     skipped: number;
     failed: number;
   };
+  /** 发现阶段统计 */
+  discoveredCount?: number;
+  /** 开始时间 */
+  startTime?: number;
+  /** 最后更新时间 */
+  lastUpdate?: number;
 }
 
 export interface ImportResult {
@@ -68,14 +74,27 @@ const importProgressStore = new Map<string, ImportProgress>();
  * 获取导入进度
  */
 export function getImportProgress(userId: string): ImportProgress | null {
-  return importProgressStore.get(userId) || null;
+  const progress = importProgressStore.get(userId);
+  if (!progress) return null;
+
+  // 返回副本，避免外部修改
+  return {
+    ...progress,
+    stats: { ...progress.stats },
+  };
 }
 
 /**
- * 设置导入进度
+ * 设置导入进度（带时间戳）
  */
 function setImportProgress(userId: string, progress: ImportProgress) {
-  importProgressStore.set(userId, progress);
+  const now = Date.now();
+  importProgressStore.set(userId, {
+    ...progress,
+    lastUpdate: now,
+    startTime: progress.startTime || now,
+    stats: { ...progress.stats },
+  });
 }
 
 /**
@@ -179,15 +198,18 @@ async function discoverFeedInfo(url: string): Promise<{
 }
 
 /**
- * 批量并行智能发现
+ * 批量并行智能发现（带实时进度更新）
  */
 async function batchDiscoverFeedInfo(
   feeds: ImportFeedItem[],
-  concurrency: number = 5
+  concurrency: number,
+  userId: string,
+  onProgress?: (progress: ImportProgress) => void
 ): Promise<Map<string, Awaited<ReturnType<typeof discoverFeedInfo>>>> {
   const results = new Map<string, Awaited<ReturnType<typeof discoverFeedInfo>>>();
+  let discoveredCount = 0;
 
-  // 分批并行处理
+  // 分批并行处理，每批完成后更新进度
   for (let i = 0; i < feeds.length; i += concurrency) {
     const batch = feeds.slice(i, i + concurrency);
     const batchResults = await Promise.all(
@@ -204,6 +226,20 @@ async function batchDiscoverFeedInfo(
     for (const { url, info } of batchResults) {
       results.set(url, info);
     }
+
+    // 更新进度
+    discoveredCount = Math.min(i + concurrency, feeds.length);
+    const progress: ImportProgress = {
+      phase: 'discovering',
+      current: discoveredCount,
+      total: feeds.length,
+      message: `正在智能识别: ${discoveredCount}/${feeds.length}`,
+      stats: { imported: 0, skipped: 0, failed: 0 },
+      discoveredCount,
+    };
+
+    setImportProgress(userId, progress);
+    onProgress?.(progress);
   }
 
   return results;
@@ -351,50 +387,35 @@ export async function smartImportOPML(
       existingCategories.map(c => [c.name.toLowerCase(), c.id])
     );
 
-    // 阶段 2：并行智能发现
+    // 阶段 2：并行智能发现（带实时进度）
     let discoveredInfos: Map<string, Awaited<ReturnType<typeof discoverFeedInfo>>> = new Map();
 
     if (!skipDiscovery) {
-      setImportProgress(userId, {
-        phase: 'discovering',
-        current: 0,
-        total: feeds.length,
-        message: '正在智能识别订阅源信息...',
-        stats: { imported: 0, skipped: 0, failed: 0 },
-      });
-      onProgress?.({
-        phase: 'discovering',
-        current: 0,
-        total: feeds.length,
-        message: '正在智能识别订阅源信息...',
-        stats: { imported: 0, skipped: 0, failed: 0 },
-      });
-
-      discoveredInfos = await batchDiscoverFeedInfo(feeds, concurrency);
+      discoveredInfos = await batchDiscoverFeedInfo(feeds, concurrency, userId, onProgress);
     }
 
-    // 阶段 3：逐个创建订阅源
+    // 阶段 3：逐个创建订阅源（带实时进度）
     const importedFeedIds: string[] = [];
+
+    // 辅助函数：更新创建进度
+    const updateCreatingProgress = (feed: ImportFeedItem, index: number) => {
+      const progress: ImportProgress = {
+        phase: 'creating',
+        current: index + 1,
+        total: feeds.length,
+        currentItem: feed.title || feed.url,
+        message: `正在导入: ${feed.title || new URL(feed.url).hostname}`,
+        stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
+      };
+      setImportProgress(userId, progress);
+      onProgress?.(progress);
+    };
 
     for (let i = 0; i < feeds.length; i++) {
       const feed = feeds[i];
 
-      setImportProgress(userId, {
-        phase: 'creating',
-        current: i + 1,
-        total: feeds.length,
-        currentItem: feed.title || feed.url,
-        message: `正在导入: ${feed.title || new URL(feed.url).hostname}`,
-        stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
-      });
-      onProgress?.({
-        phase: 'creating',
-        current: i + 1,
-        total: feeds.length,
-        currentItem: feed.title || feed.url,
-        message: `正在导入: ${feed.title || new URL(feed.url).hostname}`,
-        stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
-      });
+      // 开始处理前更新进度（显示正在处理哪个）
+      updateCreatingProgress(feed, i);
 
       try {
         // SSRF 防护
@@ -408,6 +429,8 @@ export async function smartImportOPML(
             status: 'failed',
             message: `URL 不安全`,
           });
+          // 更新统计
+          updateCreatingProgress(feed, i);
           continue;
         }
 
@@ -425,6 +448,8 @@ export async function smartImportOPML(
             status: 'skipped',
             message: '订阅源已存在',
           });
+          // 更新统计
+          updateCreatingProgress(feed, i);
           continue;
         }
 
@@ -481,6 +506,9 @@ export async function smartImportOPML(
           status: 'imported',
         });
 
+        // 更新统计（成功）
+        updateCreatingProgress(feed, i);
+
       } catch (err) {
         result.failed++;
         const errorMsg = err instanceof Error ? err.message : '导入失败';
@@ -491,6 +519,9 @@ export async function smartImportOPML(
           status: 'failed',
           message: errorMsg,
         });
+
+        // 更新统计（失败）
+        updateCreatingProgress(feed, i);
       }
     }
 

@@ -9,6 +9,8 @@ import { Queue, Worker, Job, JobsOptions } from 'bullmq';
 import { db } from '@/lib/db';
 import { createPreliminaryEvaluator } from '@/lib/ai/preliminary-evaluator';
 import type { PreliminaryEvaluation } from '@/lib/ai/preliminary-evaluator';
+import type { UserAIConfig } from '@/lib/ai/client';
+import { safeDecrypt } from '@/lib/crypto/encryption';
 
 // =====================================================
 // Redis 配置
@@ -87,7 +89,7 @@ export function createPreliminaryWorker(): Worker<PreliminaryJobData, Preliminar
   return new Worker<PreliminaryJobData, PreliminaryJobResult>(
     'preliminary-analysis',
     async (job: Job<PreliminaryJobData>) => {
-      const { entryId, forceReanalyze } = job.data;
+      const { entryId, forceReanalyze, userId } = job.data;
 
       job.updateProgress(10);
 
@@ -122,10 +124,35 @@ export function createPreliminaryWorker(): Worker<PreliminaryJobData, Preliminar
         };
       }
 
+      job.updateProgress(20);
+
+      // 2. 获取用户的 AI 配置（如果有）
+      let userAIConfig: UserAIConfig | undefined;
+      if (userId) {
+        const user = await db.user.findUnique({
+          where: { id: userId },
+          select: { aiConfig: true },
+        });
+
+        if (user?.aiConfig) {
+          const dbConfig = user.aiConfig as any;
+          userAIConfig = {
+            provider: dbConfig.provider,
+            model: dbConfig.model,
+            baseURL: dbConfig.baseURL,
+          };
+
+          // 解密 API 密钥
+          if (dbConfig.apiKey) {
+            userAIConfig.apiKey = safeDecrypt(dbConfig.apiKey);
+          }
+        }
+      }
+
       job.updateProgress(30);
 
-      // 2. 执行初评
-      const evaluator = createPreliminaryEvaluator();
+      // 3. 执行初评（使用用户配置或环境变量）
+      const evaluator = createPreliminaryEvaluator(userAIConfig);
       const evaluation = await evaluator.evaluate({
         title: entry.title,
         content: entry.content,
@@ -135,7 +162,7 @@ export function createPreliminaryWorker(): Worker<PreliminaryJobData, Preliminar
 
       job.updateProgress(70);
 
-      // 3. 更新数据库
+      // 4. 更新数据库
       await db.entry.update({
         where: { id: entryId },
         data: {
@@ -152,7 +179,7 @@ export function createPreliminaryWorker(): Worker<PreliminaryJobData, Preliminar
 
       job.updateProgress(90);
 
-      // 4. 如果通过初评，添加到深度分析队列
+      // 5. 如果通过初评，添加到深度分析队列
       let queuedForDeepAnalysis = false;
       if (!evaluation.ignore) {
         try {

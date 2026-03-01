@@ -102,14 +102,23 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
   const { mutate: clearProgress } = trpc.settings.clearImportProgress.useMutation();
   const utils = trpc.useUtils();
 
-  // 轮询进度
+  // 轮询进度（优化版：更及时的更新）
   const startProgressPolling = useCallback(() => {
     // 清除之前的轮询
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
     }
 
-    // 每 500ms 轮询一次
+    // 立即获取一次进度
+    utils.settings.getImportProgress.fetch().then(result => {
+      if (result) {
+        setProgress(result);
+      }
+    }).catch(err => {
+      console.error('Failed to fetch initial progress:', err);
+    });
+
+    // 每 300ms 轮询一次（更频繁）
     progressIntervalRef.current = setInterval(async () => {
       try {
         const result = await utils.settings.getImportProgress.fetch();
@@ -127,7 +136,7 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
       } catch (err) {
         console.error('Failed to fetch progress:', err);
       }
-    }, 500);
+    }, 300);
   }, [utils]);
 
   // 停止轮询

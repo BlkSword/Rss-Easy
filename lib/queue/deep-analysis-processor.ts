@@ -6,7 +6,8 @@
 
 import { Queue, Worker, Job } from 'bullmq';
 import { db } from '@/lib/db';
-import { getDefaultAIService } from '@/lib/ai/client';
+import { getDefaultAIService, UserAIConfig } from '@/lib/ai/client';
+import { safeDecrypt } from '@/lib/crypto/encryption';
 import { SegmentedAnalyzer } from '@/lib/ai/analysis/segmented-analyzer';
 import { ReflectionEngine } from '@/lib/ai/analysis/reflection-engine';
 import { PersonalScorer } from '@/lib/ai/scoring/personal-scorer';
@@ -110,12 +111,34 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
 
       job.updateProgress(20);
 
-      // 2. 获取用户偏好（如果有）
+      // 2. 获取用户偏好和 AI 配置（如果有）
       let userPrefs = null;
+      let userAIConfig: UserAIConfig | undefined;
       if (userId) {
+        // 获取用户偏好
         userPrefs = await db.userPreference.findUnique({
           where: { userId },
         });
+
+        // 获取用户的 AI 配置
+        const user = await db.user.findUnique({
+          where: { id: userId },
+          select: { aiConfig: true },
+        });
+
+        if (user?.aiConfig) {
+          const dbConfig = user.aiConfig as any;
+          userAIConfig = {
+            provider: dbConfig.provider,
+            model: dbConfig.model,
+            baseURL: dbConfig.baseURL,
+          };
+
+          // 解密 API 密钥
+          if (dbConfig.apiKey) {
+            userAIConfig.apiKey = safeDecrypt(dbConfig.apiKey);
+          }
+        }
       }
 
       job.updateProgress(30);
@@ -129,8 +152,8 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
 
       job.updateProgress(35);
 
-      // 4. 初始化 AI 服务
-      const aiService = getDefaultAIService();
+      // 4. 初始化 AI 服务（使用用户配置或环境变量）
+      const aiService = getDefaultAIService(userAIConfig);
       const llm = {
         chat: async (params: any) => {
           // 使用 AI 服务进行对话

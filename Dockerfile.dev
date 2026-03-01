@@ -1,0 +1,43 @@
+# =====================================================
+# Rss-Easy 开发环境 Dockerfile
+# 特点：
+# 1. 使用本地挂载，无需构建镜像
+# 2. 使用 Turbopack，启动快
+# 3. 支持热重载
+# =====================================================
+
+FROM node:20-alpine
+
+# 安装必要工具
+RUN apk add --no-cache dumb-init curl git && \
+    corepack enable && \
+    npm config set registry https://registry.npmmirror.com && \
+    corepack prepare pnpm@10.12.1 --activate && \
+    pnpm config set registry https://registry.npmmirror.com && \
+    pnpm config set store-dir /root/.pnpm-store
+
+ENV PNPM_HOME=/root/.local/share/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+
+# 先复制 package 文件，利用缓存
+COPY package.json pnpm-lock.yaml* ./
+COPY prisma ./prisma/
+
+# 安装依赖（使用 BuildKit 缓存）
+RUN --mount=type=cache,target=/root/.pnpm-store \
+    echo "ignore-scripts=false" >> ~/.npmrc && \
+    pnpm install --frozen-lockfile=false && \
+    pnpm exec prisma generate
+
+# 复制源代码（开发时会被挂载覆盖）
+COPY . .
+
+EXPOSE 3000
+ENV PORT=3000
+
+# 开发模式启动
+CMD ["dumb-init", "--", "pnpm", "dev"]

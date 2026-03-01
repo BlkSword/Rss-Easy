@@ -11,7 +11,7 @@ import { EmbeddingCache } from './embedding-cache';
 const DEFAULT_TIMEOUT = 60000;
 
 export interface AIConfig {
-  provider: 'openai' | 'anthropic' | 'deepseek' | 'ollama' | 'custom';
+  provider: 'openai' | 'anthropic' | 'deepseek' | 'gemini' | 'ollama' | 'custom';
   model: string;
   apiKey?: string;
   baseURL?: string;
@@ -810,13 +810,25 @@ export class AIService {
 }
 
 /**
- * 默认AI服务实例
+ * 用户 AI 配置接口
  */
-export function getDefaultAIService(): AIService {
-  const provider = (process.env.AI_PROVIDER || 'openai') as AIConfig['provider'];
+export interface UserAIConfig {
+  provider?: string;
+  model?: string;
+  apiKey?: string;
+  baseURL?: string;
+}
+
+/**
+ * 默认AI服务实例
+ * @param userConfig 可选的用户配置（优先级高于环境变量）
+ */
+export function getDefaultAIService(userConfig?: UserAIConfig): AIService {
+  // 用户配置优先级高于环境变量
+  const provider = (userConfig?.provider || process.env.AI_PROVIDER || 'openai') as AIConfig['provider'];
 
   // 根据提供商获取默认模型
-  const defaultModel = process.env.AI_MODEL || (
+  const defaultModel = userConfig?.model || process.env.AI_MODEL || (
     provider === 'openai' ? 'gpt-4o' :
     provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
     provider === 'deepseek' ? 'deepseek-chat' :
@@ -829,9 +841,9 @@ export function getDefaultAIService(): AIService {
   if (provider === 'custom') {
     const config: AIConfig = {
       provider: 'custom',
-      model: process.env.CUSTOM_API_MODEL || defaultModel,
-      apiKey: process.env.CUSTOM_API_KEY,
-      baseURL: process.env.CUSTOM_API_BASE_URL,
+      model: defaultModel,
+      apiKey: userConfig?.apiKey || process.env.CUSTOM_API_KEY,
+      baseURL: userConfig?.baseURL || process.env.CUSTOM_API_BASE_URL,
       maxTokens: 2000,
       temperature: 0.7,
     };
@@ -839,9 +851,30 @@ export function getDefaultAIService(): AIService {
     return new AIService(config);
   }
 
+  // 其他提供商：确定 API Key
+  let apiKey = userConfig?.apiKey;
+  if (!apiKey) {
+    switch (provider) {
+      case 'openai':
+        apiKey = process.env.OPENAI_API_KEY;
+        break;
+      case 'anthropic':
+        apiKey = process.env.ANTHROPIC_API_KEY;
+        break;
+      case 'deepseek':
+        apiKey = process.env.DEEPSEEK_API_KEY;
+        break;
+      case 'gemini':
+        apiKey = process.env.GEMINI_API_KEY;
+        break;
+    }
+  }
+
   const config: AIConfig = {
     provider,
     model: defaultModel,
+    apiKey,
+    baseURL: userConfig?.baseURL,
     maxTokens: 2000,
     temperature: 0.7,
   };

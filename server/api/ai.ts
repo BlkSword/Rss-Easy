@@ -5,7 +5,8 @@
 import { router, publicProcedure } from '../trpc/init';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { getDefaultAIService } from '@/lib/ai/client';
+import { getDefaultAIService, UserAIConfig } from '@/lib/ai/client';
+import { safeDecrypt } from '@/lib/crypto/encryption';
 import { TRPCError } from '@trpc/server';
 
 export const aiRouter = router({
@@ -46,8 +47,21 @@ export const aiRouter = router({
         });
       }
 
-      // 准备AI配置
-      const aiService = getDefaultAIService();
+      // 准备AI配置 - 解密 API 密钥
+      const dbConfig = (user.aiConfig as any) || {};
+      const userAIConfig: UserAIConfig = {
+        provider: dbConfig.provider,
+        model: dbConfig.model,
+        baseURL: dbConfig.baseURL,
+      };
+
+      // 解密 API 密钥
+      if (dbConfig.apiKey) {
+        userAIConfig.apiKey = safeDecrypt(dbConfig.apiKey);
+      }
+
+      // 使用用户配置创建 AI 服务
+      const aiService = getDefaultAIService(userAIConfig);
 
       // 构建对话上下文
       const recentEntries = await db.entry.findMany({

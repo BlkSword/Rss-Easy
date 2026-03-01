@@ -238,11 +238,17 @@ function AppHeaderComponent({
                 variant="ghost"
                 size="icon"
                 onClick={toggleTheme}
+                className={cn(
+                  'border border-transparent',
+                  'hover:border-border/60 hover:bg-muted/80',
+                  'dark:border-border/40 dark:hover:border-border/70 dark:hover:bg-muted/90',
+                  'transition-all duration-200'
+                )}
               >
                 {resolvedTheme === 'dark' ? (
-                  <Sun className="h-4 w-4" />
+                  <Sun className="h-4 w-4 text-amber-400" />
                 ) : (
-                  <Moon className="h-4 w-4" />
+                  <Moon className="h-4 w-4 text-slate-600" />
                 )}
               </Button>
             </Tooltip>
@@ -347,16 +353,20 @@ function AppHeaderComponent({
                           toggleTheme();
                           setIsMobileMenuOpen(false);
                         }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                        className={cn(
+                          'w-full flex items-center gap-3 px-4 py-3 text-sm transition-all duration-200 rounded-lg mx-2',
+                          'hover:bg-muted/60',
+                          'dark:hover:bg-muted/70'
+                        )}
                       >
                         {resolvedTheme === 'dark' ? (
                           <>
-                            <Sun className="h-4 w-4 text-muted-foreground" />
+                            <Sun className="h-4 w-4 text-amber-400" />
                             <span>浅色模式</span>
                           </>
                         ) : (
                           <>
-                            <Moon className="h-4 w-4 text-muted-foreground" />
+                            <Moon className="h-4 w-4 text-slate-600" />
                             <span>深色模式</span>
                           </>
                         )}

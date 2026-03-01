@@ -98,6 +98,7 @@ export function MobileActions({
       icon: resolvedTheme === 'dark' ? Sun : Moon,
       label: resolvedTheme === 'dark' ? '切换亮色' : '切换暗色',
       onClick: () => { toggleTheme(); setShowMenu(false); },
+      variant: 'primary' as const,
     },
   ];
 

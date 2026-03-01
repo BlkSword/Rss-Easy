@@ -155,31 +155,44 @@ export class EmailService {
       const info = await transporter.sendMail(mailOptions);
 
       // 检查 SMTP 响应，判断是否真正发送成功
-      // 成功响应通常包含 250 状态码，如 "250 OK" 或 "250 2.0.0 OK"
+      // 如果 sendMail 没有抛出异常，通常表示发送成功
+      // 额外检查响应以确保可靠性
       const response = info.response || '';
-      const isSuccess = response.includes('250') ||
-                        response.toLowerCase().includes('ok') ||
-                        response.includes('2.0.0') ||
-                        // 某些服务器返回 235 (认证成功后) 或其他 2xx 状态
-                        /^2\d{2}/.test(response.trim());
 
-      if (!isSuccess && response) {
-        // 有响应但不是成功状态
-        warn('email', 'SMTP 响应异常', { response, messageId: info.messageId }).catch(() => {});
+      // 检查是否有明确的失败响应（4xx 或 5xx 错误）
+      const isExplicitFailure = /^[45]\d{2}/.test(response.trim());
+
+      if (isExplicitFailure) {
+        // 明确的失败响应
+        warn('email', 'SMTP 返回错误响应', { response, messageId: info.messageId }).catch(() => {});
         return {
           success: false,
-          message: `SMTP 响应异常: ${response || '无响应'}`
+          message: `SMTP 错误: ${response || '发送失败'}`
         };
       }
 
+      // 如果有 messageId，说明邮件已被服务器接收
+      // 成功响应可能包含：250 (OK), 235 (认证成功), 2.0.0, OK, Accepted 等
+      // 只要没有明确的失败响应，且 sendMail 没有抛出异常，就认为发送成功
+      const isSuccess = !response ||
+                        response.includes('250') ||
+                        response.includes('235') ||
+                        response.includes('2.0.0') ||
+                        response.toLowerCase().includes('ok') ||
+                        response.toLowerCase().includes('accepted') ||
+                        response.toLowerCase().includes('queued') ||
+                        /^2\d{2}/.test(response.trim());
+
       // 记录日志（不阻塞返回）
-      info('email', '邮件发送成功', {
-        to,
-        subject,
-        messageId: info.messageId,
-        response: response.substring(0, 100), // 只记录前100字符
-        hasAttachments: !!attachments?.length,
-      }).catch(() => {});
+      if (isSuccess || info.messageId) {
+        info('email', '邮件发送成功', {
+          to,
+          subject,
+          messageId: info.messageId,
+          response: response.substring(0, 100),
+          hasAttachments: !!attachments?.length,
+        }).catch(() => {});
+      }
 
       return { success: true, message: '邮件发送成功' };
     } catch (err: any) {

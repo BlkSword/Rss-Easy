@@ -17,6 +17,9 @@ export interface FeedUpdateResult {
   error?: string;
 }
 
+/** 单个 Feed 抓取超时时间（毫秒） */
+const FEED_FETCH_TIMEOUT = 60000;
+
 /**
  * Feed管理器类
  */
@@ -39,8 +42,13 @@ export class FeedManager {
 
       await info('rss', '开始抓取订阅源', { feedId, feedUrl: feed.feedUrl, title: feed.title });
 
-      // 解析RSS feed
-      const parsedFeed = await parseFeed(feed.feedUrl);
+      // 使用 Promise.race 实现总体超时控制
+      const parsedFeed = await Promise.race([
+        parseFeed(feed.feedUrl),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Feed 解析超时')), FEED_FETCH_TIMEOUT)
+        ),
+      ]);
 
       let entriesAdded = 0;
       let entriesUpdated = 0;

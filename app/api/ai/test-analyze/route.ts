@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { checkAIConfig } from '@/lib/ai/health-check';
+import { checkAIConfig, getUserAIConfig } from '@/lib/ai/health-check';
 import { getDefaultAIService } from '@/lib/ai/client';
 import { getSession } from '@/lib/auth/session';
 import { info, error } from '@/lib/logger';
@@ -53,9 +53,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { text } = testSchema.parse(body);
 
-    // 测试AI分析
+    // 获取用户的 AI 配置（包括解密后的 API 密钥）
+    const userAIConfig = await getUserAIConfig(session.userId, db);
+
+    // 测试AI分析 - 使用用户配置
     const startTime = Date.now();
-    const aiService = getDefaultAIService();
+    const aiService = getDefaultAIService(userAIConfig || undefined);
 
     const result = await aiService.analyzeArticle(text, {
       summary: true,

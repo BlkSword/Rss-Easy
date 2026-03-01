@@ -58,13 +58,46 @@ export type ParsedEntry = {
 };
 
 /**
+ * 并发控制 - 限制同时执行的 Promise 数量
+ */
+async function limitConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (const task of tasks) {
+    const promise = task().then(result => {
+      results.push(result);
+      const index = executing.indexOf(promise);
+      if (index > -1) executing.splice(index, 1);
+    });
+    executing.push(promise);
+
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
+
+/**
  * RSS解析器类
  */
 export class RSSParser {
   private parser: Parser;
   private timeout: number;
   /** 内容长度阈值，少于此值时尝试从链接抓取全文 */
-  private readonly MIN_CONTENT_LENGTH = 200;
+  private readonly MIN_CONTENT_LENGTH = 500;
+  /** 全文抓取的最大并发数 */
+  private readonly MAX_CONCURRENT_FETCHES = 3;
+  /** 单个条目全文抓取超时时间 */
+  private readonly FETCH_CONTENT_TIMEOUT = 8000;
+  /** 最多对多少个条目尝试全文抓取 */
+  private readonly MAX_FULL_TEXT_FETCHES = 10;
 
   constructor(timeout: number = 10000) {
     this.timeout = timeout;
@@ -134,118 +167,122 @@ export class RSSParser {
       async () => {
         const feed = await this.parser.parseURL(url);
 
-        // 处理每个条目，提取完整内容
-        const items = await Promise.all(
-          (feed.items || []).map(async (item: any) => {
+        // 第一遍：快速处理所有条目，不抓取全文
+        const preliminaryItems = (feed.items || []).map((item: any) => {
+          // 提取内容 - 按优先级尝试多个字段
+          let content = item['content:encoded'] || item.content || item['content:html'] || item.summary || '';
+          const description = item.description || '';
+
+          // 如果主要内容为空或太短，使用 description
+          if ((!content || content.length < this.MIN_CONTENT_LENGTH) && description) {
+            content = description;
+          }
+
+          return {
+            item,
+            content,
+            needsFullFetch: !content || this.stripHtml(content).length < this.MIN_CONTENT_LENGTH,
+          };
+        });
+
+        // 找出需要全文抓取的条目，但限制数量
+        const itemsNeedingFetch = preliminaryItems
+          .filter(p => p.needsFullFetch && p.item.link)
+          .slice(0, this.MAX_FULL_TEXT_FETCHES);
+
+        // 使用并发控制进行全文抓取
+        if (itemsNeedingFetch.length > 0) {
+          const fetchTasks = itemsNeedingFetch.map(p => async () => {
             try {
-              // 提取内容 - 按优先级尝试多个字段
-              // 优先使用 content:encoded（完整HTML内容），然后是 content、summary
-              let content = item['content:encoded'] || item.content || item['content:html'] || item.summary || '';
-
-              // description 通常只是简短摘要，作为最后的备选
-              const description = item.description || '';
-
-              // 如果主要内容为空或太短，且 description 存在，使用 description
-              if ((!content || content.length < this.MIN_CONTENT_LENGTH) && description) {
-                // 但如果 description 也很短，标记需要从链接抓取
-                if (description.length < this.MIN_CONTENT_LENGTH) {
-                  content = description; // 先使用 description
-                } else {
-                  content = description;
-                }
+              const fetchedContent = await this.fetchContentWithTimeout(p.item.link);
+              if (fetchedContent && fetchedContent.length > (p.content?.length || 0)) {
+                p.content = fetchedContent;
               }
-
-              // 如果内容为空或太短，尝试从链接抓取全文
-              const needsFullFetch = !content || this.stripHtml(content).length < this.MIN_CONTENT_LENGTH;
-              if (needsFullFetch && item.link) {
-                try {
-                  const fetchedContent = await this.fetchContent(item.link);
-                  if (fetchedContent && fetchedContent.length > (content?.length || 0)) {
-                    content = fetchedContent;
-                  }
-                } catch {
-                  // 静默失败，使用现有内容
-                }
-              }
-
-              // 清理HTML内容中的元数据
-              content = this.cleanContentHtml(content || '');
-
-              // 清理HTML标签，获取纯文本摘要
-              const contentSnippet = this.extractSnippet(content);
-
-              // 提取作者 - 多个可能的字段
-              let author = item.author ||
-                          item.creator ||
-                          item['dc:creator'] ||
-                          item['dc:author'] ||
-                          item['mp:author'] ||
-                          undefined;
-
-              // 提取分类/标签
-              const categories = this.extractCategories(item);
-
-              // 从 HTML 内容中提取元数据（微信等特殊格式）
-              const contentMetadata = this.extractMetadataFromContent(content || '');
-
-              // 如果没有从 XML 字段中找到作者，尝试从内容中提取
-              if (!author && contentMetadata.author) {
-                author = contentMetadata.author;
-              }
-
-              // 提取图片
-              const image = this.extractImage(item, content);
-
-              // 提取 enclosure 信息
-              const enclosure = this.extractEnclosure(item);
-
-              // 提取各种日期
-              const pubDate = this.parseDate(item.pubDate || item.published || item.created || item['dc:date']);
-              const updatedDate = this.parseDate(item.updated || item.modified);
-
-              return {
-                title: (item.title || 'Untitled').trim(),
-                // link fallback: link -> feedburner:origLink -> guid (如果是URL格式)
-                link: item.link || item['feedburner:origLink'] || (item.guid && item.guid.startsWith('http') ? item.guid : ''),
-                pubDate,
-                content: content || undefined,
-                contentSnippet,
-                author,
-                categories,
-                guid: item.guid || item.id,
-                isoDate: item.isoDate,
-                // 新增字段
-                creator: item.creator,
-                description: item.description,
-                summary: item.summary,
-                updatedDate,
-                publishedDate: pubDate,
-                tags: item.tags || categories,
-                image,
-                enclosure,
-                // 从内容中提取的元数据
-                source: contentMetadata.source,
-                ...(contentMetadata.date && { extractedDate: contentMetadata.date }),
-                raw: process.env.NODE_ENV === 'development' ? item : undefined,
-              } as ParsedEntry;
-            } catch (error) {
-              // 如果单个条目处理失败，返回基本条目
-              console.error('Error parsing RSS item:', error);
-              const rawItem = item as any;
-              const fallbackLink = rawItem.link || (rawItem.guid && rawItem.guid.startsWith('http') ? rawItem.guid : '');
-              return {
-                title: (rawItem.title || 'Untitled').trim(),
-                link: fallbackLink,
-                pubDate: (item as any).pubDate ? new Date((item as any).pubDate) : undefined,
-                content: (item as any).content || (item as any)['content:encoded'] || undefined,
-                contentSnippet: (item as any).contentSnippet || '',
-                author: (item as any).author || (item as any).creator || undefined,
-                categories: this.extractCategories(item),
-                guid: (item as any).guid,
-              } as ParsedEntry;
+            } catch {
+              // 静默失败
             }
-          })
-        );
+          });
+
+          await limitConcurrency(fetchTasks, this.MAX_CONCURRENT_FETCHES);
+        }
+
+        // 第二遍：处理所有条目的元数据
+        const items = preliminaryItems.map(({ item, content }) => {
+          try {
+            // 清理HTML内容中的元数据
+            content = this.cleanContentHtml(content || '');
+
+            // 清理HTML标签，获取纯文本摘要
+            const contentSnippet = this.extractSnippet(content);
+
+            // 提取作者 - 多个可能的字段
+            let author = item.author ||
+                        item.creator ||
+                        item['dc:creator'] ||
+                        item['dc:author'] ||
+                        item['mp:author'] ||
+                        undefined;
+
+            // 提取分类/标签
+            const categories = this.extractCategories(item);
+
+            // 从 HTML 内容中提取元数据（微信等特殊格式）
+            const contentMetadata = this.extractMetadataFromContent(content || '');
+
+            // 如果没有从 XML 字段中找到作者，尝试从内容中提取
+            if (!author && contentMetadata.author) {
+              author = contentMetadata.author;
+            }
+
+            // 提取图片
+            const image = this.extractImage(item, content);
+
+            // 提取 enclosure 信息
+            const enclosure = this.extractEnclosure(item);
+
+            // 提取各种日期
+            const pubDate = this.parseDate(item.pubDate || item.published || item.created || item['dc:date']);
+            const updatedDate = this.parseDate(item.updated || item.modified);
+
+            return {
+              title: (item.title || 'Untitled').trim(),
+              link: item.link || item['feedburner:origLink'] || (item.guid && item.guid.startsWith('http') ? item.guid : ''),
+              pubDate,
+              content: content || undefined,
+              contentSnippet,
+              author,
+              categories,
+              guid: item.guid || item.id,
+              isoDate: item.isoDate,
+              creator: item.creator,
+              description: item.description,
+              summary: item.summary,
+              updatedDate,
+              publishedDate: pubDate,
+              tags: item.tags || categories,
+              image,
+              enclosure,
+              source: contentMetadata.source,
+              ...(contentMetadata.date && { extractedDate: contentMetadata.date }),
+              raw: process.env.NODE_ENV === 'development' ? item : undefined,
+            } as ParsedEntry;
+          } catch (error) {
+            // 如果单个条目处理失败，返回基本条目
+            console.error('Error parsing RSS item:', error);
+            const rawItem = item as any;
+            const fallbackLink = rawItem.link || (rawItem.guid && rawItem.guid.startsWith('http') ? rawItem.guid : '');
+            return {
+              title: (rawItem.title || 'Untitled').trim(),
+              link: fallbackLink,
+              pubDate: (item as any).pubDate ? new Date((item as any).pubDate) : undefined,
+              content: (item as any).content || (item as any)['content:encoded'] || undefined,
+              contentSnippet: (item as any).contentSnippet || '',
+              author: (item as any).author || (item as any).creator || undefined,
+              categories: this.extractCategories(item),
+              guid: (item as any).guid,
+            } as ParsedEntry;
+          }
+        });
 
         return {
           title: (feed.title || 'Untitled Feed').trim(),
@@ -273,6 +310,62 @@ export class RSSParser {
   }
 
   /**
+   * 带超时控制的全文抓取
+   * 使用 AbortController 实现更可靠的超时控制
+   */
+  private async fetchContentWithTimeout(url: string): Promise<string | null> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.FETCH_CONTENT_TIMEOUT);
+
+    try {
+      const response = await axios.get(url, {
+        timeout: this.FETCH_CONTENT_TIMEOUT,
+        maxRedirects: 3,
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        },
+        // 限制响应大小（10MB）
+        maxContentLength: 10 * 1024 * 1024,
+      });
+
+      clearTimeout(timeoutId);
+
+      const html = response.data;
+      if (!html || typeof html !== 'string') {
+        return null;
+      }
+
+      const $ = load(html);
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.replace('www.', '');
+
+      this.removeUnwantedElements($);
+
+      // 尝试各种提取方法
+      const siteSpecificResult = this.extractBySiteSpecific($, hostname);
+      if (siteSpecificResult) return siteSpecificResult;
+
+      const generalResult = this.extractByGeneralSelectors($);
+      if (generalResult) return generalResult;
+
+      const densityResult = this.extractByDensityAnalysis($);
+      if (densityResult) return densityResult;
+
+      return this.extractFallback($);
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      // 超时或网络错误，静默返回 null
+      if (error.code === 'ECONNABORTED' || error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+        console.warn(`[RSS] 全文抓取超时: ${url}`);
+      }
+      return null;
+    }
+  }
+
+  /**
    * 从网页抓取内容（fallback）
    * 用于 RSS 只有简短摘要时获取全文
    * 支持多种网站的内容提取
@@ -280,8 +373,8 @@ export class RSSParser {
   private async fetchContent(url: string): Promise<string | null> {
     try {
       const response = await axios.get(url, {
-        timeout: 15000,
-        maxRedirects: 5,
+        timeout: this.FETCH_CONTENT_TIMEOUT,
+        maxRedirects: 3,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',

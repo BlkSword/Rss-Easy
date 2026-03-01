@@ -5,7 +5,7 @@
  * 基于 BestBlogs 设计模式实现
  */
 
-import { getDefaultAIService } from '@/lib/ai/client';
+import { getDefaultAIService, UserAIConfig } from '@/lib/ai/client';
 
 // =====================================================
 // 类型定义
@@ -51,9 +51,14 @@ export interface EvaluateOptions {
 // =====================================================
 
 export class PreliminaryEvaluator {
+  private userAIConfig?: UserAIConfig;
+
   constructor(
-    private config: PreliminaryEvaluatorConfig
-  ) {}
+    private config: PreliminaryEvaluatorConfig,
+    userAIConfig?: UserAIConfig
+  ) {
+    this.userAIConfig = userAIConfig;
+  }
 
   /**
    * 评估文章
@@ -206,8 +211,8 @@ export class PreliminaryEvaluator {
 
     const isChinese = language === 'zh';
 
-    // 使用 AI 服务进行分析
-    const aiService = getDefaultAIService();
+    // 使用 AI 服务进行分析（传入用户配置或使用环境变量）
+    const aiService = getDefaultAIService(this.userAIConfig);
 
     try {
       const result = await aiService.analyzeArticle(
@@ -285,16 +290,16 @@ export class PreliminaryEvaluator {
 /**
  * 创建默认初评评估器
  *
- * 从环境变量读取配置
+ * @param userAIConfig 可选的用户 AI 配置（优先级高于环境变量）
  */
-export function createPreliminaryEvaluator(): PreliminaryEvaluator {
+export function createPreliminaryEvaluator(userAIConfig?: UserAIConfig): PreliminaryEvaluator {
   return new PreliminaryEvaluator({
     chineseModel: process.env.PRELIMINARY_MODEL_ZH || 'deepseek-chat',
     englishModel: process.env.PRELIMINARY_MODEL_EN || 'gemini-1.5-flash',
     otherModel: process.env.PRELIMINARY_MODEL_OTHER || 'gpt-4o-mini',
     minValue: parseInt(process.env.PRELIMINARY_MIN_VALUE || '3', 10),
     enableLanguageDetection: process.env.ENABLE_LANGUAGE_DETECTION !== 'false',
-  });
+  }, userAIConfig);
 }
 
 /**

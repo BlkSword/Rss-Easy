@@ -7,8 +7,37 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { AIAnalysisQueue } from '@/lib/ai/queue';
 import { addDeepAnalysisJob } from '@/lib/queue/deep-analysis-processor';
-import { getDefaultAIService } from '@/lib/ai/client';
+import { getDefaultAIService, UserAIConfig } from '@/lib/ai/client';
+import { safeDecrypt } from '@/lib/crypto/encryption';
 import { info } from '@/lib/logger';
+
+/**
+ * 获取用户的 AI 配置（解密 API 密钥）
+ */
+async function getUserAIConfig(userId: string, db: any): Promise<UserAIConfig | undefined> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { aiConfig: true },
+  });
+
+  if (!user?.aiConfig) {
+    return undefined;
+  }
+
+  const dbConfig = user.aiConfig as any;
+  const userAIConfig: UserAIConfig = {
+    provider: dbConfig.provider,
+    model: dbConfig.model,
+    baseURL: dbConfig.baseURL,
+  };
+
+  // 解密 API 密钥
+  if (dbConfig.apiKey) {
+    userAIConfig.apiKey = safeDecrypt(dbConfig.apiKey);
+  }
+
+  return userAIConfig;
+}
 
 export const entriesRouter = router({
   /**
@@ -697,8 +726,10 @@ export const entriesRouter = router({
 
       // 验证 AI 配置是否有效（在添加任务到队列之前）
       try {
+        // 获取用户的 AI 配置
+        const userAIConfig = await getUserAIConfig(ctx.userId, ctx.db);
         // 尝试创建 AI 服务来验证配置
-        getDefaultAIService();
+        getDefaultAIService(userAIConfig);
       } catch (configError) {
         // 配置无效，直接返回错误给用户
         throw new TRPCError({
@@ -772,7 +803,9 @@ export const entriesRouter = router({
 
       // 验证 AI 配置是否有效（在添加任务到队列之前）
       try {
-        getDefaultAIService();
+        // 获取用户的 AI 配置
+        const userAIConfig = await getUserAIConfig(userId, ctx.db);
+        getDefaultAIService(userAIConfig);
       } catch (configError) {
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
