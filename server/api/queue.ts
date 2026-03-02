@@ -9,6 +9,18 @@ import { db } from '@/lib/db';
 import { getScheduler } from '@/lib/jobs/scheduler';
 import { z } from 'zod';
 import { safeDecrypt } from '@/lib/crypto/encryption';
+import { getFeedDiscoveryQueueStatus } from '@/lib/queue/feed-discovery-processor';
+import { getQueueStatus as getPreliminaryQueueStatus } from '@/lib/queue/preliminary-processor';
+import { getQueueStatus as getDeepAnalysisQueueStatus } from '@/lib/queue/deep-analysis-processor';
+
+// BullMQ 队列状态类型
+interface BullMQQueueStatus {
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number;
+  delayed: number;
+}
 
 // 辅助函数：获取用户的 Feed ID 列表
 async function getUserFeedIds(userId: string): Promise<string[]> {
@@ -751,5 +763,55 @@ export const queueRouter = router({
         // 时间戳
         timestamp: now.toISOString(),
       };
+    }),
+
+  /**
+   * 获取 BullMQ 队列状态
+   * 包括 feed-discovery、preliminary、deep-analysis 队列
+   */
+  bullMQStatus: protectedProcedure
+    .query(async () => {
+      try {
+        // 并行获取所有 BullMQ 队列状态
+        const [feedDiscovery, preliminary, deepAnalysis] = await Promise.all([
+          getFeedDiscoveryQueueStatus().catch(() => null),
+          getPreliminaryQueueStatus().catch(() => null),
+          getDeepAnalysisQueueStatus().catch(() => null),
+        ]);
+
+        return {
+          feedDiscovery: feedDiscovery ? {
+            waiting: feedDiscovery.waiting,
+            active: feedDiscovery.active,
+            completed: feedDiscovery.completed,
+            failed: feedDiscovery.failed,
+            delayed: feedDiscovery.delayed,
+          } : null,
+          preliminary: preliminary ? {
+            waiting: preliminary.waiting,
+            active: preliminary.active,
+            completed: preliminary.completed,
+            failed: preliminary.failed,
+            delayed: preliminary.delayed,
+          } : null,
+          deepAnalysis: deepAnalysis ? {
+            waiting: deepAnalysis.waiting,
+            active: deepAnalysis.active,
+            completed: deepAnalysis.completed,
+            failed: deepAnalysis.failed,
+            delayed: deepAnalysis.delayed,
+          } : null,
+          timestamp: new Date().toISOString(),
+        };
+      } catch (error) {
+        console.error('Failed to get BullMQ status:', error);
+        return {
+          feedDiscovery: null,
+          preliminary: null,
+          deepAnalysis: null,
+          timestamp: new Date().toISOString(),
+          error: 'Failed to connect to Redis',
+        };
+      }
     }),
 });

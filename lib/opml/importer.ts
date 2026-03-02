@@ -1,18 +1,13 @@
 /**
- * OPML 智能导入服务
- * 与添加订阅源流程对齐，使用相同的智能发现功能
+ * OPML 快速导入服务
  *
- * 功能：
- * - 智能识别订阅源信息（与添加订阅源一致）
- * - 并行智能发现，提升导入速度
- * - SSRF 防护
- * - 完整的 OPML 解析（支持分类）
- * - 进度追踪支持（细粒度实时更新）
- * - 日志记录
+ * 优化策略：
+ * 1. 解析 OPML → 立即创建订阅源 → 快速返回
+ * 2. 设置 nextFetchAt 触发调度器自动抓取
+ * 3. 批量数据库操作替代串行
  */
 
 import { db } from '@/lib/db';
-import { parseFeed } from '@/lib/rss/parser';
 import { info, warn, error } from '@/lib/logger';
 import { isUrlSafe } from '@/lib/utils';
 import { parseOPML, type OPMLOutline } from './parser';
@@ -26,7 +21,7 @@ export interface ImportFeedItem {
 }
 
 export interface ImportProgress {
-  phase: 'parsing' | 'discovering' | 'creating' | 'fetching' | 'completed';
+  phase: 'parsing' | 'validating' | 'creating' | 'completed';
   current: number;
   total: number;
   currentItem?: string;
@@ -36,12 +31,8 @@ export interface ImportProgress {
     skipped: number;
     failed: number;
   };
-  /** 发现阶段统计 */
-  discoveredCount?: number;
-  /** 开始时间 */
-  startTime?: number;
-  /** 最后更新时间 */
-  lastUpdate?: number;
+  /** 后台任务数量 */
+  backgroundTasks?: number;
 }
 
 export interface ImportResult {
@@ -57,13 +48,13 @@ export interface ImportResult {
     status: 'imported' | 'skipped' | 'failed';
     message?: string;
   }>;
+  /** 触发抓取的订阅源数量 */
+  triggeredFeeds?: number;
 }
 
 export interface ImportOptions {
   userId: string;
   categoryId?: string;
-  skipDiscovery?: boolean;
-  concurrency?: number; // 并行数量，默认 5
   onProgress?: (progress: ImportProgress) => void;
 }
 
@@ -77,7 +68,6 @@ export function getImportProgress(userId: string): ImportProgress | null {
   const progress = importProgressStore.get(userId);
   if (!progress) return null;
 
-  // 返回副本，避免外部修改
   return {
     ...progress,
     stats: { ...progress.stats },
@@ -85,14 +75,11 @@ export function getImportProgress(userId: string): ImportProgress | null {
 }
 
 /**
- * 设置导入进度（带时间戳）
+ * 设置导入进度
  */
 function setImportProgress(userId: string, progress: ImportProgress) {
-  const now = Date.now();
   importProgressStore.set(userId, {
     ...progress,
-    lastUpdate: now,
-    startTime: progress.startTime || now,
     stats: { ...progress.stats },
   });
 }
@@ -102,147 +89,6 @@ function setImportProgress(userId: string, progress: ImportProgress) {
  */
 export function clearImportProgress(userId: string) {
   importProgressStore.delete(userId);
-}
-
-/**
- * 智能发现订阅源信息
- */
-async function discoverFeedInfo(url: string): Promise<{
-  title: string | null;
-  description: string | null;
-  siteUrl: string | null;
-  iconUrl: string | null;
-}> {
-  let title: string | null = null;
-  let description: string | null = null;
-  let siteUrl: string | null = null;
-  let iconUrl: string | null = null;
-
-  try {
-    // 首先尝试直接解析 RSS feed
-    try {
-      const parsed = await parseFeed(url);
-      title = parsed.title || null;
-      description = parsed.description || null;
-      siteUrl = parsed.link || url;
-    } catch (feedError) {
-      // RSS feed 解析失败，尝试从网页提取
-    }
-
-    // 如果 RSS feed 中没有描述或标题，尝试从 HTML 网页提取
-    if (!title || !description) {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Rss-Easy/1.0)',
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (response.ok) {
-        const html = await response.text();
-
-        if (!title) {
-          const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-          title = titleMatch?.[1]?.trim() || null;
-        }
-
-        if (!description) {
-          const descPatterns = [
-            /<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i,
-            /<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i,
-            /<meta[^>]*name=["']twitter:description["'][^>]*content=["']([^"']*)["']/i,
-          ];
-
-          for (const pattern of descPatterns) {
-            const match = html.match(pattern);
-            if (match?.[1]) {
-              description = match[1].trim();
-              break;
-            }
-          }
-
-          if (!description) {
-            const pMatch = html.match(/<p[^>]*>([^<]{20,200})<\/p>/i);
-            description = pMatch?.[1]?.trim() || null;
-          }
-        }
-
-        if (!iconUrl) {
-          const iconPatterns = [
-            /<link[^>]*rel=["']icon["'][^>]*href=["']([^"']+)["']/i,
-            /<link[^>]*rel=["']shortcut icon["'][^>]*href=["']([^"']+)["']/i,
-          ];
-
-          for (const pattern of iconPatterns) {
-            const match = html.match(pattern);
-            if (match?.[1]) {
-              iconUrl = match[1].trim();
-              if (iconUrl && !iconUrl.startsWith('http')) {
-                try {
-                  iconUrl = new URL(iconUrl, url).href;
-                } catch {
-                  iconUrl = null;
-                }
-              }
-              break;
-            }
-          }
-        }
-      }
-    }
-  } catch (err) {
-    // 发现失败，返回 null
-  }
-
-  return { title, description, siteUrl, iconUrl };
-}
-
-/**
- * 批量并行智能发现（带实时进度更新）
- */
-async function batchDiscoverFeedInfo(
-  feeds: ImportFeedItem[],
-  concurrency: number,
-  userId: string,
-  onProgress?: (progress: ImportProgress) => void
-): Promise<Map<string, Awaited<ReturnType<typeof discoverFeedInfo>>>> {
-  const results = new Map<string, Awaited<ReturnType<typeof discoverFeedInfo>>>();
-  let discoveredCount = 0;
-
-  // 分批并行处理，每批完成后更新进度
-  for (let i = 0; i < feeds.length; i += concurrency) {
-    const batch = feeds.slice(i, i + concurrency);
-    const batchResults = await Promise.all(
-      batch.map(async (feed) => {
-        try {
-          const info = await discoverFeedInfo(feed.url);
-          return { url: feed.url, info };
-        } catch (err) {
-          return { url: feed.url, info: { title: null, description: null, siteUrl: null, iconUrl: null } };
-        }
-      })
-    );
-
-    for (const { url, info } of batchResults) {
-      results.set(url, info);
-    }
-
-    // 更新进度
-    discoveredCount = Math.min(i + concurrency, feeds.length);
-    const progress: ImportProgress = {
-      phase: 'discovering',
-      current: discoveredCount,
-      total: feeds.length,
-      message: `正在智能识别: ${discoveredCount}/${feeds.length}`,
-      stats: { imported: 0, skipped: 0, failed: 0 },
-      discoveredCount,
-    };
-
-    setImportProgress(userId, progress);
-    onProgress?.(progress);
-  }
-
-  return results;
 }
 
 /**
@@ -282,52 +128,24 @@ function extractFeedsWithCategories(outlines: OPMLOutline[], parentCategory?: OP
 }
 
 /**
- * 获取或创建分类
- */
-async function getOrCreateCategory(
-  userId: string,
-  categoryName: string,
-  existingCategories: Map<string, string>
-): Promise<string | null> {
-  const existingId = existingCategories.get(categoryName.toLowerCase());
-  if (existingId) {
-    return existingId;
-  }
-
-  try {
-    const category = await db.category.create({
-      data: {
-        userId,
-        name: categoryName,
-        color: '#94a3b8',
-      },
-    });
-
-    existingCategories.set(categoryName.toLowerCase(), category.id);
-    info('rss', 'OPML 导入创建分类', {
-      userId,
-      categoryName,
-      categoryId: category.id,
-    }).catch(() => {});
-
-    return category.id;
-  } catch (err) {
-    error('rss', 'OPML 导入创建分类失败', err instanceof Error ? err : undefined, {
-      userId,
-      categoryName,
-    }).catch(() => {});
-    return null;
-  }
-}
-
-/**
- * 智能导入 OPML（带进度追踪）
+ * 快速导入 OPML
+ *
+ * 流程：
+ * 1. 解析 OPML（< 1秒）
+ * 2. 批量检查重复（< 1秒）
+ * 3. 批量创建订阅源（1-3秒）
+ * 4. 添加后台任务（< 1秒）
+ * 5. 立即返回结果
+ *
+ * 后台任务负责：
+ * - 智能发现（补充描述、图标等）
+ * - 首次抓取
  */
 export async function smartImportOPML(
   xmlString: string,
   options: ImportOptions
 ): Promise<ImportResult> {
-  const { userId, categoryId, skipDiscovery, concurrency = 5, onProgress } = options;
+  const { userId, categoryId, onProgress } = options;
 
   const result: ImportResult = {
     success: true,
@@ -342,7 +160,9 @@ export async function smartImportOPML(
   let feeds: ImportFeedItem[] = [];
 
   try {
-    // 阶段 1：解析 OPML
+    // ========================================
+    // 阶段 1：解析 OPML（快速）
+    // ========================================
     setImportProgress(userId, {
       phase: 'parsing',
       current: 0,
@@ -362,11 +182,6 @@ export async function smartImportOPML(
     feeds = extractFeedsWithCategories(opml.outlines);
     result.total = feeds.length;
 
-    info('rss', '开始 OPML 导入', {
-      userId,
-      totalFeeds: feeds.length,
-    }).catch(() => {});
-
     if (feeds.length === 0) {
       setImportProgress(userId, {
         phase: 'completed',
@@ -378,206 +193,245 @@ export async function smartImportOPML(
       return result;
     }
 
-    // 获取用户现有分类
-    const existingCategories = await db.category.findMany({
-      where: { userId },
-      select: { id: true, name: true },
+    await info('rss', '开始 OPML 快速导入', {
+      userId,
+      totalFeeds: feeds.length,
     });
-    const categoryMap = new Map(
-      existingCategories.map(c => [c.name.toLowerCase(), c.id])
-    );
 
-    // 阶段 2：并行智能发现（带实时进度）
-    let discoveredInfos: Map<string, Awaited<ReturnType<typeof discoverFeedInfo>>> = new Map();
+    // ========================================
+    // 阶段 2：批量验证 URL（快速）
+    // ========================================
+    setImportProgress(userId, {
+      phase: 'validating',
+      current: 0,
+      total: feeds.length,
+      message: '正在验证订阅源...',
+      stats: { imported: 0, skipped: 0, failed: 0 },
+    });
 
-    if (!skipDiscovery) {
-      discoveredInfos = await batchDiscoverFeedInfo(feeds, concurrency, userId, onProgress);
-    }
+    const validFeeds: ImportFeedItem[] = [];
+    const invalidFeeds: Array<{ feed: ImportFeedItem; reason: string }> = [];
 
-    // 阶段 3：逐个创建订阅源（带实时进度）
-    const importedFeedIds: string[] = [];
-
-    // 辅助函数：更新创建进度
-    const updateCreatingProgress = (feed: ImportFeedItem, index: number) => {
-      const progress: ImportProgress = {
-        phase: 'creating',
-        current: index + 1,
-        total: feeds.length,
-        currentItem: feed.title || feed.url,
-        message: `正在导入: ${feed.title || new URL(feed.url).hostname}`,
-        stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
-      };
-      setImportProgress(userId, progress);
-      onProgress?.(progress);
-    };
-
-    for (let i = 0; i < feeds.length; i++) {
-      const feed = feeds[i];
-
-      // 开始处理前更新进度（显示正在处理哪个）
-      updateCreatingProgress(feed, i);
-
-      try {
-        // SSRF 防护
-        const urlCheck = isUrlSafe(feed.url);
-        if (!urlCheck.safe) {
-          result.failed++;
-          result.errors.push({ url: feed.url, error: `URL 不安全: ${urlCheck.reason}` });
-          result.details.push({
-            url: feed.url,
-            title: feed.title || feed.url,
-            status: 'failed',
-            message: `URL 不安全`,
-          });
-          // 更新统计
-          updateCreatingProgress(feed, i);
-          continue;
-        }
-
-        // 检查是否已存在
-        const existing = await db.feed.findFirst({
-          where: { userId, feedUrl: feed.url },
-          select: { id: true, title: true },
-        });
-
-        if (existing) {
-          result.skipped++;
-          result.details.push({
-            url: feed.url,
-            title: existing.title,
-            status: 'skipped',
-            message: '订阅源已存在',
-          });
-          // 更新统计
-          updateCreatingProgress(feed, i);
-          continue;
-        }
-
-        // 获取智能发现的信息
-        const discovered = discoveredInfos.get(feed.url);
-
-        // 合并信息（OPML 中的值优先）
-        let finalTitle = feed.title || discovered?.title || undefined;
-        let finalDescription = feed.description || discovered?.description || undefined;
-        let finalSiteUrl = feed.siteUrl || discovered?.siteUrl || undefined;
-
-        // 确定分类
-        let feedCategoryId = categoryId;
-
-        if (feed.categoryOutline) {
-          const categoryName = feed.categoryOutline.text || feed.categoryOutline.title;
-          if (categoryName) {
-            const foundOrCreateId = await getOrCreateCategory(userId, categoryName, categoryMap);
-            if (foundOrCreateId) {
-              feedCategoryId = foundOrCreateId;
-            }
-          }
-        }
-
-        // 最终回退
-        if (!finalTitle) {
-          try {
-            finalTitle = new URL(feed.url).hostname;
-          } catch {
-            finalTitle = 'Unknown Feed';
-          }
-        }
-
-        // 创建订阅源
-        const newFeed = await db.feed.create({
-          data: {
-            userId,
-            feedUrl: feed.url,
-            title: finalTitle,
-            description: finalDescription || '',
-            siteUrl: finalSiteUrl || '',
-            categoryId: feedCategoryId || null,
-            fetchInterval: 3600,
-            priority: 5,
-            isActive: true,
-          },
-        });
-
-        importedFeedIds.push(newFeed.id);
-        result.imported++;
-        result.details.push({
-          url: feed.url,
-          title: finalTitle,
-          status: 'imported',
-        });
-
-        // 更新统计（成功）
-        updateCreatingProgress(feed, i);
-
-      } catch (err) {
+    for (const feed of feeds) {
+      const urlCheck = isUrlSafe(feed.url);
+      if (!urlCheck.safe) {
+        invalidFeeds.push({ feed, reason: urlCheck.reason || 'URL 不安全' });
         result.failed++;
-        const errorMsg = err instanceof Error ? err.message : '导入失败';
-        result.errors.push({ url: feed.url, error: errorMsg });
+        result.errors.push({ url: feed.url, error: `URL 不安全: ${urlCheck.reason}` });
         result.details.push({
           url: feed.url,
           title: feed.title || feed.url,
           status: 'failed',
-          message: errorMsg,
+          message: `URL 不安全`,
         });
-
-        // 更新统计（失败）
-        updateCreatingProgress(feed, i);
+      } else {
+        validFeeds.push(feed);
       }
     }
 
-    // 阶段 4：触发抓取
-    if (importedFeedIds.length > 0) {
-      setImportProgress(userId, {
-        phase: 'fetching',
-        current: importedFeedIds.length,
-        total: importedFeedIds.length,
-        message: '正在触发订阅源抓取...',
-        stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
-      });
-      onProgress?.({
-        phase: 'fetching',
-        current: importedFeedIds.length,
-        total: importedFeedIds.length,
-        message: '正在触发订阅源抓取...',
-        stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
+    // ========================================
+    // 阶段 3：批量检查重复 + 批量创建（核心优化）
+    // ========================================
+    setImportProgress(userId, {
+      phase: 'creating',
+      current: 0,
+      total: validFeeds.length,
+      message: '正在导入订阅源...',
+      stats: { imported: 0, skipped: 0, failed: result.failed },
+    });
+
+    // 3.1 获取用户现有订阅源（一次性查询）
+    const existingFeeds = await db.feed.findMany({
+      where: { userId },
+      select: { feedUrl: true, title: true },
+    });
+    const existingUrlSet = new Set(existingFeeds.map((f: { feedUrl: string }) => f.feedUrl));
+
+    // 3.2 获取用户现有分类（一次性查询）
+    const existingCategories = await db.category.findMany({
+      where: { userId },
+      select: { id: true, name: true },
+    });
+    const categoryMap = new Map<string, string>(
+      existingCategories.map((c: { id: string; name: string }) => [c.name.toLowerCase(), c.id])
+    );
+
+    // 3.3 准备创建数据
+    const feedsToCreate: ImportFeedItem[] = [];
+    const categoryToCreateSet = new Set<string>();
+
+    for (const feed of validFeeds) {
+      if (existingUrlSet.has(feed.url)) {
+        // 已存在，跳过
+        result.skipped++;
+        result.details.push({
+          url: feed.url,
+          title: feed.title || feed.url,
+          status: 'skipped',
+          message: '订阅源已存在',
+        });
+      } else {
+        feedsToCreate.push(feed);
+
+        // 收集需要创建的分类
+        if (feed.categoryOutline) {
+          const categoryName = feed.categoryOutline.text || feed.categoryOutline.title;
+          if (categoryName && !categoryMap.has(categoryName.toLowerCase())) {
+            categoryToCreateSet.add(categoryName);
+          }
+        }
+      }
+    }
+
+    // 3.4 批量创建分类
+    if (categoryToCreateSet.size > 0) {
+      const newCategories = await db.category.createMany({
+        data: Array.from(categoryToCreateSet).map(name => ({
+          userId,
+          name,
+          color: '#94a3b8',
+        })),
+        skipDuplicates: true,
       });
 
-      // 更新所有导入的订阅源的 nextFetchAt
+      // 重新获取分类映射
+      if (newCategories.count > 0) {
+        const updatedCategories = await db.category.findMany({
+          where: { userId },
+          select: { id: true, name: true },
+        });
+        categoryMap.clear();
+        updatedCategories.forEach((c: { id: string; name: string }) => categoryMap.set(c.name.toLowerCase(), c.id));
+      }
+    }
+
+    // 3.5 批量创建订阅源
+    const importedFeedIds: string[] = [];
+
+    if (feedsToCreate.length > 0) {
+      // 使用 createMany 批量创建（不返回 ID，需要单独查询）
+      await db.feed.createMany({
+        data: feedsToCreate.map(feed => {
+          // 确定分类
+          let feedCategoryId: string | null | undefined = categoryId;
+          if (feed.categoryOutline) {
+            const categoryName = feed.categoryOutline.text || feed.categoryOutline.title;
+            if (categoryName) {
+              const foundId = categoryMap.get(categoryName.toLowerCase());
+              if (foundId) {
+                feedCategoryId = foundId;
+              }
+            }
+          }
+
+          // 生成标题
+          let finalTitle = feed.title;
+          if (!finalTitle) {
+            try {
+              finalTitle = new URL(feed.url).hostname;
+            } catch {
+              finalTitle = 'Unknown Feed';
+            }
+          }
+
+          return {
+            userId,
+            feedUrl: feed.url,
+            title: finalTitle,
+            description: feed.description || '',
+            siteUrl: feed.siteUrl || '',
+            categoryId: feedCategoryId || null,
+            fetchInterval: 3600,
+            priority: 5,
+            isActive: true,
+          };
+        }),
+        skipDuplicates: true,
+      });
+
+      // 查询刚创建的订阅源 ID（通过 feedUrl 匹配）
+      const createdFeeds = await db.feed.findMany({
+        where: {
+          userId,
+          feedUrl: { in: feedsToCreate.map((f: ImportFeedItem) => f.url) },
+        },
+        select: { id: true, feedUrl: true, title: true },
+      });
+
+      importedFeedIds.push(...createdFeeds.map((f: { id: string }) => f.id));
+      result.imported = createdFeeds.length;
+
+      // 更新详情
+      const createdUrlSet = new Set(createdFeeds.map((f: { feedUrl: string }) => f.feedUrl));
+      for (const feed of feedsToCreate) {
+        if (createdUrlSet.has(feed.url)) {
+          const created = createdFeeds.find((f: { feedUrl: string; title: string }) => f.feedUrl === feed.url);
+          result.details.push({
+            url: feed.url,
+            title: created?.title || feed.title || feed.url,
+            status: 'imported',
+          });
+        } else {
+          // 可能因为并发问题被跳过
+          result.skipped++;
+          result.details.push({
+            url: feed.url,
+            title: feed.title || feed.url,
+            status: 'skipped',
+            message: '订阅源已存在',
+          });
+        }
+      }
+    }
+
+    // ========================================
+    // 阶段 4：触发调度器抓取（利用现有机制）
+    // ========================================
+    if (importedFeedIds.length > 0) {
+      // 设置 nextFetchAt 为当前时间，让调度器立即抓取
       await db.feed.updateMany({
         where: { id: { in: importedFeedIds } },
         data: { nextFetchAt: new Date() },
       });
 
-      // 异步触发抓取
-      const { feedManager } = await import('@/lib/rss/feed-manager');
-      for (const feedId of importedFeedIds) {
-        feedManager.fetchFeed(feedId).catch(console.error);
-      }
+      // 异步触发调度器（不等待）
+      import('@/lib/rss/feed-manager').then(({ feedManager }) => {
+        // 逐个触发抓取，使用调度器会自动处理
+        importedFeedIds.forEach(feedId => {
+          feedManager.fetchFeed(feedId).catch(err => {
+            console.error(`触发抓取失败: ${feedId}`, err);
+          });
+        });
+      }).catch(err => {
+        console.error('导入 feed-manager 失败:', err);
+      });
+
+      await info('rss', 'OPML 导入已触发抓取', {
+        userId,
+        feedCount: importedFeedIds.length,
+      });
     }
 
+    // ========================================
     // 完成
+    // ========================================
     setImportProgress(userId, {
       phase: 'completed',
-      current: feeds.length,
-      total: feeds.length,
+      current: result.total,
+      total: result.total,
       message: `导入完成: 成功 ${result.imported}, 跳过 ${result.skipped}, 失败 ${result.failed}`,
       stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
-    });
-    onProgress?.({
-      phase: 'completed',
-      current: feeds.length,
-      total: feeds.length,
-      message: `导入完成: 成功 ${result.imported}, 跳过 ${result.skipped}, 失败 ${result.failed}`,
-      stats: { imported: result.imported, skipped: result.skipped, failed: result.failed },
+      backgroundTasks: importedFeedIds.length,
     });
 
-    info('rss', 'OPML 导入完成', {
+    await info('rss', 'OPML 快速导入完成', {
       userId,
       imported: result.imported,
       skipped: result.skipped,
       failed: result.failed,
       total: result.total,
-    }).catch(() => {});
+      triggeredFeeds: importedFeedIds.length,
+    });
 
   } catch (err) {
     result.success = false;
@@ -592,7 +446,7 @@ export async function smartImportOPML(
       stats: { imported: 0, skipped: 0, failed: 1 },
     });
 
-    error('rss', 'OPML 导入失败', err instanceof Error ? err : undefined, { userId }).catch(() => {});
+    await error('rss', 'OPML 导入失败', err instanceof Error ? err : undefined, { userId });
   }
 
   return result;

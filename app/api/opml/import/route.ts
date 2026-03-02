@@ -1,6 +1,6 @@
 /**
  * OPML 导入 API
- * 使用智能导入服务，与添加订阅源流程对齐
+ * 快速导入：解析即返回，触发调度器自动抓取
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -34,7 +34,6 @@ export async function POST(req: NextRequest) {
 
     const categoryId = formData.get('categoryId') as string | null;
     const validateOnly = formData.get('validateOnly') === 'true';
-    const skipDiscovery = formData.get('skipDiscovery') === 'true';
 
     // 预览模式
     if (validateOnly) {
@@ -48,18 +47,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 执行智能导入
+    // 执行快速导入（触发调度器自动抓取）
     const result = await smartImportOPML(xmlString, {
       userId: session.userId,
       categoryId: categoryId || undefined,
-      skipDiscovery,
     });
 
-    await info('rss', 'OPML API 导入完成', {
+    await info('rss', 'OPML API 快速导入完成', {
       userId: session.userId,
       imported: result.imported,
       skipped: result.skipped,
       failed: result.failed,
+      triggeredFeeds: result.triggeredFeeds,
     });
 
     return NextResponse.json({
@@ -70,6 +69,7 @@ export async function POST(req: NextRequest) {
       total: result.total,
       errors: result.errors,
       details: result.details,
+      triggeredFeeds: result.triggeredFeeds,
     });
   } catch (err) {
     await error('rss', 'OPML API 导入失败', err instanceof Error ? err : undefined);

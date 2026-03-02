@@ -24,6 +24,7 @@ export async function createContext(opts?: CreateNextContextOptions) {
   // 从 cookie 中获取会话信息
   let session: Session | null = null;
   let userId: string | null = null;
+  let userRole: string | null = null;
   let authMethod: AuthMethod = null;
   let apiKeyId: string | null = null;
   let apiKeyScopes: string[] | null = null;
@@ -50,6 +51,15 @@ export async function createContext(opts?: CreateNextContextOptions) {
       apiKeyId = apiKeyResult.apiKeyId ?? null;
       apiKeyScopes = apiKeyResult.scopes ?? null;
       authMethod = 'api_key';
+
+      // 获取用户角色
+      if (userId) {
+        const user = await db.user.findUnique({
+          where: { id: userId },
+          select: { role: true },
+        });
+        userRole = user?.role ?? null;
+      }
     }
   }
 
@@ -62,7 +72,7 @@ export async function createContext(opts?: CreateNextContextOptions) {
       if (session?.userId) {
         const user = await db.user.findUnique({
           where: { id: session.userId },
-          select: { id: true },
+          select: { id: true, role: true },
         });
 
         // 如果用户不存在，清除 session
@@ -70,6 +80,7 @@ export async function createContext(opts?: CreateNextContextOptions) {
           session = null;
         } else {
           userId = session.userId;
+          userRole = user.role;
           authMethod = 'session';
         }
       }
@@ -82,6 +93,7 @@ export async function createContext(opts?: CreateNextContextOptions) {
   return {
     db,
     userId,
+    userRole,
     session,
     requestId: null as string | null,
     csrfToken,

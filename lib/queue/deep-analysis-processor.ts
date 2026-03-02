@@ -14,6 +14,7 @@ import { PersonalScorer } from '@/lib/ai/scoring/personal-scorer';
 import type { ArticleAnalysisResult } from '@/lib/ai/analysis/types';
 import { quickDetectLanguage } from '@/lib/ai/language-detector';
 import { createModelSelector } from '@/lib/ai/model-selector';
+import { info, warn, error as logError } from '@/lib/logger';
 
 // Redis 连接配置
 const REDIS_CONFIG = {
@@ -148,7 +149,18 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
       const analysisModel = modelSelector.selectModel(language, 'analysis');
       const reflectionModel = modelSelector.selectModel(language, 'reflection');
 
-      console.log(`文章 ${entryId}: 语言=${language}, 分析模型=${analysisModel}, 反思模型=${reflectionModel}`);
+      // 记录分析开始
+      const startTime = Date.now();
+      await info('ai', '深度分析任务开始', {
+        entryId,
+        userId,
+        language,
+        analysisModel,
+        reflectionModel,
+        title: entry.title?.slice(0, 50),
+        contentLength: entry.content?.length,
+        phase: 'deep-analysis',
+      });
 
       job.updateProgress(35);
 
@@ -181,9 +193,14 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
         });
 
         job.updateProgress(60);
-      } catch (error) {
-        console.error('分段分析失败:', error);
-        throw new Error(`分段分析失败: ${error}`);
+      } catch (err) {
+        await logError('ai', '分段分析失败', err instanceof Error ? err : undefined, {
+          entryId,
+          userId,
+          phase: 'deep-analysis',
+          step: 'segmented-analysis',
+        });
+        throw new Error(`分段分析失败: ${err}`);
       }
 
       // 5. 执行反思优化
@@ -196,13 +213,19 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
         );
 
         job.updateProgress(80);
-      } catch (error) {
-        console.error('反思优化失败:', error);
+      } catch (err) {
+        await warn('ai', '反思优化失败，使用原始分析结果', {
+          entryId,
+          userId,
+          error: err instanceof Error ? err.message : String(err),
+          phase: 'deep-analysis',
+          step: 'reflection',
+        });
         // 反思失败不影响主流程，继续使用原始分析结果
       }
 
       // 6. 保存分析结果到数据库
-      const processingTime = Date.now() - job.processedOn!;
+      const processingTime = Date.now() - startTime;
 
       try {
         await db.entry.update({
@@ -220,7 +243,12 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
           },
         });
       } catch (dbError) {
-        console.error('保存分析结果失败:', dbError);
+        await logError('ai', '保存分析结果到数据库失败', dbError instanceof Error ? dbError : undefined, {
+          entryId,
+          userId,
+          phase: 'deep-analysis',
+          step: 'save-result',
+        });
         // 数据库保存失败不影响任务完成
       }
 
@@ -246,10 +274,30 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
           mappedPrefs
         );
 
-        console.log('个性化评分:', personalScore);
+        await info('ai', '个性化评分计算完成', {
+          entryId,
+          userId,
+          personalScore,
+          phase: 'deep-analysis',
+          step: 'personal-scoring',
+        });
       }
 
       job.updateProgress(100);
+
+      // 记录分析完成
+      await info('ai', '深度分析任务完成', {
+        entryId,
+        userId,
+        language,
+        analysisModel,
+        reflectionModel,
+        processingTime,
+        reflectionRounds: analysisResult.reflectionRounds,
+        hasMainPoints: (analysisResult.mainPoints?.length || 0) > 0,
+        hasKeyQuotes: (analysisResult.keyQuotes?.length || 0) > 0,
+        phase: 'deep-analysis',
+      });
 
       return {
         success: true,
@@ -293,11 +341,12 @@ export async function addDeepAnalysisJobsBatch(
  * 获取队列状态
  */
 export async function getQueueStatus() {
-  const [waiting, active, completed, failed] = await Promise.all([
+  const [waiting, active, completed, failed, delayed] = await Promise.all([
     deepAnalysisQueue.getWaiting(),
     deepAnalysisQueue.getActive(),
     deepAnalysisQueue.getCompleted(),
     deepAnalysisQueue.getFailed(),
+    deepAnalysisQueue.getDelayed(),
   ]);
 
   return {
@@ -305,6 +354,7 @@ export async function getQueueStatus() {
     active: active.length,
     completed: completed.length,
     failed: failed.length,
+    delayed: delayed.length,
   };
 }
 
@@ -361,16 +411,29 @@ export async function getJobState(jobId: string) {
  * 重试失败的任务
  */
 export async function retryFailedJobs(limit: number = 10): Promise<number> {
-  const failed = await deepAnalysisQueue.getFailed(0, limit);
+  const queue = getDeepAnalysisQueue();
+  const failed = await queue.getFailed(0, limit);
   let retried = 0;
 
   for (const job of failed) {
     try {
       await job.retry();
       retried++;
-    } catch (error) {
-      console.error(`重试任务 ${job.id} 失败:`, error);
+    } catch (err) {
+      await logError('queue', '重试深度分析任务失败', err instanceof Error ? err : undefined, {
+        jobId: job.id,
+        entryId: job.data?.entryId,
+        phase: 'deep-analysis',
+      });
     }
+  }
+
+  if (retried > 0) {
+    await info('queue', '批量重试深度分析任务完成', {
+      retried,
+      total: failed.length,
+      phase: 'deep-analysis',
+    });
   }
 
   return retried;

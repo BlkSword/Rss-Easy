@@ -18,6 +18,8 @@ import {
   Shield,
   Mail,
   ScrollText,
+  Settings,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
@@ -32,19 +34,22 @@ import { NotificationSettings } from './settings/notification-settings';
 import { AISettings } from './settings/ai-settings';
 import { EmailSettings } from './settings/email-settings';
 import { LogsSettings } from './settings/logs-settings';
+import { AdminSettings } from './settings/admin-settings';
+import { usePermission } from '@/hooks/use-permission';
 
-type TabKey = 'profile' | 'preferences' | 'security' | 'api' | 'data' | 'notifications' | 'ai' | 'email' | 'logs';
+type TabKey = 'profile' | 'preferences' | 'security' | 'api' | 'data' | 'notifications' | 'ai' | 'email' | 'logs' | 'admin';
 
-const tabs = [
-  { key: 'profile' as TabKey, label: '个人资料', icon: User },
-  { key: 'preferences' as TabKey, label: '偏好设置', icon: Palette },
-  { key: 'security' as TabKey, label: '安全设置', icon: Shield },
-  { key: 'api' as TabKey, label: 'API配置', icon: Key },
-  { key: 'email' as TabKey, label: '邮件配置', icon: Mail },
-  { key: 'notifications' as TabKey, label: '通知设置', icon: Bell },
-  { key: 'ai' as TabKey, label: 'AI配置', icon: Sparkles },
-  { key: 'logs' as TabKey, label: '系统日志', icon: ScrollText },
-  { key: 'data' as TabKey, label: '数据管理', icon: Database },
+const baseTabs = [
+  { key: 'profile' as TabKey, label: '个人资料', icon: User, adminOnly: false },
+  { key: 'preferences' as TabKey, label: '偏好设置', icon: Palette, adminOnly: false },
+  { key: 'security' as TabKey, label: '安全设置', icon: Shield, adminOnly: false },
+  { key: 'api' as TabKey, label: 'API配置', icon: Key, adminOnly: false },
+  { key: 'email' as TabKey, label: '邮件配置', icon: Mail, adminOnly: false },
+  { key: 'notifications' as TabKey, label: '通知设置', icon: Bell, adminOnly: false },
+  { key: 'ai' as TabKey, label: 'AI配置', icon: Sparkles, adminOnly: false },
+  { key: 'logs' as TabKey, label: '系统日志', icon: ScrollText, adminOnly: true },
+  { key: 'data' as TabKey, label: '数据管理', icon: Database, adminOnly: false },
+  { key: 'admin' as TabKey, label: '系统管理', icon: Settings, adminOnly: true },
 ];
 
 export function SettingsPageContent() {
@@ -56,6 +61,10 @@ export function SettingsPageContent() {
   const [deletePassword, setDeletePassword] = useState('');
 
   const { data: user } = trpc.auth.me.useQuery();
+  const { isAdmin } = usePermission();
+
+  // 根据权限过滤标签
+  const tabs = baseTabs.filter(tab => !tab.adminOnly || isAdmin);
 
   // 从URL参数读取tab
   useEffect(() => {
@@ -63,7 +72,7 @@ export function SettingsPageContent() {
     if (tabFromUrl && tabs.some(t => t.key === tabFromUrl)) {
       setActiveTab(tabFromUrl);
     }
-  }, [searchParams]);
+  }, [searchParams, tabs]);
   const { mutate: deleteAccount } = trpc.settings.deleteAccount.useMutation();
 
   const handleDeleteAccount = async () => {
@@ -199,6 +208,7 @@ export function SettingsPageContent() {
               {activeTab === 'ai' && <AISettings user={user} />}
               {activeTab === 'email' && <EmailSettings user={user} />}
               {activeTab === 'logs' && <LogsSettings />}
+              {activeTab === 'admin' && <AdminSettings />}
               {activeTab === 'data' && (
                 <DataSettings onOpenDeleteModal={() => setIsDeleteModalOpen(true)} />
               )}

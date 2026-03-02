@@ -547,15 +547,15 @@ export const settingsRouter = router({
     }),
 
   /**
-   * 导入OPML（智能版）
-   * 与添加订阅源流程对齐，使用智能发现功能
+   * 导入OPML（快速版）
+   * 解析即返回，触发调度器自动抓取
    */
   importOPML: protectedProcedure
     .input(
       z.object({
         opmlContent: z.string(),
         categoryId: z.string().optional(),
-        skipDiscovery: z.boolean().optional(), // 跳过智能发现
+        skipDiscovery: z.boolean().optional(), // 已废弃，保留兼容
       })
     )
     .output(
@@ -571,16 +571,16 @@ export const settingsRouter = router({
           status: z.enum(['imported', 'skipped', 'failed']),
           message: z.string().optional(),
         })),
+        triggeredFeeds: z.number().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { opmlContent, categoryId, skipDiscovery } = input;
+      const { opmlContent, categoryId } = input;
 
       const { smartImportOPML } = await import('@/lib/opml/importer');
       const result = await smartImportOPML(opmlContent, {
         userId: ctx.userId,
         categoryId,
-        skipDiscovery,
       });
 
       return {
@@ -590,6 +590,7 @@ export const settingsRouter = router({
         failed: result.failed,
         total: result.total,
         details: result.details,
+        triggeredFeeds: result.triggeredFeeds,
       };
     }),
 
@@ -598,7 +599,7 @@ export const settingsRouter = router({
    */
   getImportProgress: protectedProcedure
     .output(z.object({
-      phase: z.enum(['parsing', 'discovering', 'creating', 'fetching', 'completed']),
+      phase: z.enum(['parsing', 'validating', 'discovering', 'creating', 'fetching', 'completed']),
       current: z.number(),
       total: z.number(),
       currentItem: z.string().optional(),

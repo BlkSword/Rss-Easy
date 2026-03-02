@@ -1,5 +1,8 @@
 /**
  * Next.js 中间件 - 路由保护
+ * 增强功能：
+ * - 初始化检查（未初始化时跳转到 /init）
+ * - 认证检查
  */
 
 import { NextResponse } from 'next/server';
@@ -10,9 +13,12 @@ import { verifyToken } from '@/lib/auth/jwt';
 const publicRoutes = new Set([
   '/login',
   '/register',
+  '/init',
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/me',
+  '/api/admin/init',
+  '/api/admin/init-status',
   '/api/health', // 健康检查，用于启动AI队列
 ]);
 
@@ -48,6 +54,13 @@ function getSessionToken(request: NextRequest): string | undefined {
 }
 
 /**
+ * 检查系统初始化 cookie
+ */
+function getInitCookie(request: NextRequest): boolean {
+  return request.cookies.get('sys_init')?.value === '1';
+}
+
+/**
  * 验证 JWT token
  * 使用真正的 JWT 验证而不是简单的长度检查
  */
@@ -60,6 +73,40 @@ async function isValidToken(token: string): Promise<boolean> {
   }
 }
 
+/**
+ * 检查系统是否已初始化
+ * 优先使用 cookie 快速检查，失败时调用 API
+ */
+async function checkInitialization(request: NextRequest): Promise<boolean> {
+  // 优先检查 cookie（快速路径）
+  if (getInitCookie(request)) {
+    return true;
+  }
+
+  // Cookie 不存在，调用 API 检查
+  try {
+    const baseUrl = process.env.NEXTAUTH_URL || 'http://127.0.0.1:3000';
+    const response = await fetch(`${baseUrl}/api/admin/init-status`, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data.isInitialized === true;
+    }
+    // 如果 API 返回错误，假设已初始化（避免阻塞系统）
+    return true;
+  } catch (err) {
+    // 如果检查失败，假设已初始化（避免阻塞已初始化系统）
+    console.error('检查初始化状态失败:', err);
+    return true;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   // 使用 nextUrl 获取 pathname
   const pathname = request.nextUrl.pathname;
@@ -69,7 +116,32 @@ export async function middleware(request: NextRequest) {
 
   // 公开路由 - 直接放行
   if (isPublicRoute(pathname)) {
+    // 对于 init 路由，检查是否已初始化
+    if (pathname === '/init' || pathname === '/api/admin/init') {
+      const isInitialized = await checkInitialization(request);
+      if (isInitialized) {
+        if (pathname === '/api/admin/init') {
+          return NextResponse.json(
+            { error: '系统已完成初始化' },
+            { status: 400 }
+          );
+        }
+        const homeUrl = new URL('/', request.url);
+        return NextResponse.redirect(homeUrl);
+      }
+    }
     return NextResponse.next();
+  }
+
+  // 检查是否已初始化（只检查页面路由，不检查 API 路由）
+  if (!pathname.startsWith('/api/') && !pathname.startsWith('/_next/')) {
+    const isInitialized = await checkInitialization(request);
+
+    if (!isInitialized) {
+      // 未初始化，跳转到初始化页面
+      const initUrl = new URL('/init', request.url);
+      return NextResponse.redirect(initUrl);
+    }
   }
 
   // API 路由 - 检查认证

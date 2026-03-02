@@ -25,8 +25,16 @@ import {
   Settings,
   Zap,
   AlertCircle,
+  Upload as UploadIcon,
+  FileText,
+  SkipForward,
+  ArrowRight,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Database,
 } from 'lucide-react';
-import { Button, Input, Card, Space, Modal, Badge, Tag, Tooltip, Switch, Select, Empty, Tabs, Progress } from 'antd';
+import { Button, Input, Card, Space, Modal, Badge, Tag, Tooltip, Switch, Select, Empty, Tabs, Progress, Upload } from 'antd';
 import type { MenuProps } from 'antd';
 import { cn, formatDate, formatRelativeTime } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
@@ -38,6 +46,41 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { usePageLoadAnimation, useShakeAnimation, useClipboard } from '@/hooks/use-animation';
 
 type ViewMode = 'list' | 'add' | 'edit';
+type AddMode = 'single' | 'opml';
+
+interface PreviewFeed {
+  url: string;
+  title: string;
+  category?: string;
+}
+
+interface ImportProgress {
+  phase: 'parsing' | 'validating' | 'creating' | 'completed';
+  current: number;
+  total: number;
+  currentItem?: string;
+  message: string;
+  stats: {
+    imported: number;
+    skipped: number;
+    failed: number;
+  };
+  backgroundTasks?: number;
+}
+
+const phaseLabels: Record<ImportProgress['phase'], string> = {
+  parsing: '解析文件',
+  validating: '验证订阅源',
+  creating: '导入订阅源',
+  completed: '完成',
+};
+
+const phaseIcons: Record<ImportProgress['phase'], React.ReactNode> = {
+  parsing: <FileText className="h-4 w-4" />,
+  validating: <Search className="h-4 w-4" />,
+  creating: <Database className="h-4 w-4" />,
+  completed: <CheckCircle className="h-4 w-4" />,
+};
 
 export function FeedsManagePageContent() {
   const router = useRouter();
@@ -47,11 +90,37 @@ export function FeedsManagePageContent() {
   const isLoaded = usePageLoadAnimation(100);
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [addMode, setAddMode] = useState<AddMode>('single');
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { isShaking, shake } = useShakeAnimation();
+  // OPML 导入相关状态
+  const [importContent, setImportContent] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewData, setPreviewData] = useState<{
+    title: string;
+    feeds: PreviewFeed[];
+    categories: string[];
+  } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    created: number;
+    skipped: number;
+    failed: number;
+    total: number;
+    details: Array<{
+      url: string;
+      title: string;
+      status: 'imported' | 'skipped' | 'failed';
+      message?: string;
+    }>;
+    backgroundTaskIds?: string[];
+  } | null>(null);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
 
   // 表单状态
   const [formUrl, setFormUrl] = useState('');
@@ -64,10 +133,23 @@ export function FeedsManagePageContent() {
   const [formIsActive, setFormIsActive] = useState(true);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // 分页状态
+  const [page, setPage] = useState(1);
+  const pageLimit = 20;
+
+  // 搜索时重置页码
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
   const { data: feedsData, isLoading, refetch } = trpc.feeds.list.useQuery({
     search: search || undefined,
+    page,
+    limit: pageLimit,
   });
   const { data: categories } = trpc.categories.list.useQuery();
+  // 获取全局统计数据（用于统计卡片）
+  const { data: globalStats } = trpc.feeds.globalStats.useQuery();
 
   const addFeed = trpc.feeds.add.useMutation();
   const updateFeed = trpc.feeds.update.useMutation();
@@ -75,6 +157,10 @@ export function FeedsManagePageContent() {
   const bulkAction = trpc.feeds.bulkAction.useMutation();
   const discoverFeed = trpc.feeds.discover.useMutation();
   const refreshFeed = trpc.feeds.refresh.useMutation();
+
+  // OPML 导入相关
+  const { mutateAsync: previewOPML } = trpc.settings.previewOPML.useMutation();
+  const { mutateAsync: importOPML } = trpc.settings.importOPML.useMutation();
 
   // 正在抓取的订阅源 ID 集合
   const [fetchingFeedIds, setFetchingFeedIds] = useState<Set<string>>(new Set());
@@ -323,6 +409,125 @@ export function FeedsManagePageContent() {
     }
   };
 
+  // ============== OPML 导入功能 ==============
+
+  // 处理文件上传
+  const handleFileUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const content = e.target?.result as string;
+      setImportContent(content);
+      await handlePreview(content);
+    };
+    reader.readAsText(file);
+  };
+
+  // 预览 OPML
+  const handlePreview = async (content: string) => {
+    setIsPreviewing(true);
+    try {
+      const result = await previewOPML({ opmlContent: content });
+      if (result.success) {
+        setPreviewData({
+          title: result.title,
+          feeds: result.feeds,
+          categories: result.categories,
+        });
+      } else {
+        notifyError('解析失败', result.error || '无法解析 OPML 文件');
+      }
+    } catch (error) {
+      notifyError('预览失败', error instanceof Error ? error.message : '请稍后重试');
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  // 执行导入
+  const handleImport = async () => {
+    if (!importContent) return;
+
+    setIsImporting(true);
+    setShowProgressModal(true);
+    setProgress({
+      phase: 'parsing',
+      current: 0,
+      total: previewData?.feeds.length || 0,
+      message: '正在解析 OPML 文件...',
+      stats: { imported: 0, skipped: 0, failed: 0 },
+    });
+
+    try {
+      // 模拟进度更新
+      setProgress(prev => prev ? {
+        ...prev,
+        phase: 'validating',
+        message: '正在验证订阅源...',
+      } : null);
+
+      const result = await importOPML({ opmlContent: importContent });
+
+      setProgress(prev => prev ? {
+        ...prev,
+        phase: 'creating',
+        current: result.total,
+        message: '正在导入订阅源...',
+      } : null);
+
+      setImportResult(result);
+
+      // 完成状态
+      setProgress(prev => prev ? {
+        ...prev,
+        phase: 'completed',
+        current: result.total,
+        message: `导入完成：成功 ${result.created}，跳过 ${result.skipped}，失败 ${result.failed}`,
+        stats: {
+          imported: result.created,
+          skipped: result.skipped,
+          failed: result.failed,
+        },
+      } : null);
+
+      if (result.created > 0) {
+        notifySuccess('导入成功', `已成功导入 ${result.created} 个订阅源`);
+        refetch();
+      }
+    } catch (error) {
+      setProgress(prev => prev ? {
+        ...prev,
+        phase: 'completed',
+        message: '导入失败',
+        stats: prev.stats,
+      } : null);
+      notifyError('导入失败', error instanceof Error ? error.message : '请稍后重试');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // 重置导入状态
+  const resetImport = () => {
+    setImportContent('');
+    setPreviewData(null);
+    setImportResult(null);
+    setProgress(null);
+    setShowProgressModal(false);
+  };
+
+  // 关闭进度弹窗
+  const handleCloseProgressModal = () => {
+    if (!isImporting) {
+      setShowProgressModal(false);
+      if (progress?.phase === 'completed') {
+        resetImport();
+        goToList();
+      }
+    }
+  };
+
+  // ============== 结束 OPML 导入功能 ==============
+
   // 列表视图
   if (viewMode === 'list') {
     return (
@@ -343,7 +548,7 @@ export function FeedsManagePageContent() {
                 <div>
                   <h1 className="font-semibold text-sm">订阅源管理</h1>
                   <p className="text-xs text-muted-foreground">
-                    {feeds.length} 个订阅源 · {feeds.reduce((acc, f) => acc + (f._count?.entries || 0), 0)} 篇文章
+                    {globalStats?.totalFeeds ?? feedsData?.pagination?.total ?? 0} 个订阅源 · {globalStats?.totalEntries ?? 0} 篇文章
                   </p>
                 </div>
               </div>
@@ -368,39 +573,39 @@ export function FeedsManagePageContent() {
           </header>
 
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-            {/* 统计卡片 */}
+            {/* 统计卡片 - 使用全局统计数据 */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
-                  value={feeds.length}
+                  value={globalStats?.totalFeeds ?? 0}
                   label="订阅源总数"
                   icon={<Rss className="h-4 w-4 text-primary" />}
                 />
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
-                  value={feeds.filter(f => f.isActive).length}
+                  value={globalStats?.activeFeeds ?? 0}
                   label="启用中"
                   icon={<Check className="h-4 w-4 text-green-500" />}
                 />
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
-                  value={feeds.filter(f => !f.isActive).length}
+                  value={globalStats?.inactiveFeeds ?? 0}
                   label="已禁用"
                   icon={<X className="h-4 w-4 text-red-500" />}
                 />
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
-                  value={feeds.reduce((acc, f) => acc + (f._count?.entries || 0), 0)}
+                  value={globalStats?.totalEntries ?? 0}
                   label="文章总数"
                   icon={<FolderOpen className="h-4 w-4 text-blue-500" />}
                 />
               </Card>
               <Card className="border-border/60" size="small">
                 <AnimatedCounter
-                  value={feeds.reduce((acc, f) => acc + (f.unreadCount || 0), 0)}
+                  value={globalStats?.unreadCount ?? 0}
                   label="未读文章"
                   icon={<FolderOpen className="h-4 w-4 text-orange-500" />}
                 />
@@ -680,6 +885,33 @@ export function FeedsManagePageContent() {
                 })}
               </Card>
             )}
+
+            {/* 分页组件 */}
+            {feedsData?.pagination && feedsData.pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 mt-4">
+                <div className="text-sm text-muted-foreground">
+                  共 {feedsData.pagination.total} 个订阅源，第 {page} / {feedsData.pagination.totalPages} 页
+                </div>
+                <Space>
+                  <Button
+                    size="small"
+                    disabled={page === 1 || isLoading}
+                    onClick={() => setPage(page - 1)}
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-1" />
+                    上一页
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={!feedsData.pagination.hasNext || isLoading}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    下一页
+                    <ArrowRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </Space>
+              </div>
+            )}
           </div>
         </div>
       </Fade>
@@ -710,205 +942,481 @@ export function FeedsManagePageContent() {
         </header>
 
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
-          <Card
-            className={cn('border-border/60', isShaking && 'animate-shake')}
-            title={
-              <div className="flex items-center gap-2">
-                {viewMode === 'add' ? <Plus className="h-5 w-5 text-primary" /> : <Edit className="h-5 w-5 text-primary" />}
-                <span>{viewMode === 'add' ? '填写订阅源信息' : '修改订阅源信息'}</span>
-              </div>
-            }
-          >
-            <Space orientation="vertical" size="large" className="w-full">
-              {/* RSS 订阅地址 */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-sm font-medium">
-                    RSS 订阅地址 <span className="text-red-500">*</span>
-                  </label>
-                  {formErrors.url && (
-                    <span className="text-xs text-red-500 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {formErrors.url}
-                    </span>
-                  )}
+          {/* 编辑模式：直接显示表单 */}
+          {viewMode === 'edit' && (
+            <Card
+              className={cn('border-border/60', isShaking && 'animate-shake')}
+              title={
+                <div className="flex items-center gap-2">
+                  <Edit className="h-5 w-5 text-primary" />
+                  <span>修改订阅源信息</span>
                 </div>
-                <div className="flex gap-2">
+              }
+            >
+              <Space direction="vertical" size="large" className="w-full">
+                {/* RSS 订阅地址 */}
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-sm font-medium">
+                      RSS 订阅地址 <span className="text-red-500">*</span>
+                    </label>
+                    {formErrors.url && (
+                      <span className="text-xs text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {formErrors.url}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://example.com/rss"
+                      value={formUrl}
+                      onChange={(e) => {
+                        setFormUrl(e.target.value);
+                        if (formErrors.url) setFormErrors({});
+                      }}
+                      prefix={<Rss className="h-4 w-4 text-muted-foreground" />}
+                      status={formErrors.url ? 'error' : ''}
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={handleDiscover}
+                      loading={discoverFeed.isPending}
+                      icon={<Zap className="h-4 w-4" />}
+                    >
+                      自动发现
+                    </Button>
+                  </div>
+                </div>
+
+                {/* 标题 */}
+                <div>
+                  <div className="mb-2">
+                    <label className="text-sm font-medium">标题</label>
+                  </div>
                   <Input
-                    placeholder="https://example.com/rss"
-                    value={formUrl}
-                    onChange={(e) => {
-                      setFormUrl(e.target.value);
-                      if (formErrors.url) setFormErrors({});
-                    }}
-                    prefix={<Rss className="h-4 w-4 text-muted-foreground" />}
-                    status={formErrors.url ? 'error' : ''}
-                    className="flex-1"
+                    placeholder="订阅源标题（留空则自动获取）"
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
                   />
+                </div>
+
+                {/* 描述 */}
+                <div>
+                  <div className="mb-2">
+                    <label className="text-sm font-medium">描述</label>
+                  </div>
+                  <Input.TextArea
+                    rows={3}
+                    placeholder="订阅源描述"
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                  />
+                </div>
+
+                {/* 网站地址 */}
+                <div>
+                  <div className="mb-2">
+                    <label className="text-sm font-medium">网站地址</label>
+                  </div>
+                  <Input
+                    placeholder="https://example.com"
+                    value={formSiteUrl}
+                    onChange={(e) => setFormSiteUrl(e.target.value)}
+                    prefix={<Globe className="h-4 w-4 text-muted-foreground" />}
+                  />
+                </div>
+
+                {/* 分类 */}
+                <div>
+                  <div className="mb-2">
+                    <label className="text-sm font-medium">分类</label>
+                  </div>
+                  <Select
+                    className="w-full"
+                    placeholder="选择分类"
+                    allowClear
+                    value={formCategoryId || undefined}
+                    onChange={(value) => setFormCategoryId(value || '')}
+                    options={categories?.map((cat) => ({
+                      label: (
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: cat.color || '#94a3b8' }}
+                          />
+                          <span className="truncate">{cat.name}</span>
+                        </div>
+                      ),
+                      value: cat.id,
+                    }))}
+                  />
+                </div>
+
+                {/* 高级设置 */}
+                <div className="border-t border-border/60 pt-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Settings className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium text-muted-foreground">高级设置</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 更新频率 */}
+                    <div>
+                      <div className="mb-2">
+                        <label className="text-sm font-medium">更新频率</label>
+                      </div>
+                      <Select
+                        value={formFetchInterval}
+                        onChange={setFormFetchInterval}
+                        className="w-full"
+                        options={[
+                          { label: '15 分钟', value: 900 },
+                          { label: '30 分钟', value: 1800 },
+                          { label: '1 小时', value: 3600 },
+                          { label: '2 小时', value: 7200 },
+                          { label: '6 小时', value: 21600 },
+                          { label: '12 小时', value: 43200 },
+                          { label: '24 小时', value: 86400 },
+                        ]}
+                      />
+                    </div>
+
+                    {/* 优先级 */}
+                    <div>
+                      <div className="mb-2">
+                        <label className="text-sm font-medium">优先级</label>
+                      </div>
+                      <Select
+                        value={formPriority}
+                        onChange={setFormPriority}
+                        className="w-full"
+                        options={[
+                          { label: '低', value: 1 },
+                          { label: '中', value: 5 },
+                          { label: '高', value: 10 },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 启用状态 */}
+                <div className="flex items-center justify-between py-3 px-4 bg-muted/30 rounded-xl">
+                  <div>
+                    <div className="font-medium text-sm">启用此订阅源</div>
+                    <div className="text-xs text-muted-foreground">禁用后将不再获取新文章</div>
+                  </div>
+                  <Switch
+                    checked={formIsActive}
+                    onChange={setFormIsActive}
+                    checkedChildren="启用"
+                    unCheckedChildren="禁用"
+                  />
+                </div>
+
+                {/* 操作按钮 */}
+                <div className="flex gap-3 pt-4 border-t border-border/60">
+                  <Button onClick={goToList} size="large">
+                    取消
+                  </Button>
                   <Button
-                    onClick={handleDiscover}
-                    loading={discoverFeed.isPending}
-                    icon={<Zap className="h-4 w-4" />}
+                    type="primary"
+                    icon={<Save className="h-4 w-4" />}
+                    onClick={handleSave}
+                    loading={updateFeed.isPending}
+                    size="large"
+                    className="flex-1"
                   >
-                    自动发现
+                    保存更改
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  输入 RSS 或 Atom 订阅地址，点击"自动发现"可以自动获取订阅源信息
-                </p>
-              </div>
+              </Space>
+            </Card>
+          )}
 
-              {/* 标题 */}
-              <div>
-                <div className="mb-2">
-                  <label className="text-sm font-medium">标题</label>
-                </div>
-                <Input
-                  placeholder="订阅源标题（留空则自动获取）"
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
-                />
-              </div>
-
-              {/* 描述 */}
-              <div>
-                <div className="mb-2">
-                  <label className="text-sm font-medium">描述</label>
-                </div>
-                <Input.TextArea
-                  rows={3}
-                  placeholder="订阅源描述"
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                />
-              </div>
-
-              {/* 网站地址 */}
-              <div>
-                <div className="mb-2">
-                  <label className="text-sm font-medium">网站地址</label>
-                </div>
-                <Input
-                  placeholder="https://example.com"
-                  value={formSiteUrl}
-                  onChange={(e) => setFormSiteUrl(e.target.value)}
-                  prefix={<Globe className="h-4 w-4 text-muted-foreground" />}
-                />
-              </div>
-
-              {/* 分类 */}
-              <div>
-                <div className="mb-2">
-                  <label className="text-sm font-medium">分类</label>
-                </div>
-                <Select
-                  className="w-full"
-                  placeholder="选择分类"
-                  allowClear
-                  value={formCategoryId || undefined}
-                  onChange={(value) => setFormCategoryId(value || '')}
-                  options={categories?.map((cat) => ({
-                    label: (
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: cat.color || '#94a3b8' }}
-                        />
-                        <span className="truncate">{cat.name}</span>
-                      </div>
-                    ),
-                    value: cat.id,
-                  }))}
-                />
-              </div>
-
-              {/* 编辑模式下显示的额外选项 */}
-              {viewMode === 'edit' && (
-                <>
-                  <div className="border-t border-border/60 pt-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Settings className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-muted-foreground">高级设置</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* 更新频率 */}
-                      <div>
-                        <div className="mb-2">
-                          <label className="text-sm font-medium">更新频率</label>
+          {/* 添加模式：使用 Tabs 切换单个添加和 OPML 导入 */}
+          {viewMode === 'add' && (
+            <Tabs
+              defaultActiveKey="single"
+              activeKey={addMode}
+              onChange={(key) => {
+                setAddMode(key as AddMode);
+                resetImport();
+              }}
+              items={[
+                {
+                  key: 'single',
+                  label: (
+                    <span className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      单个添加
+                    </span>
+                  ),
+                  children: (
+                    <Card className="border-border/60" styles={{ body: { paddingTop: 16 } }}>
+                      <Space direction="vertical" size="large" className="w-full">
+                        {/* RSS 订阅地址 */}
+                        <div>
+                          <div className="mb-2 flex items-center justify-between">
+                            <label className="text-sm font-medium">
+                              RSS 订阅地址 <span className="text-red-500">*</span>
+                            </label>
+                            {formErrors.url && (
+                              <span className="text-xs text-red-500 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {formErrors.url}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="https://example.com/rss"
+                              value={formUrl}
+                              onChange={(e) => {
+                                setFormUrl(e.target.value);
+                                if (formErrors.url) setFormErrors({});
+                              }}
+                              prefix={<Rss className="h-4 w-4 text-muted-foreground" />}
+                              status={formErrors.url ? 'error' : ''}
+                              className="flex-1"
+                            />
+                            <Button
+                              onClick={handleDiscover}
+                              loading={discoverFeed.isPending}
+                              icon={<Zap className="h-4 w-4" />}
+                            >
+                              自动发现
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            输入 RSS 或 Atom 订阅地址，点击"自动发现"可以自动获取订阅源信息
+                          </p>
                         </div>
-                        <Select
-                          value={formFetchInterval}
-                          onChange={setFormFetchInterval}
-                          className="w-full"
-                          options={[
-                            { label: '15 分钟', value: 900 },
-                            { label: '30 分钟', value: 1800 },
-                            { label: '1 小时', value: 3600 },
-                            { label: '2 小时', value: 7200 },
-                            { label: '6 小时', value: 21600 },
-                            { label: '12 小时', value: 43200 },
-                            { label: '24 小时', value: 86400 },
-                          ]}
-                        />
-                      </div>
 
-                      {/* 优先级 */}
-                      <div>
-                        <div className="mb-2">
-                          <label className="text-sm font-medium">优先级</label>
+                        {/* 标题 */}
+                        <div>
+                          <div className="mb-2">
+                            <label className="text-sm font-medium">标题</label>
+                          </div>
+                          <Input
+                            placeholder="订阅源标题（留空则自动获取）"
+                            value={formTitle}
+                            onChange={(e) => setFormTitle(e.target.value)}
+                          />
                         </div>
-                        <Select
-                          value={formPriority}
-                          onChange={setFormPriority}
-                          className="w-full"
-                          options={[
-                            { label: '低', value: 1 },
-                            { label: '中', value: 5 },
-                            { label: '高', value: 10 },
-                          ]}
-                        />
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* 启用状态 */}
-                  <div className="flex items-center justify-between py-3 px-4 bg-muted/30 rounded-xl">
-                    <div>
-                      <div className="font-medium text-sm">启用此订阅源</div>
-                      <div className="text-xs text-muted-foreground">禁用后将不再获取新文章</div>
-                    </div>
-                    <Switch
-                      checked={formIsActive}
-                      onChange={setFormIsActive}
-                      checkedChildren="启用"
-                      unCheckedChildren="禁用"
-                    />
-                  </div>
-                </>
-              )}
+                        {/* 描述 */}
+                        <div>
+                          <div className="mb-2">
+                            <label className="text-sm font-medium">描述</label>
+                          </div>
+                          <Input.TextArea
+                            rows={3}
+                            placeholder="订阅源描述"
+                            value={formDescription}
+                            onChange={(e) => setFormDescription(e.target.value)}
+                          />
+                        </div>
 
-              {/* 操作按钮 */}
-              <div className="flex gap-3 pt-4 border-t border-border/60">
-                <Button onClick={goToList} size="large">
-                  取消
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<Save className="h-4 w-4" />}
-                  onClick={handleSave}
-                  loading={addFeed.isPending || updateFeed.isPending}
-                  size="large"
-                  className="flex-1"
-                >
-                  {viewMode === 'add' ? '添加订阅源' : '保存更改'}
-                </Button>
-              </div>
-            </Space>
-          </Card>
+                        {/* 网站地址 */}
+                        <div>
+                          <div className="mb-2">
+                            <label className="text-sm font-medium">网站地址</label>
+                          </div>
+                          <Input
+                            placeholder="https://example.com"
+                            value={formSiteUrl}
+                            onChange={(e) => setFormSiteUrl(e.target.value)}
+                            prefix={<Globe className="h-4 w-4 text-muted-foreground" />}
+                          />
+                        </div>
+
+                        {/* 分类 */}
+                        <div>
+                          <div className="mb-2">
+                            <label className="text-sm font-medium">分类</label>
+                          </div>
+                          <Select
+                            className="w-full"
+                            placeholder="选择分类"
+                            allowClear
+                            value={formCategoryId || undefined}
+                            onChange={(value) => setFormCategoryId(value || '')}
+                            options={categories?.map((cat) => ({
+                              label: (
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: cat.color || '#94a3b8' }}
+                                  />
+                                  <span className="truncate">{cat.name}</span>
+                                </div>
+                              ),
+                              value: cat.id,
+                            }))}
+                          />
+                        </div>
+
+                        {/* 操作按钮 */}
+                        <div className="flex gap-3 pt-4 border-t border-border/60">
+                          <Button onClick={goToList} size="large">
+                            取消
+                          </Button>
+                          <Button
+                            type="primary"
+                            icon={<Save className="h-4 w-4" />}
+                            onClick={handleSave}
+                            loading={addFeed.isPending}
+                            size="large"
+                            className="flex-1"
+                          >
+                            添加订阅源
+                          </Button>
+                        </div>
+                      </Space>
+                    </Card>
+                  ),
+                },
+                {
+                  key: 'opml',
+                  label: (
+                    <span className="flex items-center gap-2">
+                      <UploadIcon className="h-4 w-4" />
+                      OPML 导入
+                    </span>
+                  ),
+                  children: (
+                    <Card className="border-border/60" styles={{ body: { paddingTop: 16 } }}>
+                      <Space direction="vertical" size="large" className="w-full">
+                        {/* 上传区域 */}
+                        <div>
+                          <div className="mb-2">
+                            <label className="text-sm font-medium">上传 OPML 文件</label>
+                          </div>
+                          <Upload.Dragger
+                            accept=".opml,.xml"
+                            showUploadList={false}
+                            beforeUpload={(file: File) => {
+                              handleFileUpload(file);
+                              return false;
+                            }}
+                            className="bg-muted/30"
+                          >
+                            <p className="ant-upload-drag-icon">
+                              <FileText className="h-10 w-10 mx-auto text-muted-foreground" />
+                            </p>
+                            <p className="ant-upload-text text-sm">点击或拖拽文件到此区域上传</p>
+                            <p className="ant-upload-hint text-xs text-muted-foreground">
+                              支持 OPML 和 XML 格式的订阅源导出文件
+                            </p>
+                          </Upload.Dragger>
+                        </div>
+
+                        {/* 预览数据 */}
+                        {previewData && (
+                          <div className="border border-border/60 rounded-xl overflow-hidden">
+                            <div className="bg-muted/30 px-4 py-3 border-b border-border/60">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Database className="h-4 w-4 text-primary" />
+                                  <span className="font-medium text-sm">{previewData.title}</span>
+                                </div>
+                                <Button size="small" onClick={resetImport}>
+                                  清除
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="p-4">
+                              <div className="flex gap-4 mb-4 text-sm">
+                                <div className="flex items-center gap-1">
+                                  <Rss className="h-4 w-4 text-primary" />
+                                  <span>{previewData.feeds.length} 个订阅源</span>
+                                </div>
+                                {previewData.categories.length > 0 && (
+                                  <div className="flex items-center gap-1">
+                                    <FolderOpen className="h-4 w-4 text-blue-500" />
+                                    <span>{previewData.categories.length} 个分类</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 订阅源列表 */}
+                              <div className="max-h-60 overflow-y-auto space-y-2">
+                                {previewData.feeds.slice(0, 20).map((feed, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 text-sm"
+                                  >
+                                    <Rss className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                    <span className="truncate flex-1">{feed.title}</span>
+                                    {feed.category && (
+                                      <Tag className="text-xs m-0">{feed.category}</Tag>
+                                    )}
+                                  </div>
+                                ))}
+                                {previewData.feeds.length > 20 && (
+                                  <div className="text-center text-xs text-muted-foreground py-2">
+                                    还有 {previewData.feeds.length - 20} 个订阅源...
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 导入结果 */}
+                        {importResult && (
+                          <div className="border border-border/60 rounded-xl p-4 bg-muted/30">
+                            <div className="flex items-center gap-4 mb-4">
+                              {importResult.success ? (
+                                <CheckCircle className="h-6 w-6 text-green-500" />
+                              ) : (
+                                <XCircle className="h-6 w-6 text-red-500" />
+                              )}
+                              <div>
+                                <div className="font-medium">
+                                  {importResult.success ? '导入完成' : '导入失败'}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  成功 {importResult.created} · 跳过 {importResult.skipped} · 失败{' '}
+                                  {importResult.failed}
+                                </div>
+                              </div>
+                            </div>
+                            <Button onClick={() => { resetImport(); goToList(); }}>
+                              返回列表
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* 操作按钮 */}
+                        <div className="flex gap-3 pt-4 border-t border-border/60">
+                          <Button onClick={goToList} size="large" disabled={isImporting}>
+                            取消
+                          </Button>
+                          <Button
+                            type="primary"
+                            icon={<ArrowRight className="h-4 w-4" />}
+                            onClick={handleImport}
+                            loading={isImporting}
+                            disabled={!previewData || isImporting}
+                            size="large"
+                            className="flex-1"
+                          >
+                            {isImporting ? '正在导入...' : '开始导入'}
+                          </Button>
+                        </div>
+                      </Space>
+                    </Card>
+                  ),
+                },
+              ]}
+            />
+          )}
 
           {/* 支持格式说明 */}
-          {viewMode === 'add' && (
+          {viewMode === 'add' && addMode === 'single' && (
             <Card className="mt-6 bg-gradient-to-r from-primary/5 to-purple-500/5 border-primary/10" size="small">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -935,6 +1443,81 @@ export function FeedsManagePageContent() {
             </Card>
           )}
         </div>
+
+        {/* 导入进度弹窗 */}
+        <Modal
+          open={showProgressModal}
+          onCancel={handleCloseProgressModal}
+          footer={null}
+          closable={!isImporting}
+          maskClosable={false}
+          title={
+            <div className="flex items-center gap-2">
+              {progress?.phase === 'completed' ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              )}
+              <span>导入进度</span>
+            </div>
+          }
+        >
+          {progress && (
+            <div className="space-y-4">
+              {/* 阶段指示器 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {phaseIcons[progress.phase]}
+                  <span className="font-medium">{phaseLabels[progress.phase]}</span>
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {progress.current} / {progress.total}
+                </span>
+              </div>
+
+              {/* 进度条 */}
+              <Progress
+                percent={progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}
+                status={progress.phase === 'completed' ? 'success' : 'active'}
+              />
+
+              {/* 当前项 */}
+              {progress.currentItem && (
+                <div className="text-sm text-muted-foreground truncate">
+                  当前: {progress.currentItem}
+                </div>
+              )}
+
+              {/* 消息 */}
+              <div className="text-sm">{progress.message}</div>
+
+              {/* 统计 */}
+              {progress.phase === 'completed' && (
+                <div className="flex gap-4 pt-2">
+                  <div className="flex items-center gap-1">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm">成功: {progress.stats.imported}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <SkipForward className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm">跳过: {progress.stats.skipped}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-sm">失败: {progress.stats.failed}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 关闭按钮 */}
+              {progress.phase === 'completed' && (
+                <Button type="primary" block onClick={handleCloseProgressModal}>
+                  完成
+                </Button>
+              )}
+            </div>
+          )}
+        </Modal>
       </div>
     </Fade>
   );

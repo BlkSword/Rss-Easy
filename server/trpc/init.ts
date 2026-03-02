@@ -4,6 +4,7 @@
  * - 速率限制中间件
  * - 改进的 CSRF 保护
  * - 权限检查中间件
+ * - 角色权限中间件
  */
 
 import { initTRPC, TRPCError } from '@trpc/server';
@@ -19,6 +20,7 @@ import {
 } from '@/lib/security/redis-rate-limit';
 import { validateCSRFToken } from '@/lib/auth/csrf';
 import { hasScope, type ApiKeyScope } from '@/lib/auth/user-api-key';
+import { hasRoleLevel, type UserRole } from '@/lib/auth/roles';
 
 /**
  * tRPC实例
@@ -217,6 +219,37 @@ function createScopeCheckMiddleware(requiredScopes: ApiKeyScope[]) {
 }
 
 /**
+ * 创建角色检查中间件工厂
+ */
+function createRoleCheckMiddleware(requiredRole: UserRole) {
+  return t.middleware(async ({ ctx, next }) => {
+    if (!ctx.userId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: '需要登录' });
+    }
+
+    if (!hasRoleLevel(ctx.userRole, requiredRole)) {
+      await warn('security', '角色权限不足', {
+        userId: ctx.userId,
+        userRole: ctx.userRole,
+        requiredRole,
+      });
+
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: `需要 ${requiredRole} 或更高权限`,
+      });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        userRole: ctx.userRole!, // 确保角色非 null
+      },
+    });
+  });
+}
+
+/**
  * 导出tRPC实例和中间件
  */
 export const router = t.router;
@@ -239,6 +272,24 @@ export const registerProcedure = t.procedure.use(registerRateLimit).use(requestL
 // 带特定权限检查的 procedure
 export const withScope = (...scopes: ApiKeyScope[]) =>
   t.procedure.use(isAuthed).use(createScopeCheckMiddleware(scopes)).use(requestLogger);
+
+// 需要管理员角色（admin+）的 procedure
+export const adminProcedure = t.procedure
+  .use(isAuthed)
+  .use(createRoleCheckMiddleware('admin'))
+  .use(requestLogger);
+
+// 需要超级管理员角色的 procedure
+export const superAdminProcedure = t.procedure
+  .use(isAuthed)
+  .use(createRoleCheckMiddleware('super_admin'))
+  .use(requestLogger);
+
+// 需要编辑角色（editor+）的 procedure
+export const editorProcedure = t.procedure
+  .use(isAuthed)
+  .use(createRoleCheckMiddleware('editor'))
+  .use(requestLogger);
 
 // 导出中间件供外部使用
 export { loginRateLimit, registerRateLimit, csrfProtection };

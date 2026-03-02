@@ -461,21 +461,33 @@ export const feedsRouter = router({
    */
   globalStats: protectedProcedure
     .query(async ({ ctx }) => {
-      const [totalFeeds, totalEntries, unreadCount, todayEntries] = await Promise.all([
+      const [totalFeeds, activeFeeds, inactiveFeeds, totalEntries, unreadCount, todayEntries] = await Promise.all([
+        // 订阅源总数
+        ctx.db.feed.count({
+          where: { userId: ctx.userId },
+        }),
+        // 启用的订阅源数
         ctx.db.feed.count({
           where: { userId: ctx.userId, isActive: true },
         }),
+        // 禁用的订阅源数
+        ctx.db.feed.count({
+          where: { userId: ctx.userId, isActive: false },
+        }),
+        // 文章总数
         ctx.db.entry.count({
           where: {
             feed: { userId: ctx.userId },
           },
         }),
+        // 未读文章数
         ctx.db.entry.count({
           where: {
             feed: { userId: ctx.userId },
             isRead: false,
           },
         }),
+        // 今日文章数
         ctx.db.entry.count({
           where: {
             feed: { userId: ctx.userId },
@@ -488,6 +500,8 @@ export const feedsRouter = router({
 
       return {
         totalFeeds,
+        activeFeeds,
+        inactiveFeeds,
         totalEntries,
         unreadCount,
         todayEntries,

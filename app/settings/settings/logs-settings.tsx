@@ -52,6 +52,7 @@ const categoryLabels: Record<string, string> = {
   email: '邮件',
   api: 'API',
   queue: '队列',
+  security: '安全',
 };
 
 export function LogsSettings() {
@@ -62,6 +63,7 @@ export function LogsSettings() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showClearCard, setShowClearCard] = useState(false);
+  const [showCategoryStats, setShowCategoryStats] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // 复制到剪贴板
@@ -154,7 +156,7 @@ export function LogsSettings() {
 
   return (
     <div className="space-y-6">
-      {/* 统计卡片 */}
+      {/* 级别统计卡片 */}
       {stats?.levelCounts && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {stats.levelCounts.map(({ level, count }) => {
@@ -181,6 +183,47 @@ export function LogsSettings() {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* 分类统计 */}
+      {stats?.categoryCounts && stats.categoryCounts.length > 0 && (
+        <div className="space-y-3">
+          <button
+            onClick={() => setShowCategoryStats(!showCategoryStats)}
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Filter className="h-4 w-4" />
+            按分类统计
+            {showCategoryStats ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
+          {showCategoryStats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {stats.categoryCounts
+                .sort((a, b) => b.count - a.count)
+                .map(({ category, count }) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+                    className={cn(
+                      'p-3 rounded-lg border text-left transition-all duration-200',
+                      selectedCategory === category
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/30 hover:bg-muted/30'
+                    )}
+                  >
+                    <div className="text-xs text-muted-foreground mb-1">
+                      {categoryLabels[category] || category}
+                    </div>
+                    <div className="text-lg font-semibold">{count.toLocaleString()}</div>
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
       )}
 

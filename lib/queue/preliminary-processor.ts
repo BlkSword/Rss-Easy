@@ -11,6 +11,7 @@ import { createPreliminaryEvaluator } from '@/lib/ai/preliminary-evaluator';
 import type { PreliminaryEvaluation } from '@/lib/ai/preliminary-evaluator';
 import type { UserAIConfig } from '@/lib/ai/client';
 import { safeDecrypt } from '@/lib/crypto/encryption';
+import { info, warn, error as logError } from '@/lib/logger';
 
 // =====================================================
 // Redis 配置
@@ -386,28 +387,49 @@ export async function getQueueStats() {
  * 设置队列事件监听
  */
 export function setupQueueEvents(): void {
-  preliminaryQueue.on('waiting' as any, (jobId: string) => {
+  const queue = getPreliminaryQueue();
+
+  queue.on('waiting' as any, (jobId: string) => {
     console.log(`任务 ${jobId} 进入等待队列`);
   });
 
-  preliminaryQueue.on('active' as any, (job: { id: string }) => {
-    console.log(`任务 ${job.id} 开始处理`);
+  queue.on('active' as any, (job: { id: string; data: PreliminaryJobData }) => {
+    info('queue', '初评任务开始处理', {
+      jobId: job.id,
+      entryId: job.data.entryId,
+      phase: 'preliminary',
+    });
   });
 
-  preliminaryQueue.on('completed' as any, (job: { id: string }, result: any) => {
-    const { evaluation, queuedForDeepAnalysis } = result as PreliminaryJobResult;
-    console.log(
-      `任务 ${job.id} 完成: ${evaluation?.language}, ` +
-      `评分 ${evaluation?.value}/5, ` +
-      `${queuedForDeepAnalysis ? '已加入深度分析' : '已忽略'}`
-    );
+  queue.on('completed' as any, (job: { id: string; data: PreliminaryJobData; processedOn?: number }, result: PreliminaryJobResult) => {
+    const { evaluation, queuedForDeepAnalysis } = result;
+    const duration = job.processedOn ? Date.now() - job.processedOn : undefined;
+
+    info('queue', '初评任务完成', {
+      jobId: job.id,
+      entryId: job.data.entryId,
+      language: evaluation?.language,
+      value: evaluation?.value,
+      status: evaluation?.ignore ? 'rejected' : 'passed',
+      queuedForDeepAnalysis,
+      duration,
+      phase: 'preliminary',
+    });
   });
 
-  preliminaryQueue.on('failed' as any, (job: { id?: string }, error: Error) => {
-    console.error(`任务 ${job?.id} 失败:`, error.message);
+  queue.on('failed' as any, (job: { id?: string; data: PreliminaryJobData }, err: Error) => {
+    logError('queue', '初评任务失败', err, {
+      jobId: job?.id,
+      entryId: job?.data?.entryId,
+      errorMessage: err.message,
+      phase: 'preliminary',
+    });
   });
 
-  preliminaryQueue.on('stalled' as any, (jobId: string) => {
-    console.warn(`任务 ${jobId} 被标记为停滞`);
+  queue.on('stalled' as any, (jobId: string) => {
+    warn('queue', '初评任务被标记为停滞', {
+      jobId,
+      phase: 'preliminary',
+    });
   });
 }

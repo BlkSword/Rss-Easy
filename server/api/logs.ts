@@ -8,7 +8,7 @@ import { protectedProcedure, router } from '../trpc/init';
 import { info, warn, error } from '@/lib/logger';
 
 // 系统级分类 - 这些分类的日志所有用户可见（用于监控系统状态）
-const SYSTEM_CATEGORIES = ['system', 'queue', 'api'];
+const SYSTEM_CATEGORIES = ['system', 'queue', 'api', 'security'];
 // 用户级分类 - 这些分类的日志按用户隔离
 const USER_CATEGORIES = ['rss', 'ai', 'auth', 'email'];
 
@@ -23,7 +23,7 @@ export const logsRouter = router({
     .input(
       z.object({
         level: z.enum(['debug', 'info', 'warn', 'error', 'fatal']).optional().nullable(),
-        category: z.enum(['system', 'rss', 'ai', 'auth', 'email', 'api', 'queue']).optional().nullable(),
+        category: z.enum(['system', 'rss', 'ai', 'auth', 'email', 'api', 'queue', 'security']).optional().nullable(),
         limit: z.number().min(1).max(500).default(100),
         cursor: z.string().optional().nullable(),
         search: z.string().optional().nullable(),

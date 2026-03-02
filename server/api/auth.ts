@@ -4,6 +4,7 @@
  * - 需要认证的操作使用 protectedProcedure
  * - 登录/注册使用速率限制
  * - 登出使用 CSRF 保护
+ * - 注册时检查系统设置
  */
 
 import { router, publicProcedure, protectedProcedure, loginProcedure, registerProcedure, protectedMutation } from '../trpc/init';
@@ -15,11 +16,12 @@ import { info, warn, error } from '@/lib/logger';
 import { createEmailServiceFromUser, createSystemEmailService } from '@/lib/email/service';
 import { randomBytes } from 'crypto';
 import { loginRateLimiter, registerRateLimiter } from '@/lib/security/redis-rate-limit';
+import { isRegistrationAllowed, getDefaultUserRole } from '@/lib/system/init-check';
 
 export const authRouter = router({
   /**
    * 用户注册
-   * 安全增强：使用速率限制
+   * 安全增强：使用速率限制 + 检查注册开关
    */
   register: registerProcedure
     .input(
@@ -34,6 +36,15 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      // 检查是否允许注册
+      const allowRegistration = await isRegistrationAllowed();
+      if (!allowRegistration) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '系统已关闭注册功能',
+        });
+      }
+
       // 检查邮箱是否已存在
       const existingEmail = await db.user.findUnique({
         where: { email: input.email },
@@ -58,6 +69,9 @@ export const authRouter = router({
         });
       }
 
+      // 获取默认角色
+      const defaultRole = await getDefaultUserRole();
+
       // 哈希密码并创建用户
       const passwordHash = await hashPassword(input.password);
 
@@ -66,6 +80,7 @@ export const authRouter = router({
           email: input.email,
           username: input.username,
           passwordHash,
+          role: defaultRole,
           preferences: {
             theme: 'system',
             language: 'zh-CN',
@@ -81,6 +96,7 @@ export const authRouter = router({
           id: true,
           email: true,
           username: true,
+          role: true,
           preferences: true,
           aiConfig: true,
           createdAt: true,
@@ -154,6 +170,7 @@ export const authRouter = router({
           id: user.id,
           email: user.email,
           username: user.username,
+          role: user.role,
           avatarUrl: user.avatarUrl,
           preferences: user.preferences,
           aiConfig: user.aiConfig,
@@ -184,6 +201,7 @@ export const authRouter = router({
         id: true,
         email: true,
         username: true,
+        role: true,
         avatarUrl: true,
         preferences: true,
         aiConfig: true,
