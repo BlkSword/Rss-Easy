@@ -18,8 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Button, Card } from 'antd';
 
 interface AdvancedAIPanelProps {
   entry: {

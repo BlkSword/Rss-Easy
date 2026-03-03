@@ -31,7 +31,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
-import { Card } from '@/components/ui/card';
+
 
 // 动画组件
 import { Fade, ListItemFade, Scale, HoverLift } from '@/components/animation/fade';
@@ -439,7 +439,7 @@ export default function FeedPage() {
               <Select
                 placeholder="选择分类"
                 allowClear
-                options={categories?.map((cat) => ({
+                options={categories?.map((cat: { id: string; name: string }) => ({
                   label: cat.name,
                   value: cat.id,
                 }))}
@@ -567,7 +567,7 @@ function EntryList({ feedId, isLoaded }: { feedId: string; isLoaded: boolean }) 
 
   return (
     <div className="space-y-3">
-      {entries.map((entry, index) => (
+      {entries.map((entry: { id: string; title: string; url: string; publishedAt?: Date | null; isRead: boolean; isStarred: boolean }, index: number) => (
         <ListItemFade
           key={entry.id}
           index={index}

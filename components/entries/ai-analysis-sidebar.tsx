@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 import { Typewriter } from '@/components/animation/typewriter';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -362,7 +362,7 @@ export function AIAnalysisSidebar({ entry }: AIAnalysisSidebarProps) {
                     请先在设置中配置 AI API 密钥
                   </p>
                   <Button
-                    size="sm"
+                    size="small"
                     onClick={() => window.location.href = '/settings'}
                   >
                     前往设置
@@ -372,27 +372,22 @@ export function AIAnalysisSidebar({ entry }: AIAnalysisSidebarProps) {
 
               {statusInfo.type === 'failed' && (
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="small"
                   onClick={() => triggerAnalysis.mutate({ entryId: entry.id })}
-                  disabled={triggerAnalysis.isPending}
+                  loading={triggerAnalysis.isPending}
                 >
-                  {triggerAnalysis.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
                   重新分析
                 </Button>
               )}
 
               {(statusInfo.type === 'old' || statusInfo.type === 'not_queued') && (
                 <Button
-                  size="sm"
+                  size="small"
+                  type="primary"
                   onClick={() => triggerAnalysis.mutate({ entryId: entry.id })}
-                  disabled={triggerAnalysis.isPending}
+                  loading={triggerAnalysis.isPending}
+                  icon={!triggerAnalysis.isPending ? <Sparkles className="w-4 h-4" /> : undefined}
                 >
-                  {triggerAnalysis.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-4 h-4 mr-1" />
-                  )}
                   开始分析
                 </Button>
               )}
@@ -623,17 +618,13 @@ export function AIAnalysisSidebar({ entry }: AIAnalysisSidebarProps) {
         {/* 刷新分析按钮 */}
         {hasAnalysis && isAIConfigured && (
           <Button
-            variant="ghost"
-            size="sm"
+            type="text"
+            size="small"
             className="w-full text-muted-foreground"
             onClick={() => triggerAnalysis.mutate({ entryId: entry.id })}
-            disabled={triggerAnalysis.isPending}
+            loading={triggerAnalysis.isPending}
+            icon={!triggerAnalysis.isPending ? <RefreshCw className="w-4 h-4" /> : undefined}
           >
-            {triggerAnalysis.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
             重新分析
           </Button>
         )}

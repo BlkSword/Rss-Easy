@@ -6,11 +6,10 @@
 
 import { useState, useEffect } from 'react';
 import { Bell, Mail, Save } from 'lucide-react';
+import { Select, Button, Card, Switch } from 'antd';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 interface NotificationSettingsProps {
   user: any;
@@ -59,15 +58,16 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
   return (
     <div className="space-y-6">
       {/* 邮件通知 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Mail className="h-5 w-5 text-primary" />
             邮件通知
-          </CardTitle>
-          <CardDescription>选择您希望接收的邮件通知类型</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 启用邮件通知 */}
           <div
             className={cn(
@@ -99,50 +99,28 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
                 </div>
               </div>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setEmailNotifications(!emailNotifications);
-              }}
-              className={cn(
-                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                emailNotifications
-                  ? 'bg-slate-300 dark:bg-slate-600'
-                  : 'bg-primary shadow-lg shadow-primary/30'
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                  emailNotifications 
-                    ? 'left-8 bg-white' 
-                    : 'left-1 bg-white'
-                )}
-              />
-            </button>
+            <Switch
+              checked={emailNotifications}
+              onChange={(checked) => setEmailNotifications(checked)}
+            />
           </div>
 
           {/* 摘要频率 */}
           <div className="space-y-2">
             <label className="text-sm font-medium">摘要频率</label>
-            <select
+            <Select
               value={digestFrequency}
-              onChange={(e) => setDigestFrequency(e.target.value)}
+              onChange={(value) => setDigestFrequency(value)}
               disabled={!emailNotifications}
-              className={cn(
-                'w-full px-4 py-3 rounded-xl border-2 bg-background',
-                'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50',
-                'transition-all duration-200 input-warm cursor-pointer',
-                emailNotifications
-                  ? 'border-border hover:border-primary/30'
-                  : 'border-border/60 opacity-50 cursor-not-allowed'
-              )}
-            >
-              <option value="realtime">实时</option>
-              <option value="hourly">每小时</option>
-              <option value="daily">每天</option>
-              <option value="weekly">每周</option>
-            </select>
+              options={[
+                { value: 'realtime', label: '实时' },
+                { value: 'hourly', label: '每小时' },
+                { value: 'daily', label: '每天' },
+                { value: 'weekly', label: '每周' },
+              ]}
+              className="w-full"
+              size="large"
+            />
             <p className="text-xs text-muted-foreground">
               选择您希望接收文章摘要的频率
             </p>
@@ -180,43 +158,26 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
                 </div>
               </div>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setNotifyNewEntries(!notifyNewEntries);
-              }}
+            <Switch
+              checked={notifyNewEntries}
+              onChange={(checked) => setNotifyNewEntries(checked)}
               disabled={!emailNotifications}
-              className={cn(
-                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                notifyNewEntries && emailNotifications
-                  ? 'bg-slate-300 dark:bg-slate-600'
-                  : 'bg-primary shadow-lg shadow-primary/30',
-                'disabled:opacity-40 disabled:cursor-not-allowed'
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                  notifyNewEntries 
-                    ? 'left-8 bg-white' 
-                    : 'left-1 bg-white'
-                )}
-              />
-            </button>
+            />
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 应用通知 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
             应用通知
-          </CardTitle>
-          <CardDescription>配置应用内的通知行为</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 错误通知 */}
           <div
             className={cn(
@@ -248,39 +209,22 @@ export function NotificationSettings({ user }: NotificationSettingsProps) {
                 </div>
               </div>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setNotifyErrors(!notifyErrors);
-              }}
-              className={cn(
-                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                notifyErrors
-                  ? 'bg-slate-300 dark:bg-slate-600'
-                  : 'bg-primary shadow-lg shadow-primary/30'
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                  notifyErrors 
-                    ? 'left-8 bg-white' 
-                    : 'left-1 bg-white'
-                )}
-              />
-            </button>
+            <Switch
+              checked={notifyErrors}
+              onChange={(checked) => setNotifyErrors(checked)}
+            />
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 保存按钮 */}
       <div className="flex justify-end">
         <Button
-          variant="primary"
+          type="primary"
           onClick={handleSave}
-          isLoading={isSaving}
+          loading={isSaving}
           disabled={!hasChanges || isSaving}
-          leftIcon={<Save className="h-4 w-4" />}
+          icon={<Save className="h-4 w-4" />}
         >
           保存更改
         </Button>

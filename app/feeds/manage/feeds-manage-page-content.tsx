@@ -797,17 +797,47 @@ export function FeedsManagePageContent() {
                         </div>
 
                         {/* 上次获取时间 - 阻止冒泡 */}
-                        <div 
-                          className="col-span-2 flex items-center"
+                        <div
+                          className="col-span-2 flex items-center gap-1"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Tooltip title={feed.lastFetchedAt ? formatDate(feed.lastFetchedAt) : '从未获取'}>
-                            <span className="text-xs text-muted-foreground">
-                              {feed.lastFetchedAt 
-                                ? formatRelativeTime(feed.lastFetchedAt) 
-                                : '从未'}
-                            </span>
-                          </Tooltip>
+                          {feed.lastError ? (
+                            <Tooltip
+                              title={
+                                <div className="space-y-1">
+                                  <div>最后错误: {feed.lastError}</div>
+                                  {feed.lastFetchedAt && (
+                                    <div>尝试时间: {formatDate(feed.lastFetchedAt)}</div>
+                                  )}
+                                  {feed.errorCount > 1 && (
+                                    <div>连续失败: {feed.errorCount} 次</div>
+                                  )}
+                                </div>
+                              }
+                            >
+                              <div className="flex items-center gap-1 text-xs text-red-500">
+                                <AlertCircle className="h-3 w-3" />
+                                <span>错误 x{feed.errorCount}</span>
+                              </div>
+                            </Tooltip>
+                          ) : feed.lastFetchedAt ? (
+                            <Tooltip title={
+                              <div className="space-y-1">
+                                <div>获取时间: {formatDate(feed.lastFetchedAt)}</div>
+                                {feed.lastSuccessAt && (
+                                  <div>成功时间: {formatDate(feed.lastSuccessAt)}</div>
+                                )}
+                              </div>
+                            }>
+                              <span className="text-xs text-muted-foreground">
+                                {formatRelativeTime(feed.lastFetchedAt)}
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip title="尚未抓取">
+                              <span className="text-xs text-muted-foreground">尚未抓取</span>
+                            </Tooltip>
+                          )}
                         </div>
 
                         {/* 文章数量 - 阻止冒泡 */}
@@ -1110,8 +1140,6 @@ export function FeedsManagePageContent() {
                   <Switch
                     checked={formIsActive}
                     onChange={setFormIsActive}
-                    checkedChildren="启用"
-                    unCheckedChildren="禁用"
                   />
                 </div>
 

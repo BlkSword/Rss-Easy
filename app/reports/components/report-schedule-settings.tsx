@@ -306,13 +306,13 @@ function ScheduleForm({
         <Form.Item label="包含内容">
           <Space direction="vertical">
             <Form.Item name="includeStats" valuePropName="checked" noStyle initialValue={true}>
-              <Switch checkedChildren="阅读统计" unCheckedChildren="阅读统计" defaultChecked />
+              <Switch defaultChecked />
             </Form.Item>
             <Form.Item name="includeHighlights" valuePropName="checked" noStyle initialValue={true}>
-              <Switch checkedChildren="精选内容" unCheckedChildren="精选内容" defaultChecked />
+              <Switch defaultChecked />
             </Form.Item>
             <Form.Item name="includeAiSummary" valuePropName="checked" noStyle initialValue={true}>
-              <Switch checkedChildren="AI 摘要" unCheckedChildren="AI 摘要" defaultChecked />
+              <Switch defaultChecked />
             </Form.Item>
           </Space>
         </Form.Item>

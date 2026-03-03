@@ -26,9 +26,8 @@ import {
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Modal } from '@/components/ui/modal';
+import { Button, Card } from 'antd';
+import { Modal } from 'antd';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Tooltip } from '@/components/ui/tooltip';
 
@@ -468,6 +467,7 @@ main();`,
   },
 };
 
+
 export function ApiSettings() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
@@ -572,29 +572,26 @@ export function ApiSettings() {
 
         {/* API 密钥管理 */}
         <TabsContent value="keys" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Key className="h-5 w-5 text-primary" />
-                    API 密钥管理
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    API 密钥用于访问 Rss-Easy 的 API 接口，请妥善保管
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  leftIcon={<Plus className="h-4 w-4" />}
-                  onClick={() => setIsCreateModalOpen(true)}
-                >
-                  创建密钥
-                </Button>
+          <Card 
+            variant="borderless"
+            title={
+              <div className="flex items-center gap-2">
+                <Key className="h-5 w-5 text-primary" />
+                API 密钥管理
               </div>
-            </CardHeader>
-            <CardContent>
+            }
+            extra={
+              <Button
+                type="primary"
+                size="small"
+                icon={<Plus className="h-4 w-4" />}
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                创建密钥
+              </Button>
+            }
+          >
+            <div>
               {apiKeys.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
@@ -605,8 +602,6 @@ export function ApiSettings() {
                     创建API密钥以便通过API访问您的数据
                   </p>
                   <Button
-                    variant="outline"
-                    leftIcon={<Plus className="h-4 w-4" />}
                     onClick={() => setIsCreateModalOpen(true)}
                   >
                     创建第一个密钥
@@ -648,10 +643,9 @@ export function ApiSettings() {
                         </div>
                       </div>
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        type="text"
+                        danger
                         onClick={() => handleDeleteKey(key.id, key.name)}
-                        className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -659,12 +653,12 @@ export function ApiSettings() {
                   ))}
                 </div>
               )}
-            </CardContent>
+            </div>
           </Card>
 
           {/* 使用说明 */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="pt-6">
+          <Card className="border-primary/20 bg-primary/5" variant="borderless">
+            <div className="px-6 py-6">
               <div className="flex gap-3">
                 <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                   <Shield className="h-5 w-5 text-primary" />
@@ -686,24 +680,23 @@ export function ApiSettings() {
                   </div>
                 </div>
               </div>
-            </CardContent>
+            </div>
           </Card>
         </TabsContent>
 
         {/* API 文档 */}
         <TabsContent value="docs" className="space-y-6">
           {/* 概览 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card 
+            variant="borderless"
+            title={
+              <div className="flex items-center gap-2">
                 <Book className="h-5 w-5 text-primary" />
                 API 概览
-              </CardTitle>
-              <CardDescription>
-                Rss-Easy 提供基于 tRPC 的类型安全 API，支持 REST 风格调用
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </div>
+            }
+          >
+            <div className="space-y-4">
               {/* 特性 */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 rounded-xl border border-border bg-muted/20">
@@ -804,21 +797,20 @@ curl -H "Authorization: Bearer rss_xxxxxxxxxxxxxxxx" \\
                   ))}
                 </div>
               </div>
-            </CardContent>
+            </div>
           </Card>
 
           {/* 端点列表 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card 
+            variant="borderless"
+            title={
+              <div className="flex items-center gap-2">
                 <Code className="h-5 w-5 text-primary" />
                 API 端点
-              </CardTitle>
-              <CardDescription>
-                按分类浏览所有可用的 API 端点
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
+              </div>
+            }
+          >
+            <div>
               <div className="divide-y divide-border">
                 {Object.entries(groupedEndpoints).map(([category, endpoints]) => (
                   <div key={category}>
@@ -940,23 +932,22 @@ curl -H "Authorization: Bearer rss_xxxxxxxxxxxxxxxx" \\
                   </div>
                 ))}
               </div>
-            </CardContent>
+            </div>
           </Card>
         </TabsContent>
 
         {/* 请求范例 */}
         <TabsContent value="examples" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card 
+            variant="borderless"
+            title={
+              <div className="flex items-center gap-2">
                 <Code className="h-5 w-5 text-primary" />
                 代码示例
-              </CardTitle>
-              <CardDescription>
-                常用编程语言的 API 调用示例
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+              </div>
+            }
+          >
+            <div className="space-y-6">
               {Object.entries(codeExamples).map(([lang, example]) => (
                 <div key={lang} className="space-y-2">
                   <h3 className="font-medium text-sm">{example.title}</h3>
@@ -969,21 +960,20 @@ curl -H "Authorization: Bearer rss_xxxxxxxxxxxxxxxx" \\
                   />
                 </div>
               ))}
-            </CardContent>
+            </div>
           </Card>
 
           {/* 常见场景 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card 
+            variant="borderless"
+            title={
+              <div className="flex items-center gap-2">
                 <Zap className="h-5 w-5 text-primary" />
                 常见场景
-              </CardTitle>
-              <CardDescription>
-                典型使用场景的代码示例
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+              </div>
+            }
+          >
+            <div className="space-y-6">
               {/* 场景1: 获取未读文章 */}
               <div className="space-y-2">
                 <h3 className="font-medium text-sm">获取所有未读文章</h3>
@@ -1056,26 +1046,25 @@ result.data.items.forEach(item => {
                   onCopy={handleCopy}
                 />
               </div>
-            </CardContent>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>
 
       {/* 创建密钥弹窗 */}
       <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        open={isCreateModalOpen}
+        onCancel={() => setIsCreateModalOpen(false)}
         title="创建API密钥"
-        size="md"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
+            <Button onClick={() => setIsCreateModalOpen(false)}>
               取消
             </Button>
             <Button
-              variant="primary"
+              type="primary"
               onClick={handleCreateKey}
-              isLoading={isCreating}
+              loading={isCreating}
               disabled={!keyName.trim() || isCreating}
             >
               创建
@@ -1129,12 +1118,11 @@ result.data.items.forEach(item => {
 
       {/* 显示创建的密钥 */}
       <Modal
-        isOpen={!!createdKey}
-        onClose={handleCloseKeyModal}
+        open={!!createdKey}
+        onCancel={handleCloseKeyModal}
         title="API密钥已创建"
-        size="md"
         footer={
-          <Button variant="primary" onClick={handleCloseKeyModal}>
+          <Button type="primary" onClick={handleCloseKeyModal}>
             我已保存密钥
           </Button>
         }

@@ -5,8 +5,82 @@
 
 import Parser from 'rss-parser';
 import { load, type CheerioAPI, type Cheerio } from 'cheerio';
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import { retry, sleep } from '../utils';
+
+/**
+ * 浏览器请求头配置 - 模拟真实浏览器访问
+ * 用于绕过反爬虫保护
+ */
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache',
+  'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"',
+  'sec-fetch-dest': 'document',
+  'sec-fetch-mode': 'navigate',
+  'sec-fetch-site': 'none',
+  'sec-fetch-user': '?1',
+  'upgrade-insecure-requests': '1',
+  'connection': 'keep-alive',
+};
+
+/**
+ * 获取代理 Agent
+ * 支持环境变量 HTTP_PROXY, HTTPS_PROXY, NO_PROXY
+ * 以及自动检测本地代理（Clash、V2Ray 等）
+ */
+function getProxyAgent(url: string): { httpsAgent?: HttpsProxyAgent | SocksProxyAgent } | {} {
+  const urlObj = new URL(url);
+  const hostname = urlObj.hostname;
+
+  // 检查 NO_PROXY
+  const noProxy = process.env.NO_PROXY || process.env.no_proxy;
+  if (noProxy) {
+    const noProxyList = noProxy.split(',').map(s => s.trim());
+    if (noProxyList.some(pattern => hostname === pattern || hostname.endsWith('.' + pattern))) {
+      return {};
+    }
+  }
+
+  // 1. 检查环境变量中的代理 URL
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy ||
+                   process.env.HTTP_PROXY || process.env.http_proxy;
+
+  if (proxyUrl) {
+    try {
+      // SOCKS 代理
+      if (proxyUrl.startsWith('socks://') || proxyUrl.startsWith('socks5://') || proxyUrl.startsWith('socks4://')) {
+        return { httpsAgent: new SocksProxyAgent(proxyUrl) };
+      }
+      // HTTP/HTTPS 代理
+      return { httpsAgent: new HttpsProxyAgent(proxyUrl) };
+    } catch {
+      // 忽略解析错误
+    }
+  }
+
+  // 2. 自动检测本地代理（开发环境或显式启用）
+  if (process.env.RSS_AUTO_PROXY === 'true' || process.env.NODE_ENV === 'development') {
+    const proxyPort = process.env.RSS_PROXY_PORT ? parseInt(process.env.RSS_PROXY_PORT) : 7890;
+    const proxyHost = process.env.RSS_PROXY_HOST || '127.0.0.1';
+
+    try {
+      return { httpsAgent: new HttpsProxyAgent(`http://${proxyHost}:${proxyPort}`) };
+    } catch {
+      // 忽略错误
+    }
+  }
+
+  return {};
+}
 
 export type ParsedFeed = {
   title: string;
@@ -140,11 +214,13 @@ export class RSSParser {
   /** 全文抓取的最大并发数 */
   private readonly MAX_CONCURRENT_FETCHES = 3;
   /** 单个条目全文抓取超时时间 */
-  private readonly FETCH_CONTENT_TIMEOUT = 8000;
+  private readonly FETCH_CONTENT_TIMEOUT = 15000;
   /** 最多对多少个条目尝试全文抓取 */
   private readonly MAX_FULL_TEXT_FETCHES = 10;
+  /** RSS Feed 抓取超时时间 */
+  private readonly FEED_FETCH_TIMEOUT = 30000;
 
-  constructor(timeout: number = 10000) {
+  constructor(timeout: number = 30000) {
     this.timeout = timeout;
     this.parser = new Parser({
       timeout: this.timeout,
@@ -205,12 +281,102 @@ export class RSSParser {
   }
 
   /**
+   * 使用浏览器请求头获取 RSS Feed 内容
+   * 解决反爬虫保护问题
+   */
+  private async fetchFeedContent(url: string): Promise<string> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.FEED_FETCH_TIMEOUT);
+
+    try {
+      // 获取代理配置
+      const proxyAgent = getProxyAgent(url);
+
+      const response = await axios.get(url, {
+        timeout: this.FEED_FETCH_TIMEOUT,
+        maxRedirects: 5,
+        signal: controller.signal,
+        headers: {
+          ...BROWSER_HEADERS,
+          'host': new URL(url).hostname,
+        },
+        responseType: 'arraybuffer',
+        maxContentLength: 50 * 1024 * 1024, // 50MB
+        ...proxyAgent,
+      });
+
+      clearTimeout(timeoutId);
+
+      // 检测并解码响应内容
+      const contentType = response.headers['content-type'] || '';
+      let content: string;
+
+      // 处理可能的编码
+      if (response.data instanceof ArrayBuffer) {
+        const buffer = Buffer.from(response.data);
+
+        // 尝试从 content-type 检测编码
+        const charsetMatch = contentType.match(/charset=([^;]+)/i);
+        const charset = charsetMatch ? charsetMatch[1].trim().toLowerCase() : 'utf-8';
+
+        if (charset === 'utf-8' || charset === 'utf8') {
+          content = buffer.toString('utf-8');
+        } else if (charset === 'gbk' || charset === 'gb2312' || charset === 'gb18030') {
+          // GBK 编码处理 - 使用 TextDecoder（Node.js 内置）
+          try {
+            const decoder = new TextDecoder(charset === 'gb2312' ? 'gbk' : charset);
+            content = decoder.decode(buffer);
+          } catch {
+            // 如果解码失败，尝试 UTF-8
+            content = buffer.toString('utf-8');
+          }
+        } else {
+          content = buffer.toString('utf-8');
+        }
+      } else {
+        content = response.data;
+      }
+
+      return content;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+
+      // 提供更详细的错误信息，包含解决建议
+      if (error.code === 'ECONNABORTED' || error.name === 'AbortError' || error.code === 'ERR_CANCELED') {
+        throw new Error(`RSS Feed 抓取超时: ${url}。可能原因：1) 服务器响应慢 2) 需要代理访问 3) 有反爬虫保护。建议设置 HTTPS_PROXY 环境变量使用代理。`);
+      } else if (error.code === 'ENOTFOUND') {
+        throw new Error(`域名解析失败: ${url}`);
+      } else if (error.code === 'ECONNREFUSED') {
+        throw new Error(`连接被拒绝: ${url}`);
+      } else if (error.code === 'ETIMEDOUT' || error.code === 'EHOSTUNREACH') {
+        throw new Error(`网络连接超时或不可达: ${url}。建议设置 HTTPS_PROXY 环境变量使用代理访问。`);
+      } else if (error.response) {
+        const status = error.response.status;
+        if (status === 403) {
+          throw new Error(`访问被拒绝 (403): ${url}。该网站可能有反爬虫保护。建议：1) 设置 HTTPS_PROXY 环境变量使用代理 2) 联系网站管理员添加白名单。`);
+        } else if (status === 429) {
+          throw new Error(`请求频率过高 (429): ${url}。请稍后重试。`);
+        } else if (status === 503) {
+          throw new Error(`服务暂时不可用 (503): ${url}。该网站可能正在维护或有 Cloudflare 保护。`);
+        }
+        throw new Error(`HTTP 错误 ${status}: ${url}`);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * 解析RSS/Atom feed
    */
   async parseFeed(url: string): Promise<ParsedFeed> {
     return retry(
       async () => {
-        const feed = await this.parser.parseURL(url);
+        // 使用自定义 fetch 获取内容（带浏览器请求头）
+        const feedContent = await this.fetchFeedContent(url);
+
+        // 使用 parseString 解析内容
+        const feed = await this.parser.parseString(feedContent);
 
         // 第一遍：快速处理所有条目，不抓取全文
         const preliminaryItems = (feed.items || []).map((item: any) => {
@@ -366,17 +532,20 @@ export class RSSParser {
     const timeoutId = setTimeout(() => controller.abort(), this.FETCH_CONTENT_TIMEOUT);
 
     try {
+      // 获取代理配置
+      const proxyAgent = getProxyAgent(url);
+
       const response = await axios.get(url, {
         timeout: this.FETCH_CONTENT_TIMEOUT,
         maxRedirects: 3,
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          ...BROWSER_HEADERS,
+          'host': new URL(url).hostname,
         },
         // 限制响应大小（10MB）
         maxContentLength: 10 * 1024 * 1024,
+        ...proxyAgent,
       });
 
       clearTimeout(timeoutId);
@@ -420,17 +589,17 @@ export class RSSParser {
    */
   private async fetchContent(url: string): Promise<string | null> {
     try {
+      // 获取代理配置
+      const proxyAgent = getProxyAgent(url);
+
       const response = await axios.get(url, {
         timeout: this.FETCH_CONTENT_TIMEOUT,
         maxRedirects: 3,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
+          ...BROWSER_HEADERS,
+          'host': new URL(url).hostname,
         },
+        ...proxyAgent,
       });
 
       const html = response.data;
@@ -1035,7 +1204,7 @@ export class RSSParser {
       }
     }
 
-    return [...new Set(categories)].filter(Boolean); // 去重并过滤空值
+    return Array.from(new Set(categories)).filter(Boolean); // 去重并过滤空值
   }
 
   /**
@@ -1219,7 +1388,8 @@ export class RSSParser {
    */
   async validateFeedUrl(url: string): Promise<boolean> {
     try {
-      await this.parser.parseURL(url);
+      const feedContent = await this.fetchFeedContent(url);
+      await this.parser.parseString(feedContent);
       return true;
     } catch {
       return false;
@@ -1233,11 +1403,16 @@ export class RSSParser {
     const feeds: string[] = [];
 
     try {
+      // 获取代理配置
+      const proxyAgent = getProxyAgent(url);
+
       const response = await axios.get(url, {
-        timeout: 5000,
+        timeout: 15000,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Rss-Easy/1.0)',
+          ...BROWSER_HEADERS,
+          'host': new URL(url).hostname,
         },
+        ...proxyAgent,
       });
 
       const $ = load(response.data);
@@ -1247,7 +1422,8 @@ export class RSSParser {
         (_i, element) => {
           const href = $(element).attr('href');
           if (href) {
-            feeds.push(href);
+            // 转换为绝对URL
+            feeds.push(this.resolveUrl(href, url));
           }
         }
       );
@@ -1256,14 +1432,25 @@ export class RSSParser {
       $('a[href*="rss"], a[href*="feed"], a[href*="atom"]').each((_i, element) => {
         const href = $(element).attr('href');
         if (href && (href.includes('rss') || href.includes('feed') || href.includes('atom'))) {
-          feeds.push(href);
+          feeds.push(this.resolveUrl(href, url));
         }
       });
+
+      // 查找 JSON Feed
+      $('link[type="application/json"], link[type="application/feed+json"]').each(
+        (_i, element) => {
+          const href = $(element).attr('href');
+          if (href) {
+            feeds.push(this.resolveUrl(href, url));
+          }
+        }
+      );
     } catch {
       // 忽略错误
     }
 
-    return feeds;
+    // 去重
+    return Array.from(new Set(feeds));
   }
 }
 

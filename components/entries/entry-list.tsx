@@ -30,7 +30,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { FileText, Rss, Search } from 'lucide-react';
 import { useInfiniteScroll } from '@/hooks/use-intersection-observer';
 import { useReaderShortcuts } from '@/hooks/use-keyboard';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 import { PageTransition } from '@/components/animation/fade';
 
 interface EntryListProps {
@@ -397,34 +397,31 @@ export function EntryList({
             <div className="flex-1" />
             <Tooltip content="标记已读" position="bottom">
               <Button
-                variant="ghost"
-                size="sm"
+                type="text"
+                size="small"
                 onClick={() => handleBulkAction('markRead')}
-              >
-                <Check className="h-4 w-4" />
-              </Button>
+                icon={<Check className="h-4 w-4" />}
+              />
             </Tooltip>
             <Tooltip content="添加星标" position="bottom">
               <Button
-                variant="ghost"
-                size="sm"
+                type="text"
+                size="small"
                 onClick={() => handleBulkAction('star')}
-              >
-                <Star className="h-4 w-4" />
-              </Button>
+                icon={<Star className="h-4 w-4" />}
+              />
             </Tooltip>
             <Tooltip content="归档" position="bottom">
               <Button
-                variant="ghost"
-                size="sm"
+                type="text"
+                size="small"
                 onClick={() => handleBulkAction('archive')}
-              >
-                <Archive className="h-4 w-4" />
-              </Button>
+                icon={<Archive className="h-4 w-4" />}
+              />
             </Tooltip>
             <Button
-              variant="ghost"
-              size="sm"
+              type="text"
+              size="small"
               onClick={() => setSelectedIds(new Set())}
             >
               取消

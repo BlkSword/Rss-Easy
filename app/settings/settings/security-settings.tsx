@@ -9,8 +9,7 @@ import { Shield, Lock, Save, Check, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button, Card } from 'antd';
 
 export function SecuritySettings() {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -52,15 +51,16 @@ export function SecuritySettings() {
   return (
     <div className="space-y-6">
       {/* 修改密码 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Lock className="h-5 w-5 text-primary" />
             修改密码
-          </CardTitle>
-          <CardDescription>定期更换密码以保护账户安全</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 当前密码 */}
           <div className="space-y-2">
             <label className="text-sm font-medium">当前密码</label>
@@ -172,21 +172,21 @@ export function SecuritySettings() {
           {/* 保存按钮 */}
           <div className="flex justify-end pt-2">
             <Button
-              variant="primary"
+              type="primary"
               onClick={handleSubmit}
-              isLoading={isSaving}
+              loading={isSaving}
               disabled={!isFormValid || isSaving}
-              leftIcon={<Save className="h-4 w-4" />}
+              icon={<Save className="h-4 w-4" />}
             >
               更新密码
             </Button>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 安全提示 */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="pt-6">
+      <Card className="border-primary/20 bg-primary/5" variant="borderless">
+        <div className="px-6 py-6">
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
               <Shield className="h-5 w-5 text-primary" />
@@ -201,7 +201,7 @@ export function SecuritySettings() {
               </ul>
             </div>
           </div>
-        </CardContent>
+        </div>
       </Card>
     </div>
   );

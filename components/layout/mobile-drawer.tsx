@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { useIsMobile } from '@/hooks/use-media-query';
 import { useToast } from '@/components/ui/toast';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useUserPreferences } from '@/hooks/use-local-storage';
 
@@ -148,13 +148,11 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                 </div>
               </div>
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={onClose}
                 className="rounded-full"
-              >
-                <X className="w-5 h-5" />
-              </Button>
+                icon={<X className="w-5 h-5" />}
+              />
             </div>
 
             {/* 内容区域 */}

@@ -173,16 +173,17 @@ export class FeedManager {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       const duration = Date.now() - startTime;
 
-      await error('rss', '订阅源抓取失败', err instanceof Error ? err : undefined, { 
-        feedId, 
+      await error('rss', '订阅源抓取失败', err instanceof Error ? err : undefined, {
+        feedId,
         duration,
         error: errorMessage,
       });
 
-      // 更新错误信息
+      // 更新错误信息（同时更新 lastFetchedAt 表示已尝试抓取）
       await db.feed.update({
         where: { id: feedId },
         data: {
+          lastFetchedAt: new Date(),
           errorCount: {
             increment: 1,
           },

@@ -15,7 +15,7 @@ import {
   Clock,
   FileText,
 } from 'lucide-react';
-import { Button, Card as AntCard, Space, Typography, Dropdown, Tag, Progress, Spin } from 'antd';
+import { Button, Card, Space, Typography, Dropdown, Tag, Progress, Spin } from 'antd';
 import type { MenuProps } from 'antd';
 import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import { Fade } from '@/components/animation/fade';
 import { usePageLoadAnimation } from '@/hooks/use-animation';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Card } from '@/components/ui/card';
+
 
 const { Title, Text } = Typography;
 
@@ -158,7 +158,7 @@ export default function FeedsPage() {
                       delay={100 + categoryIndex * 50}
                       duration={400}
                     >
-                      <AntCard
+                      <Card
                         className="border-border/60"
                         title={
                           <div className="flex items-center gap-2">
@@ -178,7 +178,7 @@ export default function FeedsPage() {
                             />
                           ))}
                         </div>
-                      </AntCard>
+                      </Card>
                     </Fade>
                   ))}
                 </div>
@@ -208,8 +208,6 @@ function FeedCard({
   return (
     <Fade in direction="up" distance={10} duration={300} delay={delay}>
       <Card
-        variant="elevated"
-        isClickable
         className="p-4 hover:shadow-md transition-shadow cursor-pointer"
         onClick={onClick}
       >

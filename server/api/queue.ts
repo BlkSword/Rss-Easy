@@ -64,16 +64,38 @@ export const queueRouter = router({
 
       const aiConfig = (user?.aiConfig as any) || {};
       const hasUserApiKey = !!aiConfig.apiKey;
-      const hasEnvApiKey = !!(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.GEMINI_API_KEY);
+
+      // 验证环境变量 API Key 是否有效（排除占位符）
+      const isValidApiKey = (key: string | undefined): boolean => {
+        if (!key) return false;
+        const invalidPatterns = [
+          /^sk-xxx/i,
+          /^sk-ant-xxx/i,
+          /^your-.*-key/i,
+          /^xxx+/i,
+          /^placeholder/i,
+          /^test/i,
+          /^example/i,
+          /^change-?me/i,
+        ];
+        if (key.length < 20) return false;
+        return !invalidPatterns.some(pattern => pattern.test(key));
+      };
+
+      const hasEnvApiKey = isValidApiKey(process.env.OPENAI_API_KEY) ||
+                           isValidApiKey(process.env.ANTHROPIC_API_KEY) ||
+                           isValidApiKey(process.env.DEEPSEEK_API_KEY) ||
+                           isValidApiKey(process.env.GEMINI_API_KEY);
+
       const hasApiKey = hasUserApiKey || hasEnvApiKey;
       const autoSummary = aiConfig.autoSummary !== false; // 默认开启
 
       // configValid 必须是明确的 true（用户已测试通过）
-      // 或者如果使用环境变量且没有用户配置，则默认有效
+      // 环境变量配置不再默认有效
       const hasExplicitUserConfig = hasUserApiKey || !!aiConfig.provider;
       const configValid = hasExplicitUserConfig
         ? aiConfig.configValid === true
-        : hasEnvApiKey; // 如果只有环境变量配置，默认有效
+        : false; // 环境变量配置不再默认有效
 
       // 检查是否有分析结果
       const hasAnalysis = !!(
@@ -147,25 +169,48 @@ export const queueRouter = router({
 
       const aiConfig = (user?.aiConfig as any) || {};
 
-      // 检查各种 API Key（需要是有效的解密后的密钥）
+      // 检查用户配置的 API Key
       const hasUserApiKey = !!aiConfig.apiKey;
-      const hasEnvApiKey = !!(
-        process.env.OPENAI_API_KEY ||
-        process.env.ANTHROPIC_API_KEY ||
-        process.env.DEEPSEEK_API_KEY ||
-        process.env.GEMINI_API_KEY
-      );
+
+      // 检查环境变量中的 API Key（必须是有效的真实密钥，不是占位符）
+      const isValidApiKey = (key: string | undefined): boolean => {
+        if (!key) return false;
+        // 排除常见的占位符模式
+        const invalidPatterns = [
+          /^sk-xxx/i,
+          /^sk-ant-xxx/i,
+          /^your-.*-key/i,
+          /^xxx+/i,
+          /^placeholder/i,
+          /^test/i,
+          /^example/i,
+          /^change-?me/i,
+        ];
+        // 密钥长度至少 20 个字符才算有效
+        if (key.length < 20) return false;
+        return !invalidPatterns.some(pattern => pattern.test(key));
+      };
+
+      const envOpenAI = process.env.OPENAI_API_KEY;
+      const envAnthropic = process.env.ANTHROPIC_API_KEY;
+      const envDeepSeek = process.env.DEEPSEEK_API_KEY;
+      const envGemini = process.env.GEMINI_API_KEY;
+
+      const hasEnvApiKey = isValidApiKey(envOpenAI) ||
+                           isValidApiKey(envAnthropic) ||
+                           isValidApiKey(envDeepSeek) ||
+                           isValidApiKey(envGemini);
 
       // 获取当前提供商
       const provider = aiConfig.provider || process.env.AI_PROVIDER || 'openai';
       const model = aiConfig.model || process.env.AI_MODEL;
 
       // configValid 必须是明确的 true（用户已测试通过）
-      // 或者如果使用环境变量且没有用户配置，则默认有效
+      // 环境变量的 API Key 不再默认有效，必须经过测试验证
       const hasExplicitUserConfig = hasUserApiKey || !!aiConfig.provider;
       const configValid = hasExplicitUserConfig
         ? aiConfig.configValid === true
-        : hasEnvApiKey; // 如果只有环境变量配置，默认有效
+        : false; // 环境变量配置不再默认有效，需要用户在界面上测试
 
       return {
         hasApiKey: hasUserApiKey || hasEnvApiKey,

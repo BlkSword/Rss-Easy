@@ -40,6 +40,38 @@ services:
       timeout: 5s
       retries: 5
 
+  # 数据库初始化服务 - 自动运行 db:push
+  # 使用方式: docker-compose -f docker-compose.dev.yml up -d postgres redis init
+  init:
+    image: node:20-alpine
+    container_name: rss-easy-init-dev
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://rss_easy:rss_easy_password@postgres:5432/rss_easy
+    volumes:
+      - ./prisma:/app/prisma
+      - ./package.json:/app/package.json
+      - ./node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        corepack enable &&
+        corepack prepare pnpm@10.12.1 --activate &&
+        echo '🔄 推送数据库 Schema...' &&
+        pnpm exec prisma db push --accept-data-loss &&
+        echo '✅ 数据库初始化完成！' &&
+        echo '' &&
+        echo '请在本地运行以下命令完成初始化：' &&
+        echo '  npm run db:generate' &&
+        echo '  npm run db:seed' &&
+        echo '' &&
+        echo '然后启动开发服务器：' &&
+        echo '  npm run dev'
+      "
+    restart: "no"
+
   # 开发模式应用 - 支持热重载
   app:
     build:

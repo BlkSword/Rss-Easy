@@ -41,7 +41,7 @@ import { AppHeader } from '@/components/layout/app-header';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
-import { Card } from '@/components/ui/card';
+
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -97,7 +97,7 @@ function ReportDetailSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-10 w-32" />
-      <Card>
+      <AntCard>
         <div className="space-y-6">
           <div className="flex items-center gap-4">
             <Skeleton className="w-14 h-14 rounded-2xl" />
@@ -112,10 +112,10 @@ function ReportDetailSkeleton() {
             ))}
           </div>
         </div>
-      </Card>
-      <Card>
+      </AntCard>
+      <AntCard>
         <Skeleton className="h-64 rounded-xl" />
-      </Card>
+      </AntCard>
     </div>
   );
 }
@@ -301,7 +301,7 @@ function GeneratingState({
   const currentStepIndex = steps.findIndex((s) => s.status === 'doing');
 
   return (
-    <Card className="mb-6">
+    <AntCard className="mb-6">
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center animate-pulse">
           <Loader2 className="h-6 w-6 text-amber-500 animate-spin" />
@@ -346,7 +346,7 @@ function GeneratingState({
           <p className="text-sm text-red-600/80 mt-1">{errorMessage}</p>
         </div>
       )}
-    </Card>
+    </AntCard>
   );
 }
 

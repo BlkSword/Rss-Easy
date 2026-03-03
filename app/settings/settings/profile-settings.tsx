@@ -9,8 +9,7 @@ import { User, Mail, Calendar, Save, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button, Card } from 'antd';
 
 interface ProfileSettingsProps {
   user: any;
@@ -52,8 +51,8 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
   return (
     <div className="space-y-6">
       {/* 用户信息卡片 */}
-      <Card className="overflow-hidden">
-        <CardContent className="pt-6">
+      <Card className="overflow-hidden" variant="borderless">
+        <div className="px-6 py-6">
           <div className="flex items-center gap-6">
             <div className="relative group">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white text-3xl font-bold shadow-lg transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl group-hover:rotate-3">
@@ -75,16 +74,16 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
               </p>
             </div>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 编辑表单 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle>基本信息</CardTitle>
-          <CardDescription>更新您的个人资料信息</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title="基本信息"
+      >
+        <div className="space-y-5">
           {/* 用户名 */}
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-2">
@@ -125,16 +124,16 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
           {/* 保存按钮 */}
           <div className="flex justify-end pt-2">
             <Button
-              variant="primary"
+              type="primary"
               onClick={handleSave}
-              isLoading={isSaving}
+              loading={isSaving}
               disabled={!hasChanges || isSaving}
-              leftIcon={<Save className="h-4 w-4" />}
+              icon={<Save className="h-4 w-4" />}
             >
               保存更改
             </Button>
           </div>
-        </CardContent>
+        </div>
       </Card>
     </div>
   );

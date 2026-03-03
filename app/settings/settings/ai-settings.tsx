@@ -9,8 +9,7 @@ import { Sparkles, Save, AlertCircle, Zap, Check, Copy, TestTube, Loader2 } from
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button, Card, Switch } from 'antd';
 
 interface AISettingsProps {
   user: any;
@@ -180,15 +179,17 @@ export function AISettings({ user }: AISettingsProps) {
   return (
     <div className="space-y-6">
       {/* AI提供商配置 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             AI提供商
-          </CardTitle>
-          <CardDescription>选择并配置您想使用的AI服务</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+          </div>
+        }
+      >
+        <div className="space-y-6">
           {/* 提供商选择 */}
           <div className="space-y-3">
             <label className="text-sm font-medium">AI提供商</label>
@@ -321,30 +322,28 @@ export function AISettings({ user }: AISettingsProps) {
               )}
             </div>
           )}
-        </CardContent>
+        </div>
       </Card>
 
       {/* AI功能设置 */}
-      <Card className={cn(
-        'overflow-hidden transition-all duration-250',
-        !configValid && 'opacity-60'
-      )}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className={cn(
+          'overflow-hidden transition-all duration-250',
+          !configValid && 'opacity-60'
+        )} 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             AI功能
             {!configValid && (
               <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20">
                 需要先测试连接
               </span>
             )}
-          </CardTitle>
-          <CardDescription>
-            {configValid
-              ? '配置AI功能的自动触发行为'
-              : '请先配置AI提供商并点击"测试连接"按钮验证配置，验证通过后才能启用AI功能'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {[
             {
               key: 'autoSummary',
@@ -407,38 +406,20 @@ export function AISettings({ user }: AISettingsProps) {
                     )}
                   </div>
                 </div>
-                <button
-                  className={cn(
-                    'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                    value
-                      ? 'bg-slate-300 dark:bg-slate-600'
-                      : 'bg-primary shadow-lg shadow-primary/30'
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!isDisabled) {
-                      onChange(!value);
-                    }
-                  }}
-                >
-                  <span
-                    className={cn(
-                      'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                      value
-                        ? 'left-8 bg-white'
-                        : 'left-1 bg-white'
-                    )}
-                  />
-                </button>
+                <Switch
+                  checked={value}
+                  onChange={(checked) => onChange(checked)}
+                  disabled={isDisabled}
+                />
               </div>
             );
           })}
-        </CardContent>
+        </div>
       </Card>
 
       {/* 使用提示 */}
-      <Card className="border-primary/20 bg-primary/5 overflow-hidden">
-        <CardContent className="pt-6">
+      <Card className="border-primary/20 bg-primary/5 overflow-hidden" variant="borderless">
+        <div className="px-6 py-6">
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
               <AlertCircle className="h-5 w-5 text-primary" />
@@ -461,13 +442,13 @@ export function AISettings({ user }: AISettingsProps) {
               </ul>
             </div>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 测试AI分析 */}
       {configValid && (
-        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 overflow-hidden">
-          <CardContent className="pt-6">
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 overflow-hidden" variant="borderless">
+          <div className="px-6 py-6">
             <div className="flex gap-3">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                 <Sparkles className="h-5 w-5 text-primary" />
@@ -478,7 +459,7 @@ export function AISettings({ user }: AISettingsProps) {
                   使用示例文本测试AI分析是否正常工作
                 </p>
                 <Button
-                  variant="primary"
+                  type="primary"
                   onClick={async () => {
                     try {
                       const response = await fetch('/api/ai/test-analyze', {
@@ -505,27 +486,26 @@ export function AISettings({ user }: AISettingsProps) {
                 </Button>
               </div>
             </div>
-          </CardContent>
+          </div>
         </Card>
       )}
 
       {/* 保存按钮 */}
       <div className="flex justify-end gap-3">
         <Button
-          variant="outline"
           onClick={handleTestConnection}
-          isLoading={isTesting}
+          loading={isTesting}
           disabled={isTesting || isSaving}
-          leftIcon={isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
+          icon={isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
         >
           {isTesting ? '测试中...' : '测试连接'}
         </Button>
         <Button
-          variant="primary"
+          type="primary"
           onClick={handleSave}
-          isLoading={isSaving}
+          loading={isSaving}
           disabled={!hasChanges || isSaving || isTesting}
-          leftIcon={isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          icon={isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         >
           保存更改
         </Button>

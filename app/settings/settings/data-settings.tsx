@@ -15,8 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button, Card } from 'antd';
 
 interface DataSettingsProps {
   onOpenDeleteModal: () => void;
@@ -67,15 +66,17 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
   return (
     <div className="space-y-6">
       {/* 导出 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Download className="h-5 w-5 text-primary" />
             导出数据
-          </CardTitle>
-          <CardDescription>备份您的订阅源数据</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 导出OPML */}
           <div className="flex items-center justify-between p-4 rounded-xl border border-border bg-muted/30">
             <div className="flex items-center gap-3">
@@ -90,28 +91,29 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
               </div>
             </div>
             <Button
-              variant="outline"
               onClick={handleExport}
-              isLoading={isExporting}
+              loading={isExporting}
               disabled={isExporting}
-              leftIcon={isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              icon={isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             >
               导出 OPML
             </Button>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 数据清理 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
             <Trash2 className="h-5 w-5" />
             数据清理
-          </CardTitle>
-          <CardDescription>清理和删除数据，操作不可撤销</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 清空文章 */}
           <div className="flex items-center justify-between p-4 rounded-xl bg-red-50 dark:bg-red-950/20">
             <div className="flex items-center gap-3">
@@ -126,12 +128,12 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
               </div>
             </div>
             <Button
-              variant="danger"
-              size="sm"
+              danger
+              size="small"
               onClick={handleClearEntries}
-              isLoading={isClearing}
+              loading={isClearing}
               disabled={isClearing}
-              leftIcon={<Trash2 className="h-4 w-4" />}
+              icon={<Trash2 className="h-4 w-4" />}
             >
               清空文章
             </Button>
@@ -151,20 +153,20 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
               </div>
             </div>
             <Button
-              variant="danger"
-              size="sm"
+              danger
+              size="small"
               onClick={onOpenDeleteModal}
-              leftIcon={<Trash2 className="h-4 w-4" />}
+              icon={<Trash2 className="h-4 w-4" />}
             >
               删除账户
             </Button>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 警告提示 */}
-      <Card className="border-amber-500/30 bg-amber-500/5">
-        <CardContent className="pt-6">
+      <Card className="border-amber-500/30 bg-amber-500/5" variant="borderless">
+        <div className="px-6 py-6">
           <div className="flex gap-3">
             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
               <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -178,7 +180,7 @@ export function DataSettings({ onOpenDeleteModal }: DataSettingsProps) {
               </ul>
             </div>
           </div>
-        </CardContent>
+        </div>
       </Card>
     </div>
   );

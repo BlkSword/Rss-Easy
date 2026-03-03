@@ -10,8 +10,7 @@ import { Mail, Server, Lock, Shield, Send, AlertCircle, Check, Eye, EyeOff } fro
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button, Card, Switch } from 'antd';
 
 interface EmailSettingsProps {
   user: any;
@@ -135,17 +134,17 @@ export function EmailSettings({ user }: EmailSettingsProps) {
   return (
     <div className="space-y-6">
       {/* SMTP配置 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Server className="h-5 w-5 text-primary" />
             SMTP 服务器配置
-          </CardTitle>
-          <CardDescription>
-            配置邮件服务器以启用邮件通知功能
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+          </div>
+        }
+      >
+        <div className="space-y-6">
           {/* 启用开关 */}
           <div
             className={cn(
@@ -185,25 +184,10 @@ export function EmailSettings({ user }: EmailSettingsProps) {
                 </div>
               </div>
             </div>
-            <button
-              className={cn(
-                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                enabled
-                  ? 'bg-slate-300 dark:bg-slate-600'
-                  : 'bg-primary shadow-lg shadow-primary/30'
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                setEnabled(!enabled);
-              }}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                  enabled ? 'left-8 bg-white' : 'left-1 bg-white'
-                )}
-              />
-            </button>
+            <Switch
+              checked={enabled}
+              onChange={(checked) => setEnabled(checked)}
+            />
           </div>
 
           {enabled && (
@@ -407,13 +391,13 @@ export function EmailSettings({ user }: EmailSettingsProps) {
               </div>
             </>
           )}
-        </CardContent>
+        </div>
       </Card>
 
       {/* 安全提示 */}
       {enabled && (
-        <Card className="border-primary/20 bg-primary/5 overflow-hidden">
-          <CardContent className="pt-6">
+        <Card className="border-primary/20 bg-primary/5 overflow-hidden" variant="borderless">
+          <div className="px-6 py-6">
             <div className="flex gap-3">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                 <Shield className="h-5 w-5 text-primary" />
@@ -436,7 +420,7 @@ export function EmailSettings({ user }: EmailSettingsProps) {
                 </ul>
               </div>
             </div>
-          </CardContent>
+          </div>
         </Card>
       )}
 
@@ -444,21 +428,20 @@ export function EmailSettings({ user }: EmailSettingsProps) {
       <div className="flex justify-end gap-3">
         {enabled && (
           <Button
-            variant="ghost"
             onClick={handleTest}
-            isLoading={isTesting}
+            loading={isTesting}
             disabled={!canTest()}
-            leftIcon={<Send className="h-4 w-4" />}
+            icon={<Send className="h-4 w-4" />}
           >
             发送测试邮件
           </Button>
         )}
         <Button
-          variant="primary"
+          type="primary"
           onClick={handleSave}
-          isLoading={isSaving}
+          loading={isSaving}
           disabled={!hasChanges || isSaving}
-          leftIcon={enabled ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          icon={enabled ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
         >
           保存配置
         </Button>

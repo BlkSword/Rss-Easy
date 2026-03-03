@@ -24,9 +24,7 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { useToast } from '@/components/ui/toast';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
-import { Badge } from '@/components/ui/badge';
+import { Button, Modal } from 'antd';
 import { SidebarSkeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/components/providers/language-provider';
 
@@ -172,13 +170,9 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
                 isActive(item.href) ? 'scale-110' : 'group-hover:scale-110'
               )} />
               {item.count ? (
-                <Badge
-                  variant="primary"
-                  size="sm"
-                  className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] text-[10px]"
-                >
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] text-[10px] flex items-center justify-center bg-primary text-primary-foreground rounded-full">
                   {item.count > 99 ? '99+' : item.count}
-                </Badge>
+                </span>
               ) : null}
             </Link>
           </Tooltip>
@@ -214,9 +208,9 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
               )} />
               <span className="relative flex-1 text-sm">{item.label}</span>
               {item.count ? (
-                <Badge variant="primary" size="sm" className="relative">
+                <span className="relative px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded">
                   {item.count}
-                </Badge>
+                </span>
               ) : null}
               {/* 选中指示器 */}
               {isActive(item.href) && (
@@ -234,13 +228,12 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
             </span>
             <Tooltip content="新建分组">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
+                size="small"
                 className="h-7 w-7"
+                icon={<Plus className="h-4 w-4" />}
                 onClick={() => setIsCreateModalOpen(true)}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
+              />
             </Tooltip>
           </div>
 
@@ -286,9 +279,9 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
                           {category.name}
                         </span>
                         {category.unreadCount > 0 && (
-                          <Badge variant="primary" size="sm">
+                          <span className="px-1.5 py-0.5 text-xs bg-primary text-primary-foreground rounded">
                             {category.unreadCount}
-                          </Badge>
+                          </span>
                         )}
                       </button>
 
@@ -333,7 +326,9 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
                             )}
                             <span className="flex-1 truncate">{feed.title}</span>
                             {feed.unreadCount > 0 && (
-                              <Badge size="sm">{feed.unreadCount}</Badge>
+                              <span className="px-1.5 py-0.5 text-xs bg-muted text-muted-foreground rounded">
+                                {feed.unreadCount}
+                              </span>
                             )}
                           </Link>
                         ))}
@@ -354,9 +349,7 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
             </span>
             <Tooltip content="管理订阅源">
               <Link href="/feeds/manage">
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  <Settings className="h-4 w-4" />
-                </Button>
+                <Button type="text" size="small" className="h-7 w-7" icon={<Settings className="h-4 w-4" />} />
               </Link>
             </Tooltip>
           </div>
@@ -396,7 +389,9 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
                   )}
                   <span className="relative flex-1 truncate">{feed.title}</span>
                   {feed.unreadCount > 0 && (
-                    <Badge variant="primary" size="sm" className="relative">{feed.unreadCount}</Badge>
+                    <span className="relative px-1.5 py-0.5 text-xs bg-primary text-primary-foreground rounded">
+                      {feed.unreadCount}
+                    </span>
                   )}
                 </Link>
               ))}
@@ -416,17 +411,18 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
 
       {/* 创建分组模态框 */}
       <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        open={isCreateModalOpen}
+        onCancel={() => setIsCreateModalOpen(false)}
         title={t('category.new')}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
+            <Button onClick={() => setIsCreateModalOpen(false)}>
               取消
             </Button>
             <Button
+              type="primary"
               onClick={handleCreateCategory}
-              isLoading={createCategory.isPending}
+              loading={createCategory.isPending}
             >
               创建
             </Button>
@@ -451,8 +447,8 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
 
       {/* 编辑分组模态框 */}
       <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => {
+        open={isEditModalOpen}
+        onCancel={() => {
           setIsEditModalOpen(false);
           setEditingCategoryId(null);
           setNewCategoryName('');
@@ -460,7 +456,7 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
         title={t('category.edit')}
         footer={
           <>
-            <Button variant="ghost" onClick={() => {
+            <Button onClick={() => {
               setIsEditModalOpen(false);
               setEditingCategoryId(null);
               setNewCategoryName('');
@@ -468,8 +464,9 @@ function AppSidebarComponent({ collapsed = false }: AppSidebarProps) {
               取消
             </Button>
             <Button
+              type="primary"
               onClick={handleUpdateCategory}
-              isLoading={updateCategory.isPending}
+              loading={updateCategory.isPending}
             >
               保存
             </Button>

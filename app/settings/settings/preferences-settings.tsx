@@ -6,11 +6,10 @@
 
 import { useState, useEffect } from 'react';
 import { Palette, Save, Sun, Moon, Monitor, List, Check, Languages } from 'lucide-react';
+import { Select, Button, Card, Switch } from 'antd';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useLanguage } from '@/components/providers/language-provider';
 
@@ -96,15 +95,17 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
   return (
     <div className="space-y-6">
       {/* 外观设置 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Palette className="h-5 w-5 text-primary" />
             {t('settings.appearance')}
-          </CardTitle>
-          <CardDescription>{t('settings.appearance_desc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+          </div>
+        }
+      >
+        <div className="space-y-6">
           {/* 主题选择 */}
           <div className="space-y-3">
             <label className="text-sm font-medium">{t('settings.theme')}</label>
@@ -177,36 +178,36 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
               })}
             </div>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 阅读设置 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <List className="h-5 w-5 text-primary" />
             {t('settings.reading')}
-          </CardTitle>
-          <CardDescription>{t('settings.reading_desc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 每页显示文章数 */}
           <div className="space-y-2">
             <label className="text-sm font-medium">{t('settings.items_per_page')}</label>
-            <select
+            <Select
               value={itemsPerPage}
-              onChange={(e) => setItemsPerPage(Number(e.target.value))}
-              className={cn(
-                'w-full px-4 py-3 rounded-xl border-2 border-border bg-background',
-                'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50',
-                'transition-all duration-200 input-warm cursor-pointer hover:border-primary/30'
-              )}
-            >
-              <option value={10}>10 篇</option>
-              <option value={20}>20 篇</option>
-              <option value={50}>50 篇</option>
-              <option value={100}>100 篇</option>
-            </select>
+              onChange={(value) => setItemsPerPage(value)}
+              options={[
+                { value: 10, label: '10 篇' },
+                { value: 20, label: '20 篇' },
+                { value: 50, label: '50 篇' },
+                { value: 100, label: '100 篇' },
+              ]}
+              className="w-full"
+              size="large"
+            />
           </div>
 
           {/* 开关选项 */}
@@ -262,40 +263,23 @@ export function PreferencesSettings({ user }: PreferencesSettingsProps) {
                   <div className="text-sm text-muted-foreground">{description}</div>
                 </div>
               </div>
-              <button
-                className={cn(
-                  'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                  value
-                    ? 'bg-slate-300 dark:bg-slate-600'
-                    : 'bg-primary shadow-lg shadow-primary/30'
-                )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onChange(!value);
-                }}
-              >
-                <span
-                  className={cn(
-                    'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                    value 
-                      ? 'left-8 bg-white' 
-                      : 'left-1 bg-white'
-                  )}
-                />
-              </button>
+              <Switch
+                checked={value}
+                onChange={(checked) => onChange(checked)}
+              />
             </div>
           ))}
-        </CardContent>
+        </div>
       </Card>
 
       {/* 保存按钮 */}
       <div className="flex justify-end">
         <Button
-          variant="primary"
+          type="primary"
           onClick={handleSave}
-          isLoading={isSaving}
+          loading={isSaving}
           disabled={!hasChanges || isSaving}
-          leftIcon={<Save className="h-4 w-4" />}
+          icon={<Save className="h-4 w-4" />}
         >
           {t('action.save')}
         </Button>

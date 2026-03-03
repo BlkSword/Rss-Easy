@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 
 interface AIAnalysisPanelProps {
   entryId: string;

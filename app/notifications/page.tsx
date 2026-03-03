@@ -13,10 +13,7 @@ import { trpc } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { handleApiSuccess, handleApiError } from '@/lib/feedback';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { EmptyState } from '@/components/ui/empty-state';
+import { Button, Card, Badge, Empty, Tag } from 'antd';
 
 type NotificationData = {
   link?: string;
@@ -259,16 +256,16 @@ export default function NotificationsPage() {
     }
   };
 
-  const getTypeBadgeVariant = (type: string): 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'secondary' => {
+  const getTypeTagColor = (type: string): string => {
     switch (type) {
       case 'new_entry':
-        return 'info';
+        return 'blue';
       case 'report_ready':
-        return 'success';
+        return 'green';
       case 'feed_error':
-        return 'danger';
+        return 'red';
       case 'ai_complete':
-        return 'secondary';
+        return 'purple';
       default:
         return 'default';
     }
@@ -303,18 +300,16 @@ export default function NotificationsPage() {
               <div className="flex items-center gap-2">
                 {unreadCount && unreadCount > 0 && (
                   <Button
-                    variant="outline"
-                    size="sm"
-                    leftIcon={<CheckCheck className="h-4 w-4" />}
+                    size="small"
+                    icon={<CheckCheck className="h-4 w-4" />}
                     onClick={handleMarkAllAsRead}
                   >
                     全部已读
                   </Button>
                 )}
                 <Button
-                  variant="outline"
-                  size="sm"
-                  leftIcon={<Trash2 className="h-4 w-4" />}
+                  size="small"
+                  icon={<Trash2 className="h-4 w-4" />}
                   onClick={handleClearRead}
                 >
                   清空已读
@@ -325,40 +320,47 @@ export default function NotificationsPage() {
             {/* 过滤器 */}
             <div className="flex items-center gap-2 mb-6">
               <Button
-                variant={filter === 'all' ? 'primary' : 'outline'}
-                size="sm"
-                leftIcon={<Filter className="h-4 w-4" />}
+                type={filter === 'all' ? 'primary' : undefined}
+                size="small"
+                icon={<Filter className="h-4 w-4" />}
                 onClick={() => setFilter('all')}
               >
                 全部
               </Button>
               <Button
-                variant={filter === 'unread' ? 'primary' : 'outline'}
-                size="sm"
-                leftIcon={<Bell className="h-4 w-4" />}
+                type={filter === 'unread' ? 'primary' : undefined}
+                size="small"
+                icon={<Bell className="h-4 w-4" />}
                 onClick={() => setFilter('unread')}
-                rightIcon={unreadCount ? (
-                  <Badge variant="primary" size="sm" className="ml-1">{unreadCount}</Badge>
-                ) : undefined}
               >
                 未读
+                {unreadCount ? (
+                  <Badge count={unreadCount} size="small" className="ml-1" />
+                ) : null}
               </Button>
             </div>
 
             {/* 通知列表 */}
             {!notifications || notifications.length === 0 ? (
-              <EmptyState
-                icon={<Bell className="h-12 w-12" />}
-                title={filter === 'unread' ? '没有未读通知' : '还没有任何通知'}
-                description={filter === 'unread' ? '您已阅读所有通知' : '当有新消息时，会显示在这里'}
-                variant="default"
+              <Empty
+                image={<Bell className="h-12 w-12" />}
+                description={
+                  <>
+                    <div className="text-base font-medium mb-1">
+                      {filter === 'unread' ? '没有未读通知' : '还没有任何通知'}
+                    </div>
+                    <div className="text-gray-500 text-sm">
+                      {filter === 'unread' ? '您已阅读所有通知' : '当有新消息时，会显示在这里'}
+                    </div>
+                  </>
+                }
               />
             ) : (
               <div className="space-y-3">
                 {notifications.map((notification, index) => (
                   <Card
                     key={notification.id}
-                    isHoverable
+                    hoverable
                     className={cn(
                       'border-2 transition-all duration-250',
                       !notification.isRead
@@ -383,9 +385,9 @@ export default function NotificationsPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <Badge variant={getTypeBadgeVariant(notification.type)} size="sm">
+                              <Tag color={getTypeTagColor(notification.type)} className="text-xs">
                                 {getTypeLabel(notification.type)}
-                              </Badge>
+                              </Tag>
                               {!notification.isRead && (
                                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                               )}

@@ -25,7 +25,7 @@ import { useToast } from '@/components/ui/toast';
 import { useIsMobile } from '@/hooks/use-media-query';
 import { useTheme } from '@/components/providers/theme-provider';
 import { useLanguage } from '@/components/providers/language-provider';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/animation/loading';
 import { QueueStatusIndicator } from '@/components/layout/queue-status-indicator';
@@ -131,16 +131,14 @@ function AppHeaderComponent({
           {!isMobile && (
             <Tooltip content="切换侧边栏 (Cmd+B)" position="bottom">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={handleToggleSidebar}
                 className={cn(
                   'transition-transform duration-300',
                   isSidebarCollapsed && 'rotate-180'
                 )}
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
+                icon={<Menu className="h-5 w-5" />}
+              />
             </Tooltip>
           )}
 
@@ -206,26 +204,23 @@ function AppHeaderComponent({
           <div className="flex items-center gap-1">
             <Tooltip content={t('action.refresh')} position="bottom">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={onRefresh}
                 disabled={isRefreshing}
                 className={cn(
                   'transition-all duration-200',
                   isRefreshing && 'hover:bg-transparent'
                 )}
-              >
-                <RefreshCw className={cn(
+                icon={<RefreshCw className={cn(
                   'h-4 w-4 transition-transform duration-500',
                   isRefreshing && 'animate-spin-smooth'
-                )} />
-              </Button>
+                )} />}
+              />
             </Tooltip>
 
             <Tooltip content={t('settings.language')} position="bottom">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={() => setLanguage(language === 'zh-CN' ? 'en' : 'zh-CN')}
                 className="font-medium text-sm"
               >
@@ -235,8 +230,7 @@ function AppHeaderComponent({
 
             <Tooltip content={t('settings.theme')} position="bottom">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={toggleTheme}
                 className={cn(
                   'border border-transparent',
@@ -244,43 +238,37 @@ function AppHeaderComponent({
                   'dark:border-border/40 dark:hover:border-border/70 dark:hover:bg-muted/90',
                   'transition-all duration-200'
                 )}
-              >
-                {resolvedTheme === 'dark' ? (
+                icon={resolvedTheme === 'dark' ? (
                   <Sun className="h-4 w-4 text-amber-400" />
                 ) : (
                   <Moon className="h-4 w-4 text-slate-600" />
                 )}
-              </Button>
+              />
             </Tooltip>
 
             <Tooltip content={t('nav.shortcuts')} position="bottom">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={() => router.push('/shortcuts')}
-              >
-                <Keyboard className="h-4 w-4" />
-              </Button>
+                icon={<Keyboard className="h-4 w-4" />}
+              />
             </Tooltip>
 
             <Tooltip content={t('nav.settings')} position="bottom">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={() => router.push('/settings')}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
+                icon={<Settings className="h-4 w-4" />}
+              />
             </Tooltip>
 
             <Tooltip content={t('nav.notifications')} position="bottom">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={() => router.push('/notifications')}
                 className="relative"
+                icon={<Bell className="h-4 w-4" />}
               >
-                <Bell className="h-4 w-4" />
                 {(notifications ?? 0) > 0 && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-background" />
                 )}
@@ -291,9 +279,7 @@ function AppHeaderComponent({
             <QueueStatusIndicator />
 
             <Tooltip content={t('nav.logout')} position="bottom">
-              <Button variant="ghost" size="icon" onClick={handleLogout}>
-                <LogOut className="h-4 w-4" />
-              </Button>
+              <Button type="text" onClick={handleLogout} icon={<LogOut className="h-4 w-4" />} />
             </Tooltip>
           </div>
         )}
@@ -303,17 +289,15 @@ function AppHeaderComponent({
           <div className="flex items-center gap-1">
             {/* 刷新按钮 */}
             <Button
-              variant="ghost"
-              size="icon"
+              type="text"
               onClick={onRefresh}
               disabled={isRefreshing}
               className="relative"
-            >
-              <RefreshCw className={cn(
+              icon={<RefreshCw className={cn(
                 'h-5 w-5 transition-transform duration-500',
                 isRefreshing && 'animate-spin-smooth'
-              )} />
-            </Button>
+              )} />}
+            />
 
             {/* 队列状态指示器 */}
             <QueueStatusIndicator />
@@ -321,12 +305,10 @@ function AppHeaderComponent({
             {/* 更多菜单 */}
             <div ref={menuRef} className="relative">
               <Button
-                variant="ghost"
-                size="icon"
+                type="text"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              >
-                <MoreVertical className="h-5 w-5" />
-              </Button>
+                icon={<MoreVertical className="h-5 w-5" />}
+              />
 
               <AnimatePresence>
                 {isMobileMenuOpen && (

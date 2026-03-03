@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 import { Tooltip } from '@/components/ui/tooltip';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -143,17 +143,15 @@ function QueueStatusIndicatorComponent() {
         position="bottom"
       >
         <Button
-          variant="ghost"
-          size="icon"
+          type="text"
           onClick={() => setIsExpanded(!isExpanded)}
           className={cn(
             'relative transition-all duration-300',
             hasActivity && 'animate-pulse-soft',
             !isAIConfigured && 'text-yellow-500'
           )}
-        >
-          <Activity className={cn('h-4 w-4', getStatusColor())} />
-        </Button>
+          icon={<Activity className={cn('h-4 w-4', getStatusColor())} />}
+        />
       </Tooltip>
 
       {/* 展开面板 */}
@@ -186,7 +184,7 @@ function QueueStatusIndicatorComponent() {
                         'w-2 h-2 rounded-full',
                         scheduler.isRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
                       )} />
-                      {scheduler.isRunning ? '运行中' : '已停止'}
+                      {scheduler.isRunning ? '运行中' : '待启动'}
                     </div>
                     {/* 移动端关闭按钮 */}
                     <button
@@ -271,8 +269,7 @@ function QueueStatusIndicatorComponent() {
                             请先在设置中配置 AI API 密钥以启用智能分析功能
                           </p>
                           <Button
-                            size="sm"
-                            variant="outline"
+                            size="small"
                             className="text-xs h-7"
                             onClick={() => window.location.href = '/settings'}
                           >
@@ -525,8 +522,7 @@ function QueueStatusIndicatorComponent() {
                         {totalFeedsToUpdate > pageSize && (
                           <div className="flex items-center justify-center gap-2 pt-2">
                             <Button
-                              size="sm"
-                              variant="outline"
+                              size="small"
                               className="h-7 text-xs"
                               disabled={feedPage === 0}
                               onClick={() => setFeedPage(p => Math.max(0, p - 1))}
@@ -534,8 +530,7 @@ function QueueStatusIndicatorComponent() {
                               上一页
                             </Button>
                             <Button
-                              size="sm"
-                              variant="outline"
+                              size="small"
                               className="h-7 text-xs"
                               disabled={!hasMoreFeeds}
                               onClick={() => setFeedPage(p => p + 1)}

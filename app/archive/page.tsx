@@ -44,7 +44,7 @@ export default function ArchivePage() {
   });
 
   const displayEntries = entriesData?.items || [];
-  const selectedIndex = displayEntries.findIndex((e) => e.id === selectedEntryId);
+  const selectedIndex = displayEntries.findIndex((e: { id: string }) => e.id === selectedEntryId);
 
   const handleSelectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId);
@@ -98,7 +98,7 @@ export default function ArchivePage() {
               <CompactEntryEmpty message="暂无归档文章" />
             ) : (
               <CompactEntryList>
-                {displayEntries.map((entry) => (
+                {displayEntries.map((entry: { id: string; title: string; url: string; feed: { title: string; iconUrl?: string | null }; publishedAt?: Date | null; isRead: boolean; isStarred: boolean }) => (
                   <CompactEntryItem
                     key={entry.id}
                     id={entry.id}

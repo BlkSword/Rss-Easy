@@ -23,7 +23,7 @@ import { trpc } from '@/lib/trpc/client';
 import { handleApiSuccess, handleApiError } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
-import { Card } from '@/components/ui/card';
+
 
 export default function CategoryPage() {
   const params = useParams();
@@ -150,7 +150,7 @@ export default function CategoryPage() {
             </Button>
 
             {/* 分类头部 */}
-            <Card className="mb-6">
+            <AntCard className="mb-6">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4 flex-1">
                   {/* 图标 */}
@@ -202,7 +202,7 @@ export default function CategoryPage() {
                   />
                 </Col>
               </Row>
-            </Card>
+            </AntCard>
 
             {/* 订阅源列表 */}
             <div>
@@ -302,7 +302,7 @@ function FeedsList({ categoryId }: { categoryId: string }) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {feeds.map((feed) => (
+      {feeds.map((feed: { id: string; title: string; feedUrl: string; iconUrl?: string | null; unreadCount: number; isActive: boolean }) => (
         <Link
           key={feed.id}
           href={`/feeds/${feed.id}`}

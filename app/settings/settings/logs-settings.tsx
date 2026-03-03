@@ -28,10 +28,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button, Card, Select, Space, Modal } from 'antd';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Select, Space, Modal } from 'antd';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { notifySuccess } from '@/lib/feedback';
@@ -228,23 +226,22 @@ export function LogsSettings() {
       )}
 
       {/* 日志列表 */}
-      <Card>
-        <CardHeader className="pb-4">
+      <Card variant="borderless">
+        <div className="px-6 py-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-lg font-semibold">
                 <ScrollText className="h-5 w-5 text-primary" />
                 系统日志
-              </CardTitle>
-              <CardDescription>
+              </div>
+              <div className="text-sm text-muted-foreground">
                 共 {stats?.totalCount.toLocaleString() || 0} 条日志
-              </CardDescription>
+              </div>
             </div>
             <div className="flex items-center gap-1">
               <Tooltip content="刷新" position="bottom">
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  type="text"
                   onClick={async () => {
                     setIsRefreshing(true);
                     await Promise.all([refetch(), refetchStats()]);
@@ -264,8 +261,7 @@ export function LogsSettings() {
               </Tooltip>
               <Tooltip content="导出日志" position="bottom">
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  type="text"
                   onClick={handleExportLogs}
                 >
                   <Download className="h-4 w-4" />
@@ -273,11 +269,11 @@ export function LogsSettings() {
               </Tooltip>
               <Tooltip content="清空日志" position="bottom">
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  type="text"
+                  danger
                   onClick={() => setShowClearCard(true)}
                 >
-                  <Trash2 className="h-4 w-4 text-red-500" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </Tooltip>
             </div>
@@ -332,9 +328,9 @@ export function LogsSettings() {
               }))}
             />
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="p-0">
+        <div className="px-0 pb-0">
           <div className="border-t border-border">
             {isLoading ? (
               <div className="p-8 text-center text-muted-foreground">
@@ -500,28 +496,31 @@ export function LogsSettings() {
             {hasNextPage && (
               <div className="p-4 text-center border-t border-border">
                 <Button
-                  variant="ghost"
+                  type="text"
                   onClick={() => fetchNextPage()}
-                  isLoading={isFetchingNextPage}
+                  loading={isFetchingNextPage}
                 >
                   加载更多
                 </Button>
               </div>
             )}
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 最近错误 */}
       {stats?.recentErrors && stats.recentErrors.length > 0 && (
-        <Card className="border-red-200 dark:border-red-800">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600">
+        <Card 
+          className="border-red-200 dark:border-red-800" 
+          variant="borderless"
+          title={
+            <div className="flex items-center gap-2 text-red-600">
               <AlertCircle className="h-5 w-5" />
               最近错误
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </div>
+          }
+        >
+          <div>
             <div className="space-y-2">
               {stats.recentErrors.map((error) => (
                 <div
@@ -557,7 +556,7 @@ export function LogsSettings() {
                 </div>
               ))}
             </div>
-          </CardContent>
+          </div>
         </Card>
       )}
 
@@ -643,7 +642,7 @@ export function LogsSettings() {
           {/* 取消按钮 */}
           <div className="mt-5 pt-4 border-t border-border">
             <Button
-              variant="ghost"
+              type="text"
               className="w-full"
               onClick={() => setShowClearCard(false)}
               disabled={clearLogs.isPending}

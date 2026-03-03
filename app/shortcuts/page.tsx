@@ -14,8 +14,7 @@ import {
   X,
   Command,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button, Card } from 'antd';
 import { PageTransition } from '@/components/animation/fade';
 import { cn } from '@/lib/utils';
 
@@ -70,60 +69,55 @@ function ShortcutGroup({
   shortcuts: ShortcutItem[];
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {shortcuts.map((shortcut) => (
-            <div
-              key={shortcut.key + shortcut.label}
-              className="flex items-center justify-between py-2"
-            >
-              <div className="flex items-center gap-3">
-                {shortcut.icon && (
-                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
-                    {shortcut.icon}
-                  </div>
-                )}
-                <div>
-                  <p className="font-medium">{shortcut.label}</p>
-                  {shortcut.description && (
-                    <p className="text-sm text-muted-foreground">
-                      {shortcut.description}
-                    </p>
-                  )}
+    <Card title={title}>
+      <div className="space-y-3">
+        {shortcuts.map((shortcut) => (
+          <div
+            key={shortcut.key + shortcut.label}
+            className="flex items-center justify-between py-2"
+          >
+            <div className="flex items-center gap-3">
+              {shortcut.icon && (
+                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
+                  {shortcut.icon}
                 </div>
-              </div>
-              <div className="flex items-center gap-1">
-                {shortcut.modifier && (
-                  <kbd
-                    className={cn(
-                      'px-2 py-1 rounded-md text-xs font-mono font-medium bg-muted',
-                      'border border-border/60'
-                    )}
-                  >
-                    {shortcut.modifier === 'cmd' ? (
-                      <Command className="h-3 w-3" />
-                    ) : (
-                      shortcut.modifier
-                    )}
-                  </kbd>
+              )}
+              <div>
+                <p className="font-medium">{shortcut.label}</p>
+                {shortcut.description && (
+                  <p className="text-sm text-muted-foreground">
+                    {shortcut.description}
+                  </p>
                 )}
-                <kbd
-                  className={cn(
-                    'px-2 py-1 rounded-md text-xs font-mono font-medium',
-                    'bg-primary/10 text-primary border border-primary/20'
-                  )}
-                >
-                  {shortcut.key}
-                </kbd>
               </div>
             </div>
-          ))}
-        </div>
-      </CardContent>
+            <div className="flex items-center gap-1">
+              {shortcut.modifier && (
+                <kbd
+                  className={cn(
+                    'px-2 py-1 rounded-md text-xs font-mono font-medium bg-muted',
+                    'border border-border/60'
+                  )}
+                >
+                  {shortcut.modifier === 'cmd' ? (
+                    <Command className="h-3 w-3" />
+                  ) : (
+                    shortcut.modifier
+                  )}
+                </kbd>
+              )}
+              <kbd
+                className={cn(
+                  'px-2 py-1 rounded-md text-xs font-mono font-medium',
+                  'bg-primary/10 text-primary border border-primary/20'
+                )}
+              >
+                {shortcut.key}
+              </kbd>
+            </div>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }
@@ -136,9 +130,12 @@ export default function ShortcutsPage() {
       <div className="max-w-3xl mx-auto px-4 py-8">
         {/* 头部 */}
         <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+          <Button
+            type="text"
+            shape="circle"
+            icon={<ArrowLeft className="h-5 w-5" />}
+            onClick={() => router.back()}
+          />
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-3">
               <Keyboard className="h-6 w-6 text-primary" />

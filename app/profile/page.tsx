@@ -14,7 +14,7 @@ import {
   Save,
   Lock,
 } from 'lucide-react';
-import { Button, Card, Form, Input, Avatar, Space, Tabs, Typography, Divider, Select, message } from 'antd';
+import { Button, Card, Form, Input, Avatar, Space, Tabs, Typography, Divider, Select, Switch, message } from 'antd';
 import type { TabsProps } from 'antd';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
@@ -262,7 +262,7 @@ function ProfileTabs({
                   <div className="font-medium">自动标记为已读</div>
                   <div className="text-sm text-muted-foreground">点击文章后自动标记为已读</div>
                 </div>
-                <input type="checkbox" className="w-5 h-5" />
+                <Switch />
               </div>
             </Form.Item>
 
@@ -272,7 +272,7 @@ function ProfileTabs({
                   <div className="font-medium">显示完整内容</div>
                   <div className="text-sm text-muted-foreground">在列表中显示文章完整内容而非摘要</div>
                 </div>
-                <input type="checkbox" className="w-5 h-5" />
+                <Switch />
               </div>
             </Form.Item>
 

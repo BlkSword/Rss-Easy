@@ -40,7 +40,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar';
 import { trpc } from '@/lib/trpc/client';
 import { cn } from '@/lib/utils';
 import { handleApiSuccess, handleApiError, notifySuccess, notifyError } from '@/lib/feedback';
-import { Card } from '@/components/ui/card';
+
 
 // 动画组件
 import { Fade, StaggerContainer, ListItemFade, HoverLift } from '@/components/animation/fade';
@@ -330,9 +330,9 @@ function StatCard({
 }) {
   return (
     <Fade delay={delay} direction="up" distance={15}>
-      <Card isHoverable>
+      <AntCard>
         <AnimatedCounter value={value} label={label} icon={icon} duration={1200} />
-      </Card>
+      </AntCard>
     </Fade>
   );
 }
@@ -379,7 +379,7 @@ function ConfigStatusCard({
 
   return (
     <Fade direction="up" distance={10}>
-      <Card
+      <AntCard
         className={cn(
           'border-2 transition-all duration-300',
           isConfigured
@@ -424,7 +424,7 @@ function ConfigStatusCard({
             </Button>
           )}
         </div>
-      </Card>
+      </AntCard>
     </Fade>
   );
 }
@@ -439,7 +439,7 @@ function GeneratingReportCard({
 }) {
   return (
     <ListItemFade index={0} baseDelay={80}>
-      <Card className="border-border/60 border-dashed border-2 bg-muted/20">
+      <AntCard className="border-border/60 border-dashed border-2 bg-muted/20">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center animate-pulse">
             <Loader2 className="h-5 w-5 text-amber-500 animate-spin" />
@@ -481,7 +481,7 @@ function GeneratingReportCard({
             />
           </Tooltip>
         </div>
-      </Card>
+      </AntCard>
     </ListItemFade>
   );
 }
@@ -507,7 +507,7 @@ function ReportCard({
   if (report.status === 'failed') {
     return (
       <ListItemFade index={index} baseDelay={80}>
-        <Card className="border-red-200 bg-red-50/30">
+        <AntCard className="border-red-200 bg-red-50/30">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
               <AlertCircle className="h-5 w-5 text-red-500" />
@@ -537,7 +537,7 @@ function ReportCard({
               删除
             </Button>
           </div>
-        </Card>
+        </AntCard>
       </ListItemFade>
     );
   }
@@ -546,7 +546,7 @@ function ReportCard({
   return (
     <ListItemFade index={index} baseDelay={80}>
       <HoverLift lift={4} shadow={false}>
-        <Card isClickable>
+        <AntCard className="cursor-pointer hover:shadow-md transition-shadow">
           <div className="flex items-start justify-between">
             <Link href={`/reports/${report.id}`} className="flex-1 min-w-0">
               <div className="flex items-start gap-4">
@@ -612,7 +612,7 @@ function ReportCard({
               </div>
             </Fade>
           )}
-        </Card>
+        </AntCard>
       </HoverLift>
     </ListItemFade>
   );

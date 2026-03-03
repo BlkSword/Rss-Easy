@@ -24,7 +24,7 @@ import {
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Modal, ConfirmModal } from '@/components/ui/modal';
+import { Modal } from 'antd';
 import { ProfileSettings } from './settings/profile-settings';
 import { PreferencesSettings } from './settings/preferences-settings';
 import { SecuritySettings } from './settings/security-settings';
@@ -219,10 +219,9 @@ export function SettingsPageContent() {
 
       {/* 删除账户确认弹窗 */}
       <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={handleDeleteModalClose}
+        open={isDeleteModalOpen}
+        onCancel={handleDeleteModalClose}
         title="删除账户"
-        description="此操作将永久删除您的账户和所有数据，包括订阅源、文章、设置等。此操作无法撤销，请谨慎操作。"
         footer={
           <div className="flex justify-end gap-3">
             <button
@@ -247,6 +246,9 @@ export function SettingsPageContent() {
         }
       >
         <div className="space-y-4">
+          <p className="text-muted-foreground">
+            此操作将永久删除您的账户和所有数据，包括订阅源、文章、设置等。此操作无法撤销，请谨慎操作。
+          </p>
           <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg">
             <p className="text-sm text-red-700 dark:text-red-300">
               ⚠️ 警告：删除账户将永久移除所有数据，此操作不可恢复！

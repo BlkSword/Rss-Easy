@@ -19,12 +19,10 @@ import {
   Trash2,
   Check,
 } from 'lucide-react';
+import { Select, Button, Card, Modal, Switch } from 'antd';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { Modal, ConfirmModal } from '@/components/ui/modal';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { usePermission } from '@/hooks/use-permission';
 import { getRoleOptions, getRoleDisplayName } from '@/lib/auth/roles';
 
@@ -37,14 +35,14 @@ export function AdminSettings() {
   // 如果没有管理员权限，显示提示
   if (!isAdmin) {
     return (
-      <Card className="overflow-hidden">
-        <CardContent className="py-12">
+      <Card className="overflow-hidden" variant="borderless">
+        <div className="px-6 py-12">
           <div className="text-center">
             <Shield className="h-12 w-12 mx-auto text-muted-foreground opacity-50" />
             <h3 className="mt-4 text-lg font-medium">权限不足</h3>
             <p className="mt-2 text-muted-foreground">您没有访问此页面的权限</p>
           </div>
-        </CardContent>
+        </div>
       </Card>
     );
   }
@@ -159,15 +157,17 @@ function SystemSettingsPanel() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* 注册设置 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             注册设置
-          </CardTitle>
-          <CardDescription>控制新用户注册和默认权限</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 开放注册开关 */}
           <div
             className={cn(
@@ -197,62 +197,68 @@ function SystemSettingsPanel() {
                 <div className="text-sm text-muted-foreground">允许新用户注册账户</div>
               </div>
             </div>
-            <button
-              type="button"
-              className={cn(
-                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                formData.allowRegistration
-                  ? 'bg-slate-300 dark:bg-slate-600'
-                  : 'bg-primary shadow-lg shadow-primary/30'
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                setFormData({ ...formData, allowRegistration: !formData.allowRegistration });
-              }}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                  formData.allowRegistration
-                    ? 'left-8 bg-white'
-                    : 'left-1 bg-white'
-                )}
-              />
-            </button>
+            <Switch
+              checked={formData.allowRegistration}
+              onChange={(checked) => setFormData({ ...formData, allowRegistration: checked })}
+            />
           </div>
 
           {/* 默认角色选择 */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <label className="text-sm font-medium">新用户默认角色</label>
-            <select
-              value={formData.defaultUserRole}
-              onChange={(e) => setFormData({ ...formData, defaultUserRole: e.target.value as any })}
-              className={cn(
-                'w-full px-4 py-3 rounded-xl border-2 border-border bg-background',
-                'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50',
-                'transition-all duration-200 input-warm cursor-pointer hover:border-primary/30'
-              )}
-            >
-              {roleOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label} - {option.description}
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {roleOptions.map((option) => {
+                const isActive = formData.defaultUserRole === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, defaultUserRole: option.value as any })}
+                    className={cn(
+                      'group relative flex flex-col items-start gap-1 p-4 rounded-xl border-2 text-left transition-all duration-250',
+                      isActive
+                        ? 'border-primary/60 bg-gradient-to-br from-primary/15 to-primary/5 shadow-md ring-2 ring-primary/10'
+                        : 'border-border hover:border-primary/25 hover:bg-muted/30'
+                    )}
+                  >
+                    <span className={cn(
+                      'absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-transparent opacity-0 transition-opacity duration-300',
+                      !isActive && 'group-hover:opacity-100'
+                    )} />
+                    <div className="flex items-center gap-2 w-full">
+                      <span className={cn(
+                        'relative font-medium transition-colors',
+                        isActive ? 'text-primary' : 'group-hover:text-foreground'
+                      )}>
+                        {option.label}
+                      </span>
+                      {isActive && (
+                        <Check className="relative h-4 w-4 text-primary ml-auto" />
+                      )}
+                    </div>
+                    <span className="relative text-xs text-muted-foreground line-clamp-2">
+                      {option.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 系统外观 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Settings className="h-5 w-5 text-primary" />
             系统外观
-          </CardTitle>
-          <CardDescription>自定义系统名称和外观</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 系统名称 */}
           <div className="space-y-2">
             <label className="text-sm font-medium">系统名称</label>
@@ -302,19 +308,21 @@ function SystemSettingsPanel() {
               placeholder="简要描述您的系统..."
             />
           </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* 维护模式 */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card 
+        className="overflow-hidden" 
+        variant="borderless"
+        title={
+          <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
             维护模式
-          </CardTitle>
-          <CardDescription>系统维护时显示提示信息</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </div>
+        }
+      >
+        <div className="space-y-4">
           {/* 维护模式开关 */}
           <div
             className={cn(
@@ -344,28 +352,10 @@ function SystemSettingsPanel() {
                 <div className="text-sm text-muted-foreground">开启后，普通用户将看到维护提示</div>
               </div>
             </div>
-            <button
-              type="button"
-              className={cn(
-                'toggle-switch relative w-14 h-7 rounded-full transition-all duration-300',
-                formData.maintenanceMode
-                  ? 'bg-slate-300 dark:bg-slate-600'
-                  : 'bg-primary shadow-lg shadow-primary/30'
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                setFormData({ ...formData, maintenanceMode: !formData.maintenanceMode });
-              }}
-            >
-              <span
-                className={cn(
-                  'absolute top-1 w-5 h-5 rounded-full shadow-md transition-all duration-300',
-                  formData.maintenanceMode
-                    ? 'left-8 bg-white'
-                    : 'left-1 bg-white'
-                )}
-              />
-            </button>
+            <Switch
+              checked={formData.maintenanceMode}
+              onChange={(checked) => setFormData({ ...formData, maintenanceMode: checked })}
+            />
           </div>
 
           {/* 维护提示信息 */}
@@ -385,17 +375,17 @@ function SystemSettingsPanel() {
               />
             </div>
           )}
-        </CardContent>
+        </div>
       </Card>
 
       {/* 保存按钮 */}
       <div className="flex justify-end">
         <Button
-          variant="primary"
-          type="submit"
-          isLoading={isPending}
+          type="primary"
+          htmlType="submit"
+          loading={isPending}
           disabled={isPending}
-          leftIcon={<Save className="h-4 w-4" />}
+          icon={<Save className="h-4 w-4" />}
         >
           保存设置
         </Button>
@@ -500,29 +490,24 @@ function UserManagementPanel() {
             )}
           />
         </div>
-        <select
-          value={roleFilter || ''}
-          onChange={(e) => {
-            setRoleFilter(e.target.value || undefined);
+        <Select
+          value={roleFilter}
+          onChange={(value) => {
+            setRoleFilter(value || undefined);
             setPage(1);
           }}
-          className={cn(
-            'px-4 py-3 rounded-xl border-2 border-border bg-background',
-            'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50',
-            'transition-all duration-200 input-warm cursor-pointer hover:border-primary/30'
-          )}
-        >
-          <option value="">全部角色</option>
-          {roleOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          allowClear
+          placeholder="全部角色"
+          style={{ minWidth: 140 }}
+          options={roleOptions.map((option) => ({
+            label: option.label,
+            value: option.value,
+          }))}
+        />
       </div>
 
       {/* 用户列表 */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" variant="borderless">
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
             <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -629,24 +614,43 @@ function UserManagementPanel() {
       </Card>
 
       {/* 删除确认弹窗 */}
-      <ConfirmModal
-        isOpen={deleteModalOpen}
-        onClose={() => {
+      <Modal
+        open={deleteModalOpen}
+        onCancel={() => {
           setDeleteModalOpen(false);
           setUserToDelete(null);
         }}
-        onConfirm={handleConfirmDelete}
         title="删除用户"
-        description={`确定要删除用户 "${userToDelete?.username}" 吗？此操作将永久删除该用户的所有数据，包括订阅源、文章、设置等。此操作无法撤销。`}
-        confirmText="确认删除"
-        isConfirmLoading={deletingUser}
-        confirmVariant="danger"
-      />
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setDeleteModalOpen(false);
+              setUserToDelete(null);
+            }}
+          >
+            取消
+          </Button>,
+          <Button
+            key="confirm"
+            type="primary"
+            danger
+            loading={deletingUser}
+            onClick={handleConfirmDelete}
+          >
+            确认删除
+          </Button>,
+        ]}
+      >
+        <p className="text-muted-foreground">
+          确定要删除用户 &quot;{userToDelete?.username}&quot; 吗？此操作将永久删除该用户的所有数据，包括订阅源、文章、设置等。此操作无法撤销。
+        </p>
+      </Modal>
 
       {/* 修改角色弹窗 */}
       <Modal
-        isOpen={roleModalOpen}
-        onClose={() => {
+        open={roleModalOpen}
+        onCancel={() => {
           setRoleModalOpen(false);
           setUserToEdit(null);
         }}
