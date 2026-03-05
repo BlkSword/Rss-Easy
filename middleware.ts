@@ -75,7 +75,7 @@ async function isValidToken(token: string): Promise<boolean> {
 
 /**
  * 检查系统是否已初始化
- * 优先使用 cookie 快速检查，失败时调用 API
+ * 优先使用 cookie 快速检查，失败时调用内部 API
  */
 async function checkInitialization(request: NextRequest): Promise<boolean> {
   // 优先检查 cookie（快速路径）
@@ -83,9 +83,13 @@ async function checkInitialization(request: NextRequest): Promise<boolean> {
     return true;
   }
 
-  // Cookie 不存在，调用 API 检查
+  // Cookie 不存在，调用内部 API 检查
+  // 使用 localhost 而不是 NEXTAUTH_URL，因为这是容器内部调用
   try {
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://127.0.0.1:3000';
+    // 在 Docker 容器中使用 localhost，在本地开发中使用 127.0.0.1
+    const baseUrl = process.env.NODE_ENV === 'production'
+      ? 'http://localhost:3000'
+      : 'http://127.0.0.1:3000';
     const response = await fetch(`${baseUrl}/api/admin/init-status`, {
       method: 'GET',
       cache: 'no-store',
@@ -98,12 +102,14 @@ async function checkInitialization(request: NextRequest): Promise<boolean> {
       const data = await response.json();
       return data.isInitialized === true;
     }
-    // 如果 API 返回错误，假设已初始化（避免阻塞系统）
-    return true;
+    // 如果 API 返回非 200，返回 false 让用户去初始化页面
+    console.error('初始化状态 API 返回错误:', response.status);
+    return false;
   } catch (err) {
-    // 如果检查失败，假设已初始化（避免阻塞已初始化系统）
+    // 如果检查失败，返回 false 让用户去初始化页面
+    // 这样更安全：宁可多检查一次，也不要跳过初始化
     console.error('检查初始化状态失败:', err);
-    return true;
+    return false;
   }
 }
 

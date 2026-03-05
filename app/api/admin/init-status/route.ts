@@ -31,10 +31,12 @@ export async function GET() {
   } catch (err) {
     console.error('检查初始化状态失败:', err);
 
-    // 发生错误时，假设已初始化（避免阻塞系统）
+    // 发生错误时，返回 false 让用户去初始化页面
+    // 这样更安全：宁可让用户重新初始化，也不要跳过
     return NextResponse.json({
-      isInitialized: true,
-      needsInit: false,
+      isInitialized: false,
+      needsInit: true,
+      error: '检查初始化状态失败',
     });
   }
 }
