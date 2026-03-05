@@ -2,6 +2,7 @@
 #
 # RSS-Post 一键部署脚本
 # 集成安全依赖安装、环境配置、服务启动
+# 自动检测内存并动态调整构建参数
 #
 # 用法：
 #   ./start.sh              # 交互模式，会询问选项
@@ -16,6 +17,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # 默认值
@@ -51,9 +53,64 @@ echo "================================"
 echo ""
 
 # ========================================
+# 函数：检测系统内存（MB）
+# ========================================
+detect_memory() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        local total_bytes=$(sysctl -n hw.memsize)
+        echo $((total_bytes / 1048576))
+    else
+        # Linux
+        local mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+        echo $((mem_kb / 1024))
+    fi
+}
+
+# ========================================
+# 函数：计算构建参数
+# ========================================
+calculate_build_args() {
+    local total_mem=$1
+    local BUILD_MEMORY
+    local RUNTIME_MEMORY
+    local PNPM_CONCURRENCY
+
+    # 根据总内存计算构建内存限制
+    # 预留 30% 给系统和其他进程
+    if [ "$total_mem" -ge 8192 ]; then
+        # 8GB+ : 高配服务器
+        BUILD_MEMORY=3072
+        RUNTIME_MEMORY=768
+        PNPM_CONCURRENCY=4
+        MEMORY_PROFILE="high"
+    elif [ "$total_mem" -ge 4096 ]; then
+        # 4-8GB : 中等配置
+        BUILD_MEMORY=2048
+        RUNTIME_MEMORY=512
+        PNPM_CONCURRENCY=2
+        MEMORY_PROFILE="medium"
+    elif [ "$total_mem" -ge 2048 ]; then
+        # 2-4GB : 低配服务器
+        BUILD_MEMORY=1024
+        RUNTIME_MEMORY=384
+        PNPM_CONCURRENCY=1
+        MEMORY_PROFILE="low"
+    else
+        # <2GB : 极低内存
+        BUILD_MEMORY=768
+        RUNTIME_MEMORY=256
+        PNPM_CONCURRENCY=1
+        MEMORY_PROFILE="minimal"
+    fi
+
+    echo "$BUILD_MEMORY $RUNTIME_MEMORY $PNPM_CONCURRENCY $MEMORY_PROFILE"
+}
+
+# ========================================
 # 第一步：检查 Docker 和 docker compose
 # ========================================
-echo "[1/6] 检查 Docker 环境..."
+echo "[1/7] 检查 Docker 环境..."
 
 if ! docker info > /dev/null 2>&1; then
     echo -e "${RED}[错误] Docker 未运行，请先启动 Docker${NC}"
@@ -76,10 +133,42 @@ else
 fi
 
 # ========================================
-# 第二步：检查 .env 文件
+# 第二步：检测内存并计算构建参数
 # ========================================
 echo ""
-echo "[2/6] 检查环境配置..."
+echo "[2/7] 检测系统资源..."
+
+TOTAL_MEM=$(detect_memory)
+BUILD_ARGS=$(calculate_build_args $TOTAL_MEM)
+BUILD_MEMORY=$(echo $BUILD_ARGS | awk '{print $1}')
+RUNTIME_MEMORY=$(echo $BUILD_ARGS | awk '{print $2}')
+PNPM_CONCURRENCY=$(echo $BUILD_ARGS | awk '{print $3}')
+MEMORY_PROFILE=$(echo $BUILD_ARGS | awk '{print $4}')
+
+echo -e "${CYAN}系统总内存: ${TOTAL_MEM}MB${NC}"
+echo -e "${CYAN}内存配置档: ${MEMORY_PROFILE}${NC}"
+echo ""
+echo -e "${BLUE}动态构建参数:${NC}"
+echo "  构建内存限制: ${BUILD_MEMORY}MB"
+echo "  运行时内存: ${RUNTIME_MEMORY}MB"
+echo "  pnpm 并发数: ${PNPM_CONCURRENCY}"
+
+# 低内存警告
+if [ "$MEMORY_PROFILE" = "low" ] || [ "$MEMORY_PROFILE" = "minimal" ]; then
+    echo ""
+    echo -e "${YELLOW}⚠ 检测到低内存环境，已自动优化构建参数${NC}"
+    echo -e "${YELLOW}  - 构建时间可能较长，请耐心等待${NC}"
+    if [ "$MEMORY_PROFILE" = "minimal" ]; then
+        echo -e "${YELLOW}  - 建议增加 swap 分区以避免构建失败${NC}"
+        echo -e "${YELLOW}  - 创建 swap: sudo fallocate -l 2G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile${NC}"
+    fi
+fi
+
+# ========================================
+# 第三步：检查 .env 文件
+# ========================================
+echo ""
+echo "[3/7] 检查环境配置..."
 
 if [ ! -f ".env" ]; then
     echo -e "${YELLOW}⚠ .env 文件不存在，正在创建...${NC}"
@@ -123,10 +212,10 @@ if [ ! -f ".env" ]; then
 fi
 
 # ========================================
-# 第三步：验证关键环境变量
+# 第四步：验证关键环境变量
 # ========================================
 echo ""
-echo "[3/6] 验证安全配置..."
+echo "[4/7] 验证安全配置..."
 
 SECURITY_ISSUES=0
 
@@ -151,10 +240,10 @@ else
 fi
 
 # ========================================
-# 第四步：选择启动模式
+# 第五步：选择启动模式
 # ========================================
 echo ""
-echo "[4/6] 选择启动模式..."
+echo "[5/7] 选择启动模式..."
 
 if [ "$INTERACTIVE" = true ]; then
     echo "请选择启动模式："
@@ -182,10 +271,10 @@ else
 fi
 
 # ========================================
-# 第五步：准备启动
+# 第六步：准备启动
 # ========================================
 echo ""
-echo "[5/6] 准备启动服务..."
+echo "[6/7] 准备启动服务..."
 
 # 确保脚本可执行
 chmod +x scripts/*.sh 2>/dev/null || true
@@ -195,13 +284,36 @@ echo "停止现有容器..."
 $COMPOSE_CMD -f $COMPOSE_FILE down 2>/dev/null || true
 
 # ========================================
-# 第六步：启动服务
+# 第七步：启动服务（传递动态构建参数）
 # ========================================
 echo ""
-echo "[6/6] 启动 Docker 服务..."
+echo "[7/7] 启动 Docker 服务..."
 echo ""
 
-$COMPOSE_CMD -f $COMPOSE_FILE up -d --build
+# 启用 BuildKit
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
+# 使用动态参数构建
+$COMPOSE_CMD -f $COMPOSE_FILE build \
+    --build-arg BUILD_MEMORY=$BUILD_MEMORY \
+    --build-arg RUNTIME_MEMORY=$RUNTIME_MEMORY \
+    --build-arg PNPM_CONCURRENCY=$PNPM_CONCURRENCY
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}[错误] Docker 镜像构建失败${NC}"
+    echo ""
+    echo "故障排查："
+    if [ "$MEMORY_PROFILE" = "minimal" ]; then
+        echo "  1. 增加系统 swap 分区"
+        echo "  2. 关闭其他占用内存的应用"
+    fi
+    echo "  查看详细日志: $COMPOSE_CMD -f $COMPOSE_FILE logs"
+    exit 1
+fi
+
+# 启动服务
+$COMPOSE_CMD -f $COMPOSE_FILE up -d
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}[错误] Docker 服务启动失败${NC}"
@@ -228,6 +340,11 @@ echo ""
 echo -e "${GREEN}================================${NC}"
 echo -e "${GREEN}✓ 部署完成！${NC}"
 echo -e "${GREEN}================================${NC}"
+echo ""
+echo -e "${BLUE}系统配置:${NC}"
+echo "  内存配置档: ${MEMORY_PROFILE}"
+echo "  构建内存: ${BUILD_MEMORY}MB"
+echo "  运行时内存: ${RUNTIME_MEMORY}MB"
 echo ""
 echo -e "${BLUE}访问信息：${NC}"
 echo "  应用地址: http://localhost:8915"

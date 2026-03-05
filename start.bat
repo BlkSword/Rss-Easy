@@ -3,6 +3,7 @@ setlocal enabledelayedexpansion
 
 REM =====================================================
 REM RSS-Post 一键部署脚本 (Windows)
+REM 自动检测内存并动态调整构建参数
 REM =====================================================
 REM 用法：
 REM   start.bat              # 交互模式
@@ -42,7 +43,7 @@ echo.
 REM =====================================================
 REM 第一步：检查 Docker
 REM =====================================================
-echo [1/6] 检查 Docker 环境...
+echo [1/7] 检查 Docker 环境...
 
 docker info >nul 2>&1
 if %errorlevel% neq 0 (
@@ -55,10 +56,67 @@ for /f "tokens=*" %%i in ('docker --version ^| findstr "Docker"') do set DOCKER_
 echo [OK] Docker 已安装: %DOCKER_VERSION%
 
 REM =====================================================
-REM 第二步：检查 .env 文件
+REM 第二步：检测内存并计算构建参数
 REM =====================================================
 echo.
-echo [2/6] 检查环境配置...
+echo [2/7] 检测系统资源...
+
+REM 使用 PowerShell 获取总内存（MB）
+for /f "tokens=*" %%i in ('powershell -Command "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)"') do set TOTAL_MEM=%%i
+
+REM 根据内存计算构建参数
+if !TOTAL_MEM! geq 8192 (
+    REM 8GB+
+    set BUILD_MEMORY=3072
+    set RUNTIME_MEMORY=768
+    set PNPM_CONCURRENCY=4
+    set MEMORY_PROFILE=high
+) else if !TOTAL_MEM! geq 4096 (
+    REM 4-8GB
+    set BUILD_MEMORY=2048
+    set RUNTIME_MEMORY=512
+    set PNPM_CONCURRENCY=2
+    set MEMORY_PROFILE=medium
+) else if !TOTAL_MEM! geq 2048 (
+    REM 2-4GB
+    set BUILD_MEMORY=1024
+    set RUNTIME_MEMORY=384
+    set PNPM_CONCURRENCY=1
+    set MEMORY_PROFILE=low
+) else (
+    REM <2GB
+    set BUILD_MEMORY=768
+    set RUNTIME_MEMORY=256
+    set PNPM_CONCURRENCY=1
+    set MEMORY_PROFILE=minimal
+)
+
+echo 系统总内存: %TOTAL_MEM% MB
+echo 内存配置档: %MEMORY_PROFILE%
+echo.
+echo 动态构建参数:
+echo   构建内存限制: %BUILD_MEMORY% MB
+echo   运行时内存: %RUNTIME_MEMORY% MB
+echo   pnpm 并发数: %PNPM_CONCURRENCY%
+
+REM 低内存警告
+if "%MEMORY_PROFILE%"=="low" (
+    echo.
+    echo [!] 检测到低内存环境，已自动优化构建参数
+    echo     构建时间可能较长，请耐心等待
+)
+if "%MEMORY_PROFILE%"=="minimal" (
+    echo.
+    echo [!] 检测到极低内存环境，已自动优化构建参数
+    echo     建议关闭其他应用程序以释放内存
+    echo     如构建失败，请增加虚拟内存（页面文件）
+)
+
+REM =====================================================
+REM 第三步：检查 .env 文件
+REM =====================================================
+echo.
+echo [3/7] 检查环境配置...
 
 if not exist ".env" (
     echo [!] .env 文件不存在
@@ -96,10 +154,10 @@ if not exist ".env" (
 )
 
 REM =====================================================
-REM 第三步：验证关键环境变量
+REM 第四步：验证关键环境变量
 REM =====================================================
 echo.
-echo [3/6] 验证安全配置...
+echo [4/7] 验证安全配置...
 
 set SECURITY_ISSUES=0
 
@@ -124,10 +182,10 @@ if %SECURITY_ISSUES% gtr 0 (
 )
 
 REM =====================================================
-REM 第四步：选择启动模式
+REM 第五步：选择启动模式
 REM =====================================================
 echo.
-echo [4/6] 选择启动模式...
+echo [5/7] 选择启动模式...
 
 if "%INTERACTIVE%"=="true" (
     echo 请选择启动模式：
@@ -151,23 +209,47 @@ if "%INTERACTIVE%"=="true" (
 )
 
 REM =====================================================
-REM 第五步：准备启动
+REM 第六步：准备启动
 REM =====================================================
 echo.
-echo [5/6] 准备启动服务...
+echo [6/7] 准备启动服务...
 
 REM 停止现有容器
 echo 停止现有容器...
 docker-compose -f %COMPOSE_FILE% down 2>nul
 
 REM =====================================================
-REM 第六步：启动服务
+REM 第七步：启动服务（传递动态构建参数）
 REM =====================================================
 echo.
-echo [6/6] 启动 Docker 服务...
+echo [7/7] 启动 Docker 服务...
 echo.
 
-docker-compose -f %COMPOSE_FILE% up -d --build
+REM 启用 BuildKit
+set DOCKER_BUILDKIT=1
+set COMPOSE_DOCKER_CLI_BUILD=1
+
+REM 构建镜像（传递动态参数）
+echo 正在构建镜像...
+docker-compose -f %COMPOSE_FILE% build --build-arg BUILD_MEMORY=%BUILD_MEMORY% --build-arg RUNTIME_MEMORY=%RUNTIME_MEMORY% --build-arg PNPM_CONCURRENCY=%PNPM_CONCURRENCY%
+
+if %errorlevel% neq 0 (
+    echo.
+    echo [错误] Docker 镜像构建失败
+    echo.
+    echo 故障排查：
+    if "%MEMORY_PROFILE%"=="minimal" (
+        echo   1. 增加系统虚拟内存（页面文件^)
+        echo   2. 关闭其他占用内存的应用
+    )
+    echo   查看详细日志: docker-compose -f %COMPOSE_FILE% logs
+    pause
+    exit /b 1
+)
+
+REM 启动服务
+echo 正在启动服务...
+docker-compose -f %COMPOSE_FILE% up -d
 
 if %errorlevel% neq 0 (
     echo [错误] Docker 服务启动失败
@@ -195,6 +277,11 @@ echo.
 echo ================================
 echo 部署完成！
 echo ================================
+echo.
+echo 系统配置:
+echo   内存配置档: %MEMORY_PROFILE%
+echo   构建内存: %BUILD_MEMORY% MB
+echo   运行时内存: %RUNTIME_MEMORY% MB
 echo.
 echo 访问信息：
 echo   应用地址: http://localhost:8915
