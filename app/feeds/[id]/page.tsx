@@ -136,6 +136,8 @@ export default function FeedPage() {
       await updateMutation.mutateAsync({
         id: feedId,
         ...values,
+        // 空字符串转为 undefined，避免 UUID 验证错误
+        categoryId: values.categoryId || undefined,
       });
       handleApiSuccess('更新成功');
       setIsEditModalOpen(false);

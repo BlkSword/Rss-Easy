@@ -281,7 +281,7 @@ export function FeedsManagePageContent() {
           title: formTitle,
           description: formDescription,
           siteUrl: formSiteUrl,
-          categoryId: formCategoryId,
+          categoryId: formCategoryId || undefined,  // 空字符串转为 undefined，避免 UUID 验证错误
           fetchInterval: formFetchInterval,
           priority: formPriority,
           isActive: formIsActive,
