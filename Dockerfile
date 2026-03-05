@@ -76,10 +76,14 @@ RUN NODE_OPTIONS="" pnpm exec prisma generate
 RUN rm -rf node_modules/.cache .next/cache 2>/dev/null || true
 
 # 构建（设置内存限制，带 fallback 策略）
-RUN NODE_OPTIONS="--max-old-space-size=${BUILD_MEMORY}" pnpm run build --no-lint 2>&1 || \
+# 通过环境变量跳过 ESLint 和 TypeScript 检查以减少内存
+ENV NEXT_ESLINT_IGNORE_DURING_BUILDS=1
+ENV NEXT_TYPESCRIPT_CHECK_DURING_BUILDS=0
+
+RUN NODE_OPTIONS="--max-old-space-size=${BUILD_MEMORY}" pnpm run build 2>&1 || \
     (echo "Build failed, retrying with reduced memory..." && \
      NODE_OPTIONS="--max-old-space-size=$((BUILD_MEMORY * 70 / 100)) --max-semi-space-size=32" \
-     pnpm run build --no-lint)
+     pnpm run build)
 
 # 清理不必要的文件
 RUN rm -rf node_modules/.cache .next/cache node_modules/@types 2>/dev/null || true
