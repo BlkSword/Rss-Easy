@@ -1,6 +1,10 @@
 /**
  * 系统初始化检查和管理
- * 用于检测系统是否已完成初始设置
+ *
+ * 安全原则：
+ * 1. 永远不信任客户端传来的任何参数
+ * 2. 后端通过数据库判断是否已初始化
+ * 3. 判断依据：SystemSettings.isInitialized === true OR 用户数量 > 0
  */
 
 import { db } from '@/lib/db';
@@ -13,12 +17,17 @@ let initializationCache: {
   checkedAt: number;
 } | null = null;
 
-// 缓存有效期（5分钟）
-const CACHE_TTL = 5 * 60 * 1000;
+// 缓存有效期（30秒，较短以防止缓存攻击）
+const CACHE_TTL = 30 * 1000;
 
 /**
  * 检查系统是否已初始化
- * 使用缓存优化性能
+ *
+ * 判断逻辑（必须满足以下任一条件）：
+ * 1. SystemSettings.isInitialized === true
+ * 2. 用户表中存在至少一个用户
+ *
+ * 这是后端的唯一可信判断，不依赖任何客户端参数
  */
 export async function isSystemInitialized(): Promise<boolean> {
   // 检查缓存
@@ -27,26 +36,48 @@ export async function isSystemInitialized(): Promise<boolean> {
   }
 
   try {
-    // 检查 SystemSettings 表
+    // 方法1：检查 SystemSettings 表
     const settings = await db.systemSettings.findUnique({
       where: { id: 'system' },
       select: { isInitialized: true },
     });
 
-    const isInitialized = settings?.isInitialized ?? false;
+    if (settings?.isInitialized === true) {
+      updateCache(true);
+      return true;
+    }
 
-    // 更新缓存
-    initializationCache = {
-      isInitialized,
-      checkedAt: Date.now(),
-    };
+    // 方法2：检查用户表（更可靠的判断）
+    // 如果有任何用户存在，说明系统已初始化
+    const userCount = await db.user.count();
+
+    const isInitialized = userCount > 0;
+    updateCache(isInitialized);
 
     return isInitialized;
   } catch (err) {
-    // 如果表不存在，返回 false
     console.error('检查系统初始化状态失败:', err);
+
+    // 数据库错误时的回退策略：检查缓存
+    if (initializationCache) {
+      // 使用旧缓存值，即使过期也比没有信息好
+      return initializationCache.isInitialized;
+    }
+
+    // 完全无法确定时，保守地返回 false
+    // 让 init 页面自己做更详细的检查
     return false;
   }
+}
+
+/**
+ * 更新缓存
+ */
+function updateCache(isInitialized: boolean): void {
+  initializationCache = {
+    isInitialized,
+    checkedAt: Date.now(),
+  };
 }
 
 /**
@@ -74,30 +105,12 @@ export async function getSystemSettings() {
 }
 
 /**
- * 初始化系统设置
- * 创建默认系统设置记录
- */
-export async function initializeSystemSettings(): Promise<void> {
-  try {
-    await db.systemSettings.create({
-      data: {
-        id: 'system',
-        isInitialized: false,
-        allowRegistration: true,
-        defaultUserRole: 'user',
-        systemName: 'RSS-Post',
-      },
-    });
-  } catch (err: any) {
-    // 如果记录已存在，忽略错误
-    if (err.code !== 'P2002') {
-      throw err;
-    }
-  }
-}
-
-/**
  * 创建超级管理员并完成初始化
+ *
+ * 安全检查：
+ * 1. 检查是否已初始化（通过 isSystemInitialized）
+ * 2. 再次检查是否有用户存在（双重验证）
+ * 3. 使用事务确保原子性
  */
 export async function initializeSystem(data: {
   email: string;
@@ -106,54 +119,70 @@ export async function initializeSystem(data: {
   systemName?: string;
 }): Promise<{ success: boolean; userId?: string; error?: string }> {
   try {
-    // 检查是否已初始化
+    // 安全检查1：使用 isSystemInitialized 检查
     const alreadyInitialized = await isSystemInitialized();
     if (alreadyInitialized) {
+      await error('system', '初始化被拒绝：系统已初始化', undefined, { email: data.email });
       return { success: false, error: '系统已完成初始化' };
     }
 
-    // 检查是否有用户存在
-    const existingUserCount = await db.user.count();
-    if (existingUserCount > 0) {
+    // 安全检查2：直接检查用户数量（双重验证，防止缓存攻击）
+    const userCount = await db.user.count();
+    if (userCount > 0) {
+      await error('system', '初始化被拒绝：用户已存在', undefined, {
+        email: data.email,
+        userCount
+      });
       return { success: false, error: '系统中已有用户，无法执行初始化' };
     }
 
     // 哈希密码
     const passwordHash = await hashPassword(data.password);
 
-    // 创建超级管理员
-    const user = await db.user.create({
-      data: {
-        email: data.email,
-        username: data.username,
-        passwordHash,
-        role: 'super_admin',
-        preferences: {
-          theme: 'system',
-          language: 'zh-CN',
-          itemsPerPage: 20,
-        },
-        aiConfig: {
-          enableSummary: true,
-          enableCategory: true,
-        },
-      },
-    });
+    // 使用事务创建用户和设置
+    const result = await db.$transaction(async (tx) => {
+      // 再次在事务内检查（防止并发攻击）
+      const countInTx = await tx.user.count();
+      if (countInTx > 0) {
+        throw new Error('并发初始化检测到用户已存在');
+      }
 
-    // 更新系统设置
-    await db.systemSettings.upsert({
-      where: { id: 'system' },
-      update: {
-        isInitialized: true,
-        initializedAt: new Date(),
-        systemName: data.systemName || 'RSS-Post',
-      },
-      create: {
-        id: 'system',
-        isInitialized: true,
-        initializedAt: new Date(),
-        systemName: data.systemName || 'RSS-Post',
-      },
+      // 创建超级管理员
+      const user = await tx.user.create({
+        data: {
+          email: data.email,
+          username: data.username,
+          passwordHash,
+          role: 'super_admin',
+          preferences: {
+            theme: 'system',
+            language: 'zh-CN',
+            itemsPerPage: 20,
+          },
+          aiConfig: {
+            enableSummary: true,
+            enableCategory: true,
+          },
+        },
+      });
+
+      // 更新系统设置
+      await tx.systemSettings.upsert({
+        where: { id: 'system' },
+        update: {
+          isInitialized: true,
+          initializedAt: new Date(),
+          systemName: data.systemName || 'RSS-Post',
+        },
+        create: {
+          id: 'system',
+          isInitialized: true,
+          initializedAt: new Date(),
+          systemName: data.systemName || 'RSS-Post',
+        },
+      });
+
+      return user;
     });
 
     // 清除缓存
@@ -161,17 +190,20 @@ export async function initializeSystem(data: {
 
     // 记录日志
     await info('system', '系统初始化完成', {
-      userId: user.id,
-      username: user.username,
+      userId: result.id,
+      username: result.username,
       systemName: data.systemName,
     });
 
-    return { success: true, userId: user.id };
+    return { success: true, userId: result.id };
   } catch (err) {
     await error('system', '系统初始化失败', err instanceof Error ? err : undefined, {
       email: data.email,
       username: data.username,
     });
+
+    // 清除缓存，让下次检查重新查询
+    clearInitializationCache();
 
     return {
       success: false,
@@ -182,20 +214,12 @@ export async function initializeSystem(data: {
 
 /**
  * 检查是否需要显示初始化页面
- * 条件：系统未初始化 且 没有任何用户
+ *
+ * 这是 isSystemInitialized 的反向
  */
 export async function needsInitialization(): Promise<boolean> {
-  // 如果已初始化，不需要
   const isInitialized = await isSystemInitialized();
-  if (isInitialized) {
-    return false;
-  }
-
-  // 检查是否有用户
-  const userCount = await db.user.count();
-
-  // 如果没有用户，需要初始化
-  return userCount === 0;
+  return !isInitialized;
 }
 
 /**
@@ -237,7 +261,6 @@ let proxyConfigCache: {
 
 /**
  * 获取代理配置
- * 从数据库读取系统代理设置
  */
 export async function getProxyConfig(): Promise<{
   enabled: boolean;
@@ -245,7 +268,6 @@ export async function getProxyConfig(): Promise<{
   port: number | null;
   type: string;
 }> {
-  // 检查缓存（1分钟有效期）
   if (proxyConfigCache && Date.now() - proxyConfigCache.checkedAt < 60 * 1000) {
     return proxyConfigCache.config;
   }
@@ -267,7 +289,7 @@ export async function getProxyConfig(): Promise<{
       port: settings?.proxyPort ?? null,
       type: settings?.proxyType ?? 'http',
     };
-    // 更新缓存
+
     proxyConfigCache = {
       config,
       checkedAt: Date.now(),

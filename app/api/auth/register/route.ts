@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import { hashPassword, validatePasswordStrength, signToken, setSessionCookie } from '@/lib/auth';
 import { registerRateLimiter, getClientIdentifier, rateLimitResponse } from '@/lib/security/rate-limit';
 import { info, error } from '@/lib/logger';
+import { isRegistrationAllowed, getDefaultUserRole } from '@/lib/system/init-check';
 
 // 注册请求验证 schema
 const registerSchema = z.object({
@@ -26,6 +27,15 @@ const registerSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // 检查是否允许注册
+    const allowRegistration = await isRegistrationAllowed();
+    if (!allowRegistration) {
+      return NextResponse.json(
+        { error: '系统已关闭注册功能' },
+        { status: 403 }
+      );
+    }
+
     // 速率限制检查
     const clientId = getClientIdentifier(req);
     const rateLimit = await registerRateLimiter.check(clientId);

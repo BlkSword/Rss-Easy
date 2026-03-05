@@ -7,7 +7,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Loader2, ArrowRight, Check, X } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, Check, X, AlertCircle } from 'lucide-react';
 import { Button, Input, Form, Progress } from 'antd';
 import { MailOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { handleApiError, handleApiSuccess } from '@/lib/feedback';
@@ -15,6 +15,7 @@ import { Fade, StaggerContainer } from '@/components/animation/fade';
 import { useShakeAnimation, usePageLoadAnimation } from '@/hooks/use-animation';
 import { MorphingShape } from '@/components/animation/morphing-shape';
 import { cn } from '@/lib/utils';
+import { trpc } from '@/lib/trpc/client';
 
 // 密码要求检查
 interface PasswordRequirement {
@@ -55,6 +56,17 @@ export default function RegisterPage() {
   const [passwordStrength, setPasswordStrength] = useState(0);
   const { isShaking, shake } = useShakeAnimation();
   const isLoaded = usePageLoadAnimation(100);
+
+  // 检查是否允许注册
+  const { data: systemSettings, isLoading: checkingSettings } = trpc.admin.getSystemSettings.useQuery();
+  const allowRegistration = systemSettings?.allowRegistration ?? true;
+
+  // 如果不允许注册，显示提示
+  useEffect(() => {
+    if (!checkingSettings && !allowRegistration) {
+      handleApiError('系统已关闭注册功能', '注册已关闭');
+    }
+  }, [checkingSettings, allowRegistration]);
 
   // 背景粒子效果
   const [particles, setParticles] = useState<{ x: number; y: number; size: number; delay: number }[]>([]);
@@ -171,6 +183,30 @@ export default function RegisterPage() {
             'bg-card border border-border/60 rounded-2xl shadow-xl shadow-primary/5 p-8 backdrop-blur-sm',
             isShaking && 'animate-shake'
           )}>
+            {/* 注册已关闭提示 */}
+            {checkingSettings ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !allowRegistration ? (
+              <div className="text-center py-8">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 mb-4">
+                  <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">注册已关闭</h3>
+                <p className="text-muted-foreground mb-6">
+                  系统管理员已关闭新用户注册功能
+                </p>
+                <Link
+                  href="/login"
+                  className="inline-flex items-center gap-2 text-primary hover:text-primary/80 font-medium"
+                >
+                  <ArrowRight className="w-4 h-4 rotate-180" />
+                  返回登录
+                </Link>
+              </div>
+            ) : (
+            <>
             <Form
               form={form}
               layout="vertical"
@@ -358,6 +394,8 @@ export default function RegisterPage() {
                 <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-1" />
               </Link>
             </div>
+          </>
+            )}
           </div>
 
         </StaggerContainer>
