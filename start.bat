@@ -1,16 +1,48 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM =====================================================
+REM RSS-Post 一键部署脚本 (Windows)
+REM =====================================================
+REM 用法：
+REM   start.bat              # 交互模式
+REM   start.bat --prod       # 非交互模式，生产环境
+REM   start.bat --dev        # 非交互模式，开发环境
+REM =====================================================
+
+set INTERACTIVE=true
+set COMPOSE_FILE=docker-compose.yml
+
+REM 解析命令行参数
+for %%a in (%*) do (
+    if "%%a"=="--prod" (
+        set INTERACTIVE=false
+        set COMPOSE_FILE=docker-compose.prod.yml
+    )
+    if "%%a"=="--dev" (
+        set INTERACTIVE=false
+        set COMPOSE_FILE=docker-compose.yml
+    )
+    if "%%a"=="--help" (
+        echo RSS-Post 一键部署脚本
+        echo.
+        echo 用法：
+        echo   start.bat              # 交互模式
+        echo   start.bat --prod       # 非交互模式，生产环境
+        echo   start.bat --dev        # 非交互模式，开发环境
+        exit /b 0
+    )
+)
+
 echo ================================
 echo RSS-Post 一键部署脚本
-echo 集成安全依赖安装、环境配置、服务启动
 echo ================================
 echo.
 
 REM =====================================================
 REM 第一步：检查 Docker
 REM =====================================================
-echo [1/8] 检查 Docker 环境...
+echo [1/6] 检查 Docker 环境...
 
 docker info >nul 2>&1
 if %errorlevel% neq 0 (
@@ -20,160 +52,122 @@ if %errorlevel% neq 0 (
 )
 
 for /f "tokens=*" %%i in ('docker --version ^| findstr "Docker"') do set DOCKER_VERSION=%%i
-echo [√] Docker 已安装: %DOCKER_VERSION%
+echo [OK] Docker 已安装: %DOCKER_VERSION%
 
 REM =====================================================
-REM 第二步：检查并安装安全依赖
-REM =====================================================
-echo.
-echo [2/8] 检查安全依赖...
-
-findstr /C:"dompurify" package.json >nul
-if %errorlevel% equ 0 (
-    echo [√] DOMPurify 已安装
-) else (
-    echo [!] DOMPurify 未安装，正在自动安装...
-    call npm install dompurify @types/dompurify >nul 2>&1
-
-    if %errorlevel% equ 0 (
-        echo [√] DOMPurify 安装成功
-    ) else (
-        echo [×] DOMPurify 安装失败
-        echo 请手动运行: npm install dompurify @types/dompurify
-        pause
-        exit /b 1
-    )
-)
-
-REM =====================================================
-REM 第三步：检查 .env 文件
+REM 第二步：检查 .env 文件
 REM =====================================================
 echo.
-echo [3/8] 检查环境配置...
+echo [2/6] 检查环境配置...
 
 if not exist ".env" (
     echo [!] .env 文件不存在
     echo.
     echo 正在从 .env.example 创建 .env 文件...
+
+    if not exist ".env.example" (
+        echo [错误] .env.example 文件不存在
+        pause
+        exit /b 1
+    )
+
     copy .env.example .env >nul
 
-    REM 生成随机密钥
-    for /f "delims=" %%i in ('openssl rand -base64 32') do set %%i=%%i
-    set NEXTAUTH_SECRET=%%i
-    for /f "delims=" %%i in ('openssl rand -base64 32') do set %%i=%%i
-    set ENCRYPTION_KEY=%%i
-    for /f "delims=" %%i in ('openssl rand -base64 32') do set %%i=%%i
-    set CRON_SECRET=%%i
-    for /f "delims=" %%i in ('openssl rand -base64 16') do set %%i=%%i
-    set POSTGRES_PASSWORD=%%i
-    for /f "delims=" %%i in ('openssl rand -base64 16') do set %%i=%%i
-    set REDIS_PASSWORD=%%i
+    REM 使用 PowerShell 生成随机密钥并替换
+    echo 正在生成安全密钥...
 
-    echo.
-    echo 已生成安全密钥：
-    echo   JWT_SECRET, NEXTAUTH_SECRET, ENCRYPTION_KEY, CRON_SECRET
-    echo   POSTGRES_PASSWORD, REDIS_PASSWORD
-    echo.
+    powershell -Command ^
+        $jwt = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 })) -replace '[/+=]', ''; ^
+        $nextauth = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 })) -replace '[/+=]', ''; ^
+        $encrypt = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 })) -replace '[/+=]', ''; ^
+        $cron = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 })) -replace '[/+=]', ''; ^
+        $pgpass = [Convert]::ToBase64String((1..16 | ForEach-Object { Get-Random -Maximum 256 })) -replace '[/+=]', ''; ^
+        $redispass = [Convert]::ToBase64String((1..16 | ForEach-Object { Get-Random -Maximum 256 })) -replace '[/+=]', ''; ^
+        $content = Get-Content .env -Raw; ^
+        $content = $content -replace 'your-super-secret-jwt-key-min-32-characters-long', $jwt; ^
+        $content = $content -replace 'your-super-secret-nextauth-key', $nextauth; ^
+        $content = $content -replace 'your-encryption-key-here', $encrypt; ^
+        $content = $content -replace 'your-cron-secret-key-here', $cron; ^
+        $content = $content -replace 'rss_post_password', $pgpass; ^
+        $content = $content -replace 'your-redis-password', $redispass; ^
+        $content | Set-Content .env -NoNewline
 
-    REM 更新 .env 文件（使用 PowerShell）
-    powershell -Command "(Get-Content .env) -replace 'your-super-secret-jwt-key-min-32-characters-long', '%JWT_SECRET%' -replace 'your-super-secret-nextauth-key', '%NEXTAUTH_SECRET%' -replace 'your-encryption-key-here', '%ENCRYPTION_KEY%' -replace 'your-cron-secret-key-here', '%CRON_SECRET%' -replace 'rss_post_password', '%POSTGRES_PASSWORD%' -replace 'your-redis-password', '%REDIS_PASSWORD%' | Set-Content .env"
+    echo [OK] .env 文件已创建并配置安全密钥
+)
 
-    echo [√] .env 文件已创建并配置随机密钥
+REM =====================================================
+REM 第三步：验证关键环境变量
+REM =====================================================
+echo.
+echo [3/6] 验证安全配置...
+
+set SECURITY_ISSUES=0
+
+findstr /C:"JWT_SECRET=" .env | findstr /C:"your-super-secret-jwt-key-min-32-characters-long" >nul
+if %errorlevel% equ 0 (
+    echo [错误] JWT_SECRET 仍使用默认占位符
+    set /A SECURITY_ISSUES=1
+)
+
+if %SECURITY_ISSUES% gtr 0 (
     echo.
-    echo [重要] 以下密钥需要手动配置：
-    echo   - OPENAI_API_KEY
-    echo   - ANTHROPIC_API_KEY
-    echo   - DEEPSEEK_API_KEY
+    echo 发现安全问题，请检查 .env 文件
+    if "%INTERACTIVE%"=="true" (
+        choice /C YN /M "是否继续"
+        if errorlevel 2 exit /b 1
+    ) else (
+        pause
+        exit /b 1
+    )
+) else (
+    echo [OK] 环境变量检查通过
+)
+
+REM =====================================================
+REM 第四步：选择启动模式
+REM =====================================================
+echo.
+echo [4/6] 选择启动模式...
+
+if "%INTERACTIVE%"=="true" (
+    echo 请选择启动模式：
+    echo   1. 开发环境 ^(docker-compose.yml^) - 快速体验
+    echo   2. 生产环境 ^(docker-compose.prod.yml^) - 推荐用于正式部署
     echo.
-    choice /C /N /M "是否现在编辑 .env 文件？"
-    if errorlevel 1 (
-        notepad .env
+    set /p mode="请输入选项 (1/2，默认 1): "
+
+    if "!mode!"=="2" (
+        set COMPOSE_FILE=docker-compose.prod.yml
+        echo [生产模式] 使用 docker-compose.prod.yml
+    ) else (
+        echo [开发模式] 使用 docker-compose.yml
+    )
+) else (
+    if "%COMPOSE_FILE%"=="docker-compose.prod.yml" (
+        echo [生产模式] 使用 docker-compose.prod.yml
+    ) else (
+        echo [开发模式] 使用 docker-compose.yml
     )
 )
 
 REM =====================================================
-REM 第四步：验证关键环境变量
+REM 第五步：准备启动
 REM =====================================================
 echo.
-echo [4/8] 验证安全配置...
-
-set SECURITY_ISSUES=0
-
-findstr /C:"JWT_SECRET=your-super-secret-jwt-key-min-32-characters-long" .env >nul
-if %errorlevel% equ 0 (
-    echo [错误] JWT_SECRET 使用默认值
-    set /A SECURITY_ISSUES=1
-)
-
-findstr /C:"POSTGRES_PASSWORD=rss_post_password" .env >nul
-if %errorlevel% equ 0 (
-    echo [警告] POSTGRES_PASSWORD 使用默认值
-)
-
-if %SECURITY_ISSUES%==0 (
-    echo [√] 环境变量检查通过
-) else (
-    echo.
-    echo 发现安全问题，请修复后重试
-    pause
-    exit /b 1
-)
-
-REM =====================================================
-REM 第五步：检查必要依赖
-REM =====================================================
-echo.
-echo [5/8] 检查构建依赖...
-
-docker --version >nul
-if %errorlevel% neq 0 (
-    echo [错误] Docker 未安装
-    pause
-    exit /b 1
-)
-
-echo [√] Docker 可用
-
-REM =====================================================
-REM 第六步：选择启动模式
-REM =====================================================
-echo.
-echo 请选择启动模式：
-echo   1. 开发环境 (docker-compose.yml)
-echo   2. 生产环境 (docker-compose.prod.yml)
-echo.
-set /p mode="请输入选项 (1/2): "
-
-if "%mode%"=="2" (
-    set COMPOSE_FILE=docker-compose.prod.yml
-    echo [生产模式] 使用 docker-compose.prod.yml
-) else (
-    set COMPOSE_FILE=docker-compose.yml
-    echo [开发模式] 使用 docker-compose.yml
-)
-
-REM =====================================================
-REM 第七步：准备启动
-REM =====================================================
-echo.
-echo [6/8] 准备启动服务...
+echo [5/6] 准备启动服务...
 
 REM 停止现有容器
 echo 停止现有容器...
-docker-compose -f %COMPOSE_FILE% down >nul 2>&1
-
-REM 清理悬空镜像
-echo 清理悬空镜像...
-docker image prune -f >nul 2>&1
+docker-compose -f %COMPOSE_FILE% down 2>nul
 
 REM =====================================================
-REM 第八步：启动服务
+REM 第六步：启动服务
 REM =====================================================
 echo.
-echo [7/8] 启动 Docker 服务...
+echo [6/6] 启动 Docker 服务...
 echo.
 
-docker-compose -f %COMPOSE_FILE% up -d
+docker-compose -f %COMPOSE_FILE% up -d --build
 
 if %errorlevel% neq 0 (
     echo [错误] Docker 服务启动失败
@@ -186,8 +180,8 @@ if %errorlevel% neq 0 (
 
 REM 等待服务启动
 echo.
-echo [8/8] 等待服务启动...
-timeout /t 10 /nobreak >nul
+echo 等待服务启动...
+timeout /t 15 /nobreak >nul
 
 REM 检查服务状态
 echo.
@@ -199,7 +193,7 @@ REM 完成
 REM =====================================================
 echo.
 echo ================================
-echo ✓ 部署完成！
+echo 部署完成！
 echo ================================
 echo.
 echo 访问信息：
@@ -211,14 +205,17 @@ echo   查看日志: docker-compose -f %COMPOSE_FILE% logs -f
 echo   查看状态: docker-compose -f %COMPOSE_FILE% ps
 echo   停止服务: docker-compose -f %COMPOSE_FILE% down
 echo   重启服务: docker-compose -f %COMPOSE_FILE% restart
-echo   重新构建: docker-compose -f %COMPOSE_FILE% up -d --build
 echo.
-echo 数据库管理：
-echo   运行备份: docker exec rss-easy-backup sh /scripts/backup.sh
-echo   查看备份: dir backups \
+
+if "%COMPOSE_FILE%"=="docker-compose.prod.yml" (
+    echo 数据库备份：
+    echo   备份目录: .\backups\
+    echo   查看备份: dir backups
+    echo.
+)
+
+echo AI 配置：
+echo   启动后在设置页面配置 AI API Key
 echo.
-echo AI 分析管理：
-echo   查看队列状态: curl http://localhost:8915/api/scheduler/status
-echo   手动触发: curl -X POST http://localhost:8915/api/scheduler/trigger -H "Content-Type: application/json" -d "{\"type\":\"both\"}"
-echo.
-pause
+
+if "%INTERACTIVE%"=="true" pause
