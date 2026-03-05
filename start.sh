@@ -51,16 +51,29 @@ echo "================================"
 echo ""
 
 # ========================================
-# 第一步：检查 Docker
+# 第一步：检查 Docker 和 docker compose
 # ========================================
 echo "[1/6] 检查 Docker 环境..."
 
 if ! docker info > /dev/null 2>&1; then
-    echo -e "${RED}[错误] Docker 未运行，请先启动 Docker Desktop${NC}"
+    echo -e "${RED}[错误] Docker 未运行，请先启动 Docker${NC}"
     exit 1
 fi
 
 echo -e "${GREEN}✓ Docker 已安装: $(docker --version | head -n1)${NC}"
+
+# 检测使用 docker compose 还是 docker-compose
+if docker compose version > /dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+    echo -e "${GREEN}✓ 使用 docker compose (插件模式)${NC}"
+elif docker-compose version > /dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+    echo -e "${GREEN}✓ 使用 docker-compose (独立命令)${NC}"
+else
+    echo -e "${RED}[错误] 未找到 docker compose 命令${NC}"
+    echo "请安装 Docker Compose: https://docs.docker.com/compose/install/"
+    exit 1
+fi
 
 # ========================================
 # 第二步：检查 .env 文件
@@ -179,7 +192,7 @@ chmod +x scripts/*.sh 2>/dev/null || true
 
 # 停止现有容器
 echo "停止现有容器..."
-docker-compose -f $COMPOSE_FILE down 2>/dev/null || true
+$COMPOSE_CMD -f $COMPOSE_FILE down 2>/dev/null || true
 
 # ========================================
 # 第六步：启动服务
@@ -188,13 +201,13 @@ echo ""
 echo "[6/6] 启动 Docker 服务..."
 echo ""
 
-docker-compose -f $COMPOSE_FILE up -d --build
+$COMPOSE_CMD -f $COMPOSE_FILE up -d --build
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}[错误] Docker 服务启动失败${NC}"
     echo ""
     echo "查看详细日志："
-    echo "  docker-compose -f $COMPOSE_FILE logs"
+    echo "  $COMPOSE_CMD -f $COMPOSE_FILE logs"
     exit 1
 fi
 
@@ -206,7 +219,7 @@ sleep 15
 # 检查服务状态
 echo ""
 echo "检查服务状态..."
-docker-compose -f $COMPOSE_FILE ps
+$COMPOSE_CMD -f $COMPOSE_FILE ps
 
 # ========================================
 # 完成
@@ -221,10 +234,10 @@ echo "  应用地址: http://localhost:8915"
 echo "  健康检查: http://localhost:8915/api/health"
 echo ""
 echo -e "${YELLOW}常用命令：${NC}"
-echo "  查看日志: docker-compose -f $COMPOSE_FILE logs -f"
-echo "  查看状态: docker-compose -f $COMPOSE_FILE ps"
-echo "  停止服务: docker-compose -f $COMPOSE_FILE down"
-echo "  重启服务: docker-compose -f $COMPOSE_FILE restart"
+echo "  查看日志: $COMPOSE_CMD -f $COMPOSE_FILE logs -f"
+echo "  查看状态: $COMPOSE_CMD -f $COMPOSE_FILE ps"
+echo "  停止服务: $COMPOSE_CMD -f $COMPOSE_FILE down"
+echo "  重启服务: $COMPOSE_CMD -f $COMPOSE_FILE restart"
 echo ""
 
 if [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
