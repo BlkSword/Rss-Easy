@@ -28,14 +28,13 @@ FROM base AS deps
 WORKDIR /app
 
 # 🆕 接收构建参数
-ARG BUILD_MEMORY=1536
 ARG PNPM_CONCURRENCY=2
 
 # 复制 package 文件
 COPY package.json package-lock.json* pnpm-lock.yaml* ./
 COPY prisma ./prisma/
 
-# 安装生产依赖 + Prisma
+# 安装生产依赖 + Prisma（不设置 NODE_OPTIONS）
 RUN --mount=type=cache,target=/root/.pnpm-store \
     echo "ignore-scripts=false" >> ~/.npmrc && \
     pnpm config set network-concurrency ${PNPM_CONCURRENCY} && \
@@ -48,41 +47,38 @@ RUN --mount=type=cache,target=/root/.pnpm-store \
 FROM base AS builder
 WORKDIR /app
 
-# 🆕 接收构建参数并转换为环境变量
+# 🆕 接收构建参数
 ARG BUILD_MEMORY=1536
 ARG RUNTIME_MEMORY=512
 ARG PNPM_CONCURRENCY=2
 
-# 设置环境变量（注意：--optimize-for-size 不能放在 NODE_OPTIONS 中）
-ENV BUILD_MEMORY=${BUILD_MEMORY}
-ENV RUNTIME_MEMORY=${RUNTIME_MEMORY}
-ENV NODE_OPTIONS="--max-old-space-size=${BUILD_MEMORY} --gc-interval=100"
-ENV NEXT_TELEMETRY_DISABLED=1
 # 限制并行编译
 ENV NEXT_PRIVATE_STANDALONE_WORKER_THREADS=1
 ENV UV_THREADPOOL_SIZE=4
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # 复制依赖
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# 安装开发依赖
+# 安装开发依赖（临时覆盖 NODE_OPTIONS 为空，避免继承）
 RUN --mount=type=cache,target=/root/.pnpm-store \
+    NODE_OPTIONS="" && \
     echo "ignore-scripts=false" >> ~/.npmrc && \
     pnpm config set network-concurrency ${PNPM_CONCURRENCY} && \
     pnpm config set child-concurrency ${PNPM_CONCURRENCY} && \
     pnpm install --frozen-lockfile=false --no-optional
 
 # 生成 Prisma Client
-RUN pnpm exec prisma generate
+RUN NODE_OPTIONS="" pnpm exec prisma generate
 
 # 清理缓存
 RUN rm -rf node_modules/.cache .next/cache 2>/dev/null || true
 
-# 构建（带 fallback 策略）
-RUN pnpm run build --no-lint 2>&1 || \
+# 构建（设置内存限制，带 fallback 策略）
+RUN NODE_OPTIONS="--max-old-space-size=${BUILD_MEMORY}" pnpm run build --no-lint 2>&1 || \
     (echo "Build failed, retrying with reduced memory..." && \
-     NODE_OPTIONS="--max-old-space-size=$((BUILD_MEMORY * 70 / 100)) --gc-interval=50 --max-semi-space-size=32" \
+     NODE_OPTIONS="--max-old-space-size=$((BUILD_MEMORY * 70 / 100)) --max-semi-space-size=32" \
      pnpm run build --no-lint)
 
 # 清理不必要的文件
