@@ -9,6 +9,7 @@ import { generateContentHash } from '../utils';
 import { info, warn, error } from '../logger';
 import type { Feed, Entry } from '@prisma/client';
 import { AIAnalysisQueue } from '../ai/queue';
+import { controlledRequest } from './request-controller';
 
 export interface FeedUpdateResult {
   success: boolean;
@@ -29,26 +30,36 @@ export class FeedManager {
    */
   async fetchFeed(feedId: string): Promise<FeedUpdateResult> {
     const startTime = Date.now();
+
+    // 先获取feed信息（数据库操作不受请求控制）
+    let feed: Feed | null;
     try {
-      // 获取feed信息
-      const feed = await db.feed.findUnique({
+      feed = await db.feed.findUnique({
         where: { id: feedId },
       });
+    } catch (dbErr) {
+      await error('rss', '获取订阅源信息失败', dbErr instanceof Error ? dbErr : undefined, { feedId });
+      return { success: false, entriesAdded: 0, entriesUpdated: 0, error: 'Database error' };
+    }
 
-      if (!feed) {
-        await warn('rss', '订阅源不存在', { feedId });
-        return { success: false, entriesAdded: 0, entriesUpdated: 0, error: 'Feed not found' };
-      }
+    if (!feed) {
+      await warn('rss', '订阅源不存在', { feedId });
+      return { success: false, entriesAdded: 0, entriesUpdated: 0, error: 'Feed not found' };
+    }
 
-      await info('rss', '开始抓取订阅源', { feedId, feedUrl: feed.feedUrl, title: feed.title });
+    await info('rss', '开始抓取订阅源', { feedId, feedUrl: feed.feedUrl, title: feed.title });
 
-      // 使用 Promise.race 实现总体超时控制
-      const parsedFeed = await Promise.race([
-        parseFeed(feed.feedUrl),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Feed 解析超时')), FEED_FETCH_TIMEOUT)
-        ),
-      ]);
+    try {
+      // 使用请求控制器执行网络请求
+      const parsedFeed = await controlledRequest(
+        () => Promise.race([
+          parseFeed(feed.feedUrl),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Feed 解析超时')), FEED_FETCH_TIMEOUT)
+          ),
+        ]),
+        { url: feed.feedUrl, feedId }
+      );
 
       let entriesAdded = 0;
       let entriesUpdated = 0;
@@ -146,19 +157,31 @@ export class FeedManager {
         duration,
       });
 
-      // 更新feed信息
+      // 更新feed信息（包括从RSS获取的描述）
+      const updateData: any = {
+        lastFetchedAt: new Date(),
+        lastSuccessAt: new Date(),
+        nextFetchAt: this.calculateNextFetch(feed.priority),
+        totalEntries: {
+          increment: entriesAdded,
+        },
+        errorCount: 0,
+        lastError: null,
+      };
+
+      // 如果RSS中有描述且当前描述为空，更新描述
+      if (parsedFeed.description && !feed.description) {
+        updateData.description = parsedFeed.description;
+      }
+
+      // 如果RSS中有siteUrl且当前siteUrl为空，更新siteUrl
+      if (parsedFeed.link && !feed.siteUrl) {
+        updateData.siteUrl = parsedFeed.link;
+      }
+
       await db.feed.update({
         where: { id: feedId },
-        data: {
-          lastFetchedAt: new Date(),
-          lastSuccessAt: new Date(),
-          nextFetchAt: this.calculateNextFetch(feed.priority),
-          totalEntries: {
-            increment: entriesAdded,
-          },
-          errorCount: 0,
-          lastError: null,
-        },
+        data: updateData,
       });
 
       // 更新未读计数
@@ -175,6 +198,7 @@ export class FeedManager {
 
       await error('rss', '订阅源抓取失败', err instanceof Error ? err : undefined, {
         feedId,
+        feedUrl: feed.feedUrl,
         duration,
         error: errorMessage,
       });
@@ -201,11 +225,17 @@ export class FeedManager {
   }
 
   /**
-   * 批量抓取feeds
+   * 批量抓取feeds（带并发控制）
    */
   async fetchMultipleFeeds(feedIds: string[]): Promise<FeedUpdateResult[]> {
+    // 使用请求控制器进行并发限制
     const results = await Promise.allSettled(
-      feedIds.map((id) => this.fetchFeed(id))
+      feedIds.map((id) =>
+        controlledRequest(
+          () => this.fetchFeed(id),
+          { feedId: id }
+        )
+      )
     );
 
     return results.map((result, index) => {

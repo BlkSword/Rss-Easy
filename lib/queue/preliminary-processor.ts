@@ -75,13 +75,6 @@ export function getPreliminaryQueue(): Queue<PreliminaryJobData> {
   return preliminaryQueueInstance;
 }
 
-// 向后兼容的导出（已废弃，建议使用 getPreliminaryQueue）
-export const preliminaryQueue = new Proxy({} as Queue<PreliminaryJobData>, {
-  get(target, prop) {
-    return getPreliminaryQueue()[prop as keyof Queue<PreliminaryJobData>];
-  },
-});
-
 // =====================================================
 // 队列处理器
 // =====================================================
@@ -228,7 +221,7 @@ export async function addPreliminaryJob(
     ...options,
   };
 
-  const job = await preliminaryQueue.add('evaluate', data, jobOptions);
+  const job = await getPreliminaryQueue().add('evaluate', data, jobOptions);
   return job.id!;
 }
 
@@ -282,11 +275,11 @@ export async function addUnanalyzedEntries(
  */
 export async function getQueueStatus() {
   const [waiting, active, completed, failed, delayed] = await Promise.all([
-    preliminaryQueue.getWaiting(),
-    preliminaryQueue.getActive(),
-    preliminaryQueue.getCompleted(),
-    preliminaryQueue.getFailed(),
-    preliminaryQueue.getDelayed(),
+    getPreliminaryQueue().getWaiting(),
+    getPreliminaryQueue().getActive(),
+    getPreliminaryQueue().getCompleted(),
+    getPreliminaryQueue().getFailed(),
+    getPreliminaryQueue().getDelayed(),
   ]);
 
   return {
@@ -302,28 +295,28 @@ export async function getQueueStatus() {
  * 清空队列
  */
 export async function clearQueue(): Promise<void> {
-  await preliminaryQueue.drain();
+  await getPreliminaryQueue().drain();
 }
 
 /**
  * 暂停队列
  */
 export async function pauseQueue(): Promise<void> {
-  await preliminaryQueue.pause();
+  await getPreliminaryQueue().pause();
 }
 
 /**
  * 恢复队列
  */
 export async function resumeQueue(): Promise<void> {
-  await preliminaryQueue.resume();
+  await getPreliminaryQueue().resume();
 }
 
 /**
  * 获取任务状态
  */
 export async function getJobState(jobId: string) {
-  const job = await preliminaryQueue.getJob(jobId);
+  const job = await getPreliminaryQueue().getJob(jobId);
 
   if (!job) {
     return null;
@@ -347,7 +340,7 @@ export async function getJobState(jobId: string) {
  * 重试失败的任务
  */
 export async function retryFailedJobs(limit: number = 10): Promise<number> {
-  const failed = await preliminaryQueue.getFailed(0, limit);
+  const failed = await getPreliminaryQueue().getFailed(0, limit);
   let retried = 0;
 
   for (const job of failed) {

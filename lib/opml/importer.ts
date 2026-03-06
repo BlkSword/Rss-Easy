@@ -385,31 +385,32 @@ export async function smartImportOPML(
     }
 
     // ========================================
-    // 阶段 4：触发调度器抓取（利用现有机制）
+    // 阶段 4：添加到发现队列（可达性检查 + 信息补充）
     // ========================================
     if (importedFeedIds.length > 0) {
-      // 设置 nextFetchAt 为当前时间，让调度器立即抓取
-      await db.feed.updateMany({
-        where: { id: { in: importedFeedIds } },
-        data: { nextFetchAt: new Date() },
-      });
+      // 动态导入队列模块，避免循环依赖
+      const { addFeedDiscoveryJobsBatch } = await import('@/lib/queue/feed-discovery-processor');
 
-      // 异步触发调度器（不等待）
-      import('@/lib/rss/feed-manager').then(({ feedManager }) => {
-        // 逐个触发抓取，使用调度器会自动处理
-        importedFeedIds.forEach(feedId => {
-          feedManager.fetchFeed(feedId).catch(err => {
-            console.error(`触发抓取失败: ${feedId}`, err);
-          });
-        });
-      }).catch(err => {
-        console.error('导入 feed-manager 失败:', err);
-      });
-
-      await info('rss', 'OPML 导入已触发抓取', {
+      // 批量添加发现任务（包含可达性检查 + 信息补充 + 触发抓取）
+      const discoveryJobs = importedFeedIds.map((feedId, index) => ({
+        feedId,
+        feedUrl: feedsToCreate[index]?.url || '',
         userId,
-        feedCount: importedFeedIds.length,
-      });
+        triggerFetch: true, // 发现完成后自动触发抓取
+      }));
+
+      // 过滤掉无效的 URL
+      const validJobs = discoveryJobs.filter(job => job.feedUrl);
+
+      if (validJobs.length > 0) {
+        await addFeedDiscoveryJobsBatch(validJobs);
+
+        await info('rss', 'OPML 导入已添加到发现队列', {
+          userId,
+          feedCount: validJobs.length,
+          note: '订阅源将依次进行: 可达性检查 → 信息补充 → 内容抓取',
+        });
+      }
     }
 
     // ========================================

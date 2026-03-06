@@ -555,7 +555,7 @@ export const settingsRouter = router({
       z.object({
         opmlContent: z.string(),
         categoryId: z.string().optional(),
-        skipDiscovery: z.boolean().optional(), // 已废弃，保留兼容
+        skipDiscovery: z.boolean().optional(),
       })
     )
     .output(

@@ -70,13 +70,6 @@ export function getDeepAnalysisQueue(): Queue<DeepAnalysisJobData> {
   return deepAnalysisQueueInstance;
 }
 
-// 向后兼容的导出（已废弃，建议使用 getDeepAnalysisQueue）
-export const deepAnalysisQueue = new Proxy({} as Queue<DeepAnalysisJobData>, {
-  get(target, prop) {
-    return getDeepAnalysisQueue()[prop as keyof Queue<DeepAnalysisJobData>];
-  },
-});
-
 // =====================================================
 // 队列处理器
 // =====================================================
@@ -319,7 +312,7 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
  * 添加深度分析任务
  */
 export async function addDeepAnalysisJob(data: DeepAnalysisJobData): Promise<string> {
-  const job = await deepAnalysisQueue.add('analyze', data, {
+  const job = await getDeepAnalysisQueue().add('analyze', data, {
     priority: data.priority || 5,
     delay: 1000, // 延迟1秒，避免RSS抓取高峰
   });
@@ -342,11 +335,11 @@ export async function addDeepAnalysisJobsBatch(
  */
 export async function getQueueStatus() {
   const [waiting, active, completed, failed, delayed] = await Promise.all([
-    deepAnalysisQueue.getWaiting(),
-    deepAnalysisQueue.getActive(),
-    deepAnalysisQueue.getCompleted(),
-    deepAnalysisQueue.getFailed(),
-    deepAnalysisQueue.getDelayed(),
+    getDeepAnalysisQueue().getWaiting(),
+    getDeepAnalysisQueue().getActive(),
+    getDeepAnalysisQueue().getCompleted(),
+    getDeepAnalysisQueue().getFailed(),
+    getDeepAnalysisQueue().getDelayed(),
   ]);
 
   return {
@@ -362,28 +355,28 @@ export async function getQueueStatus() {
  * 清空队列
  */
 export async function clearQueue(): Promise<void> {
-  await deepAnalysisQueue.drain();
+  await getDeepAnalysisQueue().drain();
 }
 
 /**
  * 暂停队列
  */
 export async function pauseQueue(): Promise<void> {
-  await deepAnalysisQueue.pause();
+  await getDeepAnalysisQueue().pause();
 }
 
 /**
  * 恢复队列
  */
 export async function resumeQueue(): Promise<void> {
-  await deepAnalysisQueue.resume();
+  await getDeepAnalysisQueue().resume();
 }
 
 /**
  * 获取任务状态
  */
 export async function getJobState(jobId: string) {
-  const job = await deepAnalysisQueue.getJob(jobId);
+  const job = await getDeepAnalysisQueue().getJob(jobId);
 
   if (!job) {
     return null;

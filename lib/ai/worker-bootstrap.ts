@@ -16,13 +16,6 @@ export async function ensureAIWorkerStarted(): Promise<void> {
   try {
     console.log('🔧 [AI Worker] 正在启动AI分析队列...');
 
-    // 检查环境变量 - 队列使用数据库，不需要Redis
-    // const hasRedis = process.env.REDIS_URL || process.env.REDIS_HOST;
-    // if (!hasRedis) {
-    //   console.warn('⚠️  Redis未配置，AI分析队列不会启动');
-    //   return;
-    // }
-
     // 创建并启动队列处理器
     workerInstance = new AIAnalysisQueue({
       concurrency: parseInt(process.env.AI_QUEUE_CONCURRENCY || '3', 10),

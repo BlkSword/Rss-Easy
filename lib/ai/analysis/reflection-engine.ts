@@ -140,8 +140,8 @@ ${originalContent.length > 3000 ? '...(已截断)' : ''}
     "consistency": 8,
     "objectivity": 7
   },
-  "issues": ["遗漏了XXX关键点", "标签与内容不匹配"],
-  "suggestions": ["补充XXX内容", "调整标签为XXX"],
+  "issues": ["遗漏了关键观点", "标签与内容不匹配"],
+  "suggestions": ["补充遗漏内容", "调整标签分类"],
   "needsRefinement": true
 }`;
   }

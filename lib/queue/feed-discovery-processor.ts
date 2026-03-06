@@ -79,7 +79,7 @@ export function getFeedDiscoveryQueue(): Queue {
 }
 
 // =====================================================
-// 智能发现函数
+// 智能发现函数（带可达性检查）
 // =====================================================
 
 async function discoverFeedInfo(url: string): Promise<{
@@ -87,6 +87,8 @@ async function discoverFeedInfo(url: string): Promise<{
   description: string | null;
   siteUrl: string | null;
   iconUrl: string | null;
+  reachable: boolean;
+  error?: string;
 }> {
   let title: string | null = null;
   let description: string | null = null;
@@ -94,7 +96,60 @@ async function discoverFeedInfo(url: string): Promise<{
   let iconUrl: string | null = null;
 
   try {
-    // 首先尝试直接解析 RSS feed
+    // ========================================
+    // 第一步：可达性检查（HEAD 请求，轻量快速）
+    // ========================================
+    try {
+      const headResponse = await fetch(url, {
+        method: 'HEAD',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; RSS-Post/1.0)',
+        },
+        signal: AbortSignal.timeout(5000), // 5秒超时
+      });
+
+      // 检查响应状态
+      if (!headResponse.ok) {
+        return {
+          title: null,
+          description: null,
+          siteUrl: null,
+          iconUrl: null,
+          reachable: false,
+          error: `HTTP ${headResponse.status}: ${headResponse.statusText}`,
+        };
+      }
+
+      // 检查 Content-Type 是否是有效的 RSS/Atom feed
+      const contentType = headResponse.headers.get('content-type') || '';
+      const validTypes = [
+        'application/rss+xml',
+        'application/atom+xml',
+        'application/xml',
+        'text/xml',
+        'application/json', // JSON Feed
+      ];
+      const isFeedType = validTypes.some((t) => contentType.toLowerCase().includes(t));
+
+      // 如果不是明显的 feed 类型，但可能是 text/html，也继续尝试
+      if (!isFeedType && !contentType.includes('text/html')) {
+        return {
+          title: null,
+          description: null,
+          siteUrl: null,
+          iconUrl: null,
+          reachable: false,
+          error: `不支持的 Content-Type: ${contentType}`,
+        };
+      }
+    } catch (headError) {
+      // HEAD 请求失败，可能服务器不支持 HEAD，继续尝试 GET
+      console.warn(`HEAD 请求失败，尝试 GET: ${url}`, headError);
+    }
+
+    // ========================================
+    // 第二步：解析 RSS Feed 内容
+    // ========================================
     try {
       const parsed = await parseFeed(url);
       title = parsed.title || null;
@@ -104,13 +159,15 @@ async function discoverFeedInfo(url: string): Promise<{
       // RSS feed 解析失败，尝试从网页提取
     }
 
-    // 如果 RSS feed 中没有描述或标题，尝试从 HTML 网页提取
+    // ========================================
+    // 第三步：如果 RSS feed 中没有描述或标题，尝试从 HTML 网页提取
+    // ========================================
     if (!title || !description) {
       const response = await fetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; RSS-Post/1.0)',
         },
-        signal: AbortSignal.timeout(8000), // 缩短超时时间
+        signal: AbortSignal.timeout(8000), // 8秒超时
       });
 
       if (response.ok) {
@@ -159,11 +216,19 @@ async function discoverFeedInfo(url: string): Promise<{
         }
       }
     }
-  } catch {
-    // 发现失败，返回 null
-  }
 
-  return { title, description, siteUrl, iconUrl };
+    return { title, description, siteUrl, iconUrl, reachable: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      title: null,
+      description: null,
+      siteUrl: null,
+      iconUrl: null,
+      reachable: false,
+      error: errorMessage,
+    };
+  }
 }
 
 // =====================================================
@@ -176,7 +241,7 @@ export function createFeedDiscoveryWorker(): Worker<FeedDiscoveryJobData, FeedDi
     async (job: Job<FeedDiscoveryJobData>) => {
       const { feedId, feedUrl, userId, triggerFetch = true } = job.data;
 
-      job.updateProgress(10);
+      job.updateProgress(5);
 
       try {
         // 1. 获取当前订阅源信息
@@ -189,14 +254,42 @@ export function createFeedDiscoveryWorker(): Worker<FeedDiscoveryJobData, FeedDi
           throw new Error(`订阅源 ${feedId} 不存在`);
         }
 
-        job.updateProgress(20);
+        job.updateProgress(10);
 
-        // 2. 智能发现订阅源信息
+        // 2. 智能发现订阅源信息（包含可达性检查）
         const discovered = await discoverFeedInfo(feedUrl);
 
-        job.updateProgress(60);
+        job.updateProgress(40);
 
-        // 3. 更新订阅源信息（只更新缺失的字段）
+        // 3. 如果不可达，记录错误并返回
+        if (!discovered.reachable) {
+          await db.feed.update({
+            where: { id: feedId },
+            data: {
+              errorCount: { increment: 1 },
+              lastError: discovered.error || '订阅源不可达',
+            },
+          });
+
+          await logError('rss', '订阅源不可达', undefined, {
+            feedId,
+            feedUrl,
+            userId,
+            error: discovered.error,
+          });
+
+          return {
+            success: false,
+            feedId,
+            error: discovered.error || '订阅源不可达',
+            fetched: false,
+            entriesCount: 0,
+          };
+        }
+
+        job.updateProgress(50);
+
+        // 4. 更新订阅源信息（只更新缺失的字段）
         const updateData: Record<string, string | null> = {};
 
         if (!feed.title && discovered.title) {
@@ -219,9 +312,9 @@ export function createFeedDiscoveryWorker(): Worker<FeedDiscoveryJobData, FeedDi
           });
         }
 
-        job.updateProgress(80);
+        job.updateProgress(60);
 
-        // 4. 触发首次抓取
+        // 5. 触发首次抓取
         let fetched = false;
         let entriesCount = 0;
 
@@ -244,6 +337,7 @@ export function createFeedDiscoveryWorker(): Worker<FeedDiscoveryJobData, FeedDi
           feedUrl,
           userId,
           discovered: !!discovered.title,
+          reachable: discovered.reachable,
           fetched,
           entriesCount,
         });
@@ -273,7 +367,7 @@ export function createFeedDiscoveryWorker(): Worker<FeedDiscoveryJobData, FeedDi
     },
     {
       connection: REDIS_CONFIG,
-      concurrency: parseInt(process.env.FEED_DISCOVERY_CONCURRENCY || '10', 10), // 高并发
+      concurrency: parseInt(process.env.FEED_DISCOVERY_CONCURRENCY || '3', 10), // 降低默认并发，避免网络过载
     }
   );
 }
