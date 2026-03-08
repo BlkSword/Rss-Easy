@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { info } from '@/lib/logger';
 import { validateApiKey, unauthorizedResponse } from '@/lib/auth/api-auth';
-import { ensureAIWorkerStarted } from '@/lib/ai/worker-bootstrap';
 
 export async function GET(request: NextRequest) {
   // 验证 API 密钥
@@ -16,10 +15,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 启动AI分析队列（异步，不阻塞响应）
-    ensureAIWorkerStarted().catch(err => {
-      console.error('启动AI队列失败:', err);
-    });
+    // 注意：AI 分析队列现在通过独立的 Docker Worker 容器运行
+    // preliminary-worker, deep-analysis-worker, feed-discovery-worker
+    // 不再在主应用中启动队列处理器
 
     // 记录系统启动日志
     await info('system', '系统初始化完成', {

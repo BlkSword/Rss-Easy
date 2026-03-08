@@ -103,9 +103,9 @@ async function checkInitialization(request: NextRequest): Promise<boolean> {
 
   // 3. 调用内部 API（可信检查）
   try {
-    // 使用内部 URL
+    // 使用内部 URL（Docker 容器中使用 127.0.0.1）
     const baseUrl = process.env.NODE_ENV === 'production'
-      ? 'http://localhost:3000'
+      ? 'http://127.0.0.1:3000'
       : 'http://127.0.0.1:3000';
 
     const response = await fetch(`${baseUrl}/api/admin/init-status`, {

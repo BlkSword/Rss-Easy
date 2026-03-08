@@ -8,7 +8,7 @@ import { parseFeed } from './parser';
 import { generateContentHash } from '../utils';
 import { info, warn, error } from '../logger';
 import type { Feed, Entry } from '@prisma/client';
-import { AIAnalysisQueue } from '../ai/queue';
+import { addPreliminaryJob } from '../queue/preliminary-processor';
 import { controlledRequest } from './request-controller';
 
 export interface FeedUpdateResult {
@@ -172,7 +172,12 @@ export class FeedManager {
 
               // 只有当配置验证通过且用户启用功能时才添加到队列
               if (configValid && (autoSummary || autoCategorize || aiQueueEnabled)) {
-                await AIAnalysisQueue.addTask(newEntry.id, 'all', 5);
+                // 使用新的 BullMQ 队列系统
+                await addPreliminaryJob({
+                  entryId: newEntry.id,
+                  userId: feed.userId,
+                  priority: 5,
+                });
               }
             } catch (err) {
               // AI分析失败不影响feed抓取

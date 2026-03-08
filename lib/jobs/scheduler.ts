@@ -4,10 +4,15 @@
  */
 
 import { feedManager, DEFAULT_ENTRY_RETENTION_DAYS } from '@/lib/rss/feed-manager';
-import { AIAnalysisQueue, getAIQueue } from '@/lib/ai/queue';
-import { db } from '@/lib/db';
+import {
+  getQueueStatus as getPreliminaryQueueStatus,
+  addUnanalyzedEntries,
+} from '@/lib/queue/preliminary-processor';
+import {
+  getQueueStatus as getDeepAnalysisQueueStatus,
+} from '@/lib/queue/deep-analysis-processor';
 import { getNotificationService } from '@/lib/notifications/service';
-import { info, error } from '@/lib/logger';
+import { info, error as logError } from '@/lib/logger';
 
 export class TaskScheduler {
   private intervalId: NodeJS.Timeout | null = null;
@@ -118,19 +123,26 @@ export class TaskScheduler {
     try {
       console.log('[Scheduler] Starting AI process cycle...');
 
-      // 获取待处理任务数量
-      const queue = getAIQueue();
-      const status = await queue.getQueueStatus();
+      // 获取初评队列状态
+      const prelimStatus = await getPreliminaryQueueStatus();
+      // 获取深度分析队列状态
+      const deepStatus = await getDeepAnalysisQueueStatus();
 
-      if (status.pending === 0) {
+      const totalPending = prelimStatus.waiting + deepStatus.waiting;
+      const totalActive = prelimStatus.active + deepStatus.active;
+
+      if (totalPending === 0 && totalActive === 0) {
         console.log('[Scheduler] No AI tasks to process');
         return;
       }
 
-      console.log(`[Scheduler] ${status.pending} AI tasks in queue`);
+      console.log(
+        `[Scheduler] AI tasks: Preliminary(${prelimStatus.waiting} waiting, ${prelimStatus.active} active), ` +
+        `Deep(${deepStatus.waiting} waiting, ${deepStatus.active} active)`
+      );
 
-      // 队列处理器会自动处理任务，这里只需确保它在运行
-      // 如果需要手动触发处理，可以启动队列处理器
+      // BullMQ Workers 会自动处理队列中的任务
+      // 这里只需要确保 Workers 在运行（通过 Docker 容器或启动脚本）
     } catch (error) {
       console.error('[Scheduler] AI process cycle error:', error);
     }
@@ -165,27 +177,17 @@ export class TaskScheduler {
    */
   private async queueNewEntriesForAI() {
     try {
-      // 获取最近1小时内创建且没有AI分析的文章
-      const recentEntries = await db.entry.findMany({
-        where: {
-          createdAt: {
-            gte: new Date(Date.now() - 60 * 60 * 1000),
-          },
-          aiSummary: null,
-        },
-        select: {
-          id: true,
-        },
-        take: 50,
-      });
+      // 使用新的 BullMQ 队列系统批量添加未分析的文章
+      // addUnanalyzedEntries(limit, priority) - 获取未分析的文章并添加到队列
+      const addedCount = await addUnanalyzedEntries(50, 5);
 
-      console.log(`[Scheduler] Queuing ${recentEntries.length} entries for AI analysis...`);
-
-      for (const entry of recentEntries) {
-        await AIAnalysisQueue.addTask(entry.id, 'summary', 5);
+      if (addedCount > 0) {
+        console.log(`[Scheduler] Added ${addedCount} entries to preliminary queue`);
+        await info('queue', '新文章已加入AI分析队列', { count: addedCount });
       }
-    } catch (error) {
-      console.error('[Scheduler] Queue error:', error);
+    } catch (err) {
+      console.error('[Scheduler] Queue error:', err);
+      await logError('queue', '添加AI分析任务失败', err instanceof Error ? err : undefined);
     }
   }
 

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { ensureAIWorkerStarted } from "@/lib/ai/worker-bootstrap";
 import { db } from "@/lib/db";
 import { CacheService } from "@/lib/cache/redis-cache";
 
@@ -7,10 +6,8 @@ export async function GET() {
   const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
   let overallStatus = "ok";
 
-  // 启动AI分析队列（异步，不阻塞响应）
-  ensureAIWorkerStarted().catch(err => {
-    console.error('启动AI队列失败:', err);
-  });
+  // 注意：AI 分析队列现在通过独立的 Docker Worker 容器运行
+  // 不再在主应用中启动队列处理器
 
   // 检查数据库连接
   try {

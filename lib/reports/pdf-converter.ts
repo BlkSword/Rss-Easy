@@ -1,12 +1,20 @@
 /**
  * PDF 转换服务
  * 将 Markdown 报告转换为 PDF
+ *
+ * 注意：使用动态导入 md-to-pdf 以避免在生产环境中
+ * 将 puppeteer 打包到不需要它的 API 路由中
  */
 
-import { mdToPdf } from 'md-to-pdf';
 import path from 'path';
 import fs from 'fs/promises';
 import { info, error } from '@/lib/logger';
+
+// 动态导入 md-to-pdf（避免 puppeteer 被打包到所有路由）
+async function getMdToPdf() {
+  const { mdToPdf } = await import('md-to-pdf');
+  return mdToPdf;
+}
 
 export interface PdfConvertResult {
   success: boolean;
@@ -30,6 +38,9 @@ export async function convertMarkdownToPdf(
       contentLength: markdown.length,
       title: options.title
     });
+
+    // 动态导入 md-to-pdf
+    const mdToPdf = await getMdToPdf();
 
     // 配置 PDF 样式
     const pdf = await mdToPdf(
