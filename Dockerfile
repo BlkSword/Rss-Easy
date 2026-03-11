@@ -42,6 +42,9 @@ WORKDIR /app
 # 构建参数
 ARG PNPM_CONCURRENCY=4
 
+# Prisma 二进制镜像（解决国内网络问题）
+ENV PRISMA_ENGINES_MIRROR=https://registry.npmmirror.com/-/binary/prisma-engines
+
 # 只复制 package 文件（最大化缓存）
 COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma/
