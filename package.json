@@ -28,7 +28,17 @@
     "worker:deep-analysis": "tsx scripts/start-deep-analysis-worker.ts",
     "worker:preliminary": "tsx scripts/start-preliminary-worker.ts",
     "worker:feed-discovery": "tsx scripts/start-feed-discovery-worker.ts",
-    "queue": "tsx scripts/queue-manager.ts"
+    "queue": "tsx scripts/queue-monitor.ts",
+    "queue:status": "tsx scripts/queue-monitor.ts status",
+    "queue:watch": "tsx scripts/queue-monitor.ts monitor watch",
+    "queue:clear": "tsx scripts/queue-monitor.ts clear",
+    "sync:worker-deps": "tsx scripts/sync-worker-deps.ts",
+    "docker:build": "docker-compose -f docker-compose.prod.yml build --parallel",
+    "docker:build:app": "docker build --target app -t rss-post-app:latest .",
+    "docker:build:worker": "docker build --target worker -t rss-post-worker:latest .",
+    "docker:up": "docker-compose -f docker-compose.prod.yml up -d",
+    "docker:down": "docker-compose -f docker-compose.prod.yml down",
+    "docker:logs": "docker-compose -f docker-compose.prod.yml logs -f"
   },
   "repository": {
     "type": "git",

@@ -13,7 +13,7 @@ import { info, error, warn } from '@/lib/logger';
 import { createEmailServiceFromUser } from '@/lib/email/service';
 import { encrypt, safeDecrypt } from '@/lib/crypto/encryption';
 import { verifyPassword } from '@/lib/auth/password';
-import { AIAnalysisQueue } from '@/lib/ai/queue';
+import { addPreliminaryJobsBatch } from '@/lib/queue/preliminary-processor';
 import { db } from '@/lib/db';
 
 /**
@@ -1188,10 +1188,15 @@ async function queueUnanalyzedEntries(userId: string): Promise<void> {
     priority: 3, // 历史文章优先级较低，让新文章优先处理
   }));
 
-  // 分批添加任务
+  // 分批添加任务到 BullMQ 初评队列
   for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
     const batch = tasks.slice(i, i + BATCH_SIZE);
-    await AIAnalysisQueue.addTasks(batch);
+    await addPreliminaryJobsBatch(
+      batch.map(task => ({
+        entryId: task.entryId,
+        priority: task.priority,
+      }))
+    );
   }
 
   await info('ai', '历史文章已加入AI分析队列', {

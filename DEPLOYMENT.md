@@ -224,6 +224,38 @@ SCHEDULER_AUTO_START=true
 
 ## Docker 部署
 
+### 架构说明
+
+本项目采用**多服务架构**，包含以下组件：
+
+| 服务 | 说明 | 端口 |
+|------|------|------|
+| **app** | 主应用服务（Next.js） | 3000 |
+| **worker-preliminary** | 初评队列 Worker | - |
+| **worker-deep-analysis** | 深度分析队列 Worker | - |
+| **worker-feed-discovery** | 订阅源发现 Worker | - |
+| **postgres** | PostgreSQL 数据库 | 5432 |
+| **redis** | Redis 缓存和队列 | 6379 |
+
+### 队列系统（BullMQ）
+
+项目使用 **BullMQ + Redis** 进行任务队列管理，包含三个独立队列：
+
+1. **Feed Discovery Queue** - 订阅源发现
+   - OPML 导入后的后台处理
+   - 可达性检查和自动发现
+   - 订阅源信息补充
+
+2. **Preliminary Queue** - 初评队列
+   - 快速评估文章价值
+   - 过滤低质量内容
+   - 决定是否进行深度分析
+
+3. **Deep Analysis Queue** - 深度分析队列
+   - 完整 AI 分析（摘要、关键词、分类等）
+   - 反思引擎优化
+   - 个性化评分
+
 ### 开发环境部署
 
 ```bash
@@ -315,6 +347,163 @@ docker run -d \
    - 根据用户设置的保留时间清理过期文章
    - 只删除已读且非星标的文章
    - 保留时间设置路径：「设置」→「偏好设置」→「文章保留设置」
+
+---
+
+## Worker 服务部署
+
+### Docker 环境（推荐）
+
+生产环境使用 `docker-compose.prod.yml` 自动启动所有 Worker 服务：
+
+```bash
+# 启动所有服务（包含 Workers）
+docker-compose -f docker-compose.prod.yml up -d
+
+# 查看服务状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 输出示例：
+# NAME                    STATUS    PORTS
+# rss-post-app            running   0.0.0.0:8915->3000/tcp
+# rss-post-worker-prelim  running
+# rss-post-worker-deep    running
+# rss-post-worker-feed    running
+# rss-post-postgres       running   5432/tcp
+# rss-post-redis          running   6379/tcp
+```
+
+### 非 Docker 环境
+
+如果没有使用 Docker，需要单独启动 Worker 进程：
+
+```bash
+# 1. 确保依赖已安装
+pnpm install
+
+# 2. 生成 Prisma Client
+pnpm run db:generate
+
+# 3. 启动 Worker（在独立终端中）
+# 初评队列 Worker
+pnpm run worker:preliminary
+
+# 深度分析队列 Worker（另一个终端）
+pnpm run worker:deep-analysis
+
+# 订阅源发现 Worker（另一个终端）
+pnpm run worker:feed-discovery
+
+# 或使用 PM2 管理多个进程
+pm2 start "pnpm run worker:preliminary" --name worker-prelim
+pm2 start "pnpm run worker:deep-analysis" --name worker-deep
+pm2 start "pnpm run worker:feed-discovery" --name worker-feed
+pm2 save
+```
+
+### Worker 配置
+
+Worker 行为可通过环境变量配置：
+
+```env
+# Worker 并发数
+PRELIMINARY_WORKER_CONCURRENCY=5    # 初评 Worker 并发数
+DEEP_ANALYSIS_WORKER_CONCURRENCY=3   # 深度分析 Worker 并发数
+FEED_DISCOVERY_CONCURRENCY=3         # 订阅源发现 Worker 并发数
+
+# Redis 连接（Worker 必需）
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=your_password
+```
+
+---
+
+## 队列监控
+
+### 命令行监控
+
+```bash
+# 查看所有队列状态
+pnpm run queue:monitor
+
+# 输出示例：
+# === BullMQ 队列监控 ===
+#
+# 时间: 2024/1/1 12:00:00
+#
+# 队列状态:
+#   ● Feed Discovery
+#     ├─ 等待中: 0
+#     ├─ 处理中: 0
+#     ├─ 已完成: 150
+#     ├─ 失败: 2
+#     └─ 总计: 152
+#
+#   ● Preliminary (初评)
+#     ├─ 等待中: 45
+#     ├─ 处理中: 5
+#     ├─ 已完成: 1200
+#     ├─ 失败: 10
+#     └─ 总计: 1260
+#
+#   ● Deep Analysis (深度分析)
+#     ├─ 等待中: 30
+#     ├─ 处理中: 3
+#     ├─ 已完成: 800
+#     ├─ 失败: 5
+#     └─ 总计: 838
+
+# 持续监控（每5秒刷新）
+pnpm run queue:monitor:watch
+
+# 深度分析队列管理
+pnpm run queue status              # 查看状态
+pnpm run queue add <entryId>       # 添加任务
+pnpm run queue add-batch 50        # 批量添加
+pnpm run queue retry 10            # 重试失败任务
+```
+
+### API 监控
+
+```bash
+# 获取 BullMQ 队列状态（需认证）
+curl -H "Authorization: Bearer $CRON_SECRET" \
+     http://localhost:8915/api/trpc/queue.bullMQStatus
+
+# 响应示例：
+{
+  "result": {
+    "data": {
+      "feedDiscovery": { "waiting": 0, "active": 0, "completed": 150, "failed": 2 },
+      "preliminary": { "waiting": 45, "active": 5, "completed": 1200, "failed": 10 },
+      "deepAnalysis": { "waiting": 30, "active": 3, "completed": 800, "failed": 5 },
+      "timestamp": "2024-01-01T12:00:00.000Z"
+    }
+  }
+}
+```
+
+### 前端监控
+
+在应用设置页面可以查看队列状态：
+- 路径：「设置」→「系统状态」→「队列监控」
+- 实时显示三个队列的运行状态
+- 显示处理中和待处理任务数量
+
+### 队列健康指标
+
+| 状态 | 说明 | 建议操作 |
+|------|------|----------|
+| 🟢 Healthy | 失败 < 10，等待 < 100 | 无需操作 |
+| 🟡 Warning | 失败 10-30，或等待 > 100 | 检查日志，考虑增加 Worker |
+| 🔴 Error | 失败 > 30 | 检查 AI 配置，检查 Redis 连接 |
+
+---
+
+## Docker 安全特性
+
+生产环境配置已包含以下安全特性：
 
 1. **非 root 用户运行**
    - 容器使用专用用户（UID 1001）

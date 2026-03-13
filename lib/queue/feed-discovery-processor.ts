@@ -368,6 +368,8 @@ export function createFeedDiscoveryWorker(): Worker<FeedDiscoveryJobData, FeedDi
     {
       connection: REDIS_CONFIG,
       concurrency: parseInt(process.env.FEED_DISCOVERY_CONCURRENCY || '3', 10), // 降低默认并发，避免网络过载
+      lockDuration: 120000, // 锁持续时间 2 分钟（RSS 抓取可能较慢）
+      lockRenewTime: 15000, // 每 15 秒续期一次
     }
   );
 }
@@ -425,4 +427,11 @@ export async function getFeedDiscoveryQueueStatus() {
     failed: failed.length,
     delayed: delayed.length,
   };
+}
+
+/**
+ * 清空队列
+ */
+export async function clearFeedDiscoveryQueue(): Promise<void> {
+  await getFeedDiscoveryQueue().drain();
 }

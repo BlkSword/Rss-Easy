@@ -300,6 +300,8 @@ export function createDeepAnalysisWorker(): Worker<DeepAnalysisJobData> {
     {
       connection: REDIS_CONFIG,
       concurrency: 3, // 并发处理3个任务
+      lockDuration: 180000, // 锁持续时间 3 分钟（AI 分析可能较慢）
+      lockRenewTime: 15000, // 每 15 秒续期一次
     }
   );
 }

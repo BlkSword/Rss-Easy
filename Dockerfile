@@ -34,16 +34,16 @@ RUN apk add --no-cache dumb-init curl python3 make g++ && \
     pnpm add -g tsx
 
 # =====================================================
-# 阶段 2: 依赖安装层
+# 阶段 2a: 主应用依赖层
 # =====================================================
-FROM base AS deps
+FROM base AS app-deps
 WORKDIR /app
 
 # 构建参数
 ARG PNPM_CONCURRENCY=4
 
-# Prisma 二进制镜像（解决国内网络问题）
-ENV PRISMA_ENGINES_MIRROR=https://registry.npmmirror.com/-/binary/prisma-engines
+# Prisma 配置（解决国内网络问题）
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 
 # 只复制 package 文件（最大化缓存）
 COPY package.json pnpm-lock.yaml ./
@@ -53,7 +53,31 @@ COPY prisma ./prisma/
 RUN --mount=type=cache,target=/root/.pnpm-store \
     pnpm config set network-concurrency ${PNPM_CONCURRENCY} && \
     pnpm config set child-concurrency ${PNPM_CONCURRENCY} && \
-    pnpm install --frozen-lockfile=false --no-optional && \
+    pnpm install --frozen-lockfile=false && \
+    pnpm exec prisma generate
+
+# 别名：保持向后兼容
+FROM app-deps AS deps
+
+# =====================================================
+# 阶段 2b: Worker 依赖层（精简版 ~150MB vs ~1.1GB）
+# =====================================================
+FROM base AS worker-deps
+WORKDIR /app
+
+ARG PNPM_CONCURRENCY=4
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+
+# 复制 Worker 专用依赖文件
+COPY package.worker.json package.json
+COPY prisma ./prisma/
+
+# 只安装生产依赖（无前端库）
+# 注意：pnpm 10.x 需要允许构建脚本运行（prisma、bcrypt 等需要编译）
+RUN --mount=type=cache,target=/root/.pnpm-store \
+    pnpm config set network-concurrency ${PNPM_CONCURRENCY} && \
+    pnpm config set enable-pre-post-scripts true && \
+    pnpm install --prod --frozen-lockfile=false && \
     pnpm exec prisma generate
 
 # =====================================================
@@ -74,6 +98,11 @@ ENV NEXT_TYPESCRIPT_CHECK_DURING_BUILDS=0
 
 # 复制依赖
 COPY --from=deps /app/node_modules ./node_modules
+
+# 重建原生模块（确保 lightningcss 等原生依赖匹配当前平台）
+# 解决 alpine (musl) 与 glibc 环境的原生模块不兼容问题
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm rebuild lightningcss 2>/dev/null || true
 
 # 分层复制源代码（按变更频率排序）
 COPY prisma ./prisma
@@ -144,7 +173,7 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["dumb-init", "--", "node", "server.js"]
 
 # =====================================================
-# 阶段 5: Worker 运行时（轻量级）
+# 阶段 5: Worker 运行时（精简版，约 200MB）
 # =====================================================
 FROM base AS worker
 WORKDIR /app
@@ -155,14 +184,18 @@ ARG RUNTIME_MEMORY=384
 # 环境变量
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=${RUNTIME_MEMORY}"
+# 添加 node_modules/.bin 到 PATH，确保 tsx 可用
+ENV PATH="/app/node_modules/.bin:${PATH}"
 
 # 创建非 root 用户
 RUN addgroup -g 1001 nodejs && \
     adduser -D -u 1001 -G nodejs worker
 
-# 只复制 Worker 必要文件（无前端）
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/prisma ./prisma
+# 复制精简依赖（无前端库，约 150MB vs 1.1GB）
+COPY --from=worker-deps /app/node_modules ./node_modules
+COPY --from=worker-deps /app/prisma ./prisma
+
+# 复制 Worker 必要的源代码
 COPY lib ./lib
 COPY scripts ./scripts
 COPY tsconfig.json ./tsconfig.json

@@ -1,7 +1,14 @@
 /**
- * AI分析队列处理器
- * 管理AI分析任务队列
- * 
+ * AI分析队列处理器（已废弃）
+ *
+ * @deprecated 此文件已废弃，请使用 BullMQ 队列系统：
+ *   - 初评队列: lib/queue/preliminary-processor.ts
+ *   - 深度分析队列: lib/queue/deep-analysis-processor.ts
+ *   - 订阅源发现队列: lib/queue/feed-discovery-processor.ts
+ *
+ * 新系统使用 BullMQ + Redis，支持分布式处理和更好的监控。
+ * 保留此文件仅供参考，不应在新代码中使用。
+ *
  * 改进的速率限制和并发控制：
  * 1. 按用户速率限制 - 防止单个用户触发API限流
  * 2. 按提供商并发控制 - 不同AI提供商有不同的限制

@@ -5,7 +5,7 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
-import { AIAnalysisQueue } from '@/lib/ai/queue';
+import { addPreliminaryJob } from '@/lib/queue/preliminary-processor';
 import { addDeepAnalysisJob } from '@/lib/queue/deep-analysis-processor';
 import { getDefaultAIService, UserAIConfig } from '@/lib/ai/client';
 import { safeDecrypt } from '@/lib/crypto/encryption';
@@ -766,8 +766,12 @@ export const entriesRouter = router({
         });
       }
 
-      // 添加到AI分析队列
-      await AIAnalysisQueue.addTask(entry.id, input.analysisType, 5);
+      // 添加到 BullMQ 初评队列（新系统）
+      await addPreliminaryJob({
+        entryId: entry.id,
+        userId: ctx.userId,
+        priority: 5,
+      });
 
       return {
         entryId: entry.id,

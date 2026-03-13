@@ -1,9 +1,10 @@
 # 依赖
 node_modules
+.pnpm-store
+.pnpm-debug.log*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
 # Next.js
 .next/
@@ -16,8 +17,8 @@ build/
 *.pem
 
 # 环境变量
-.env*.local
-.env.production
+.env*
+!.env.example
 
 # IDE
 .vscode/
@@ -47,7 +48,6 @@ examples/
 .github/
 
 # CI/CD
-.github/
 .gitlab-ci.yml
 .travis.yml
 Jenkinsfile
@@ -57,13 +57,21 @@ Dockerfile*
 docker-compose*.yml
 .docker/
 
+# 日志和临时文件
+logs/
+*.log
+*.bak
+*.tmp
+.cache/
+
+# 备份文件
+backups/
+backup/
+*.sql.gz
+
 # 其他
 .turbo
 .vercel
-*.log
-backup/
-*.bak
-*.tmp
-*.swp
-.cache/
-.pnpm-store/
+
+# Claude Code
+.claude/

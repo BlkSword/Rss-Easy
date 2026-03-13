@@ -10,8 +10,15 @@ import { getScheduler } from '@/lib/jobs/scheduler';
 import { z } from 'zod';
 import { safeDecrypt } from '@/lib/crypto/encryption';
 import { getFeedDiscoveryQueueStatus } from '@/lib/queue/feed-discovery-processor';
-import { getQueueStatus as getPreliminaryQueueStatus } from '@/lib/queue/preliminary-processor';
-import { getQueueStatus as getDeepAnalysisQueueStatus } from '@/lib/queue/deep-analysis-processor';
+import {
+  getQueueStatus as getPreliminaryQueueStatus,
+  addPreliminaryJob,
+  getJobState as getPreliminaryJobState,
+} from '@/lib/queue/preliminary-processor';
+import {
+  getQueueStatus as getDeepAnalysisQueueStatus,
+  getJobState as getDeepAnalysisJobState,
+} from '@/lib/queue/deep-analysis-processor';
 
 // 详细监控返回类型
 interface DetailedMonitorResult {
@@ -165,20 +172,34 @@ export const queueRouter = router({
         };
       }
 
-      // 检查是否在队列中
-      const queueTask = await db.aIAnalysisQueue.findFirst({
-        where: { entryId: input.entryId },
-        orderBy: { createdAt: 'desc' },
+      // 检查是否在 BullMQ 队列中（初评或深度分析）
+      // 由于 BullMQ 的 job ID 不直接对应 entryId，我们通过数据库的初评状态字段判断
+      const entryWithPrelim = await db.entry.findUnique({
+        where: { id: input.entryId },
+        select: {
+          aiPrelimStatus: true,
+          aiPrelimAnalyzedAt: true,
+          aiAnalyzedAt: true,
+        },
       });
 
-      if (queueTask) {
+      // 如果初评状态为 pending 或 passed 但没有深度分析，可能在队列中
+      if (entryWithPrelim?.aiPrelimStatus === 'pending') {
         return {
-          status: queueTask.status as 'pending' | 'processing' | 'failed',
-          queuePosition: queueTask.status === 'pending' ? await db.aIAnalysisQueue.count({
-            where: { status: 'pending', createdAt: { lte: queueTask.createdAt } },
-          }) : undefined,
-          errorMessage: queueTask.errorMessage,
-          retryCount: queueTask.retryCount,
+          status: 'pending' as const,
+          queuePosition: undefined, // BullMQ 不直接支持位置查询
+          errorMessage: undefined,
+          retryCount: 0,
+        };
+      }
+
+      // 如果已通过初评但没有深度分析，可能在深度分析队列中
+      if (entryWithPrelim?.aiPrelimStatus === 'passed' && !entryWithPrelim.aiAnalyzedAt) {
+        return {
+          status: 'pending' as const, // 深度分析队列中等待
+          queuePosition: undefined,
+          errorMessage: undefined,
+          retryCount: 0,
         };
       }
 
@@ -271,6 +292,7 @@ export const queueRouter = router({
 
   /**
    * 手动触发文章分析
+   * 使用 BullMQ 初评队列
    */
   triggerAnalysis: protectedProcedure
     .input(z.object({ entryId: z.string() }))
@@ -284,116 +306,136 @@ export const queueRouter = router({
       if (!entry) {
         throw new Error('文章不存在');
       }
-      
+
       // 验证文章所有权
       if (entry.feed.userId !== ctx.userId) {
         throw new Error('无权操作此文章');
       }
 
-      // 检查是否已在队列中
-      const existingTask = await db.aIAnalysisQueue.findFirst({
-        where: {
-          entryId: input.entryId,
-          status: { in: ['pending', 'processing'] },
-        },
-      });
-
-      if (existingTask) {
-        return { success: true, status: 'already_queued', taskId: existingTask.id };
+      // 检查是否已有分析结果
+      if (entry.aiSummary || entry.aiAnalyzedAt) {
+        return {
+          success: true,
+          status: 'already_analyzed',
+          message: '文章已完成 AI 分析',
+        };
       }
 
-      // 添加到队列
-      const task = await db.aIAnalysisQueue.create({
-        data: {
-          entryId: input.entryId,
-          analysisType: 'all',
-          priority: 3,
-          status: 'pending',
-        },
+      // 检查是否已在初评队列中（通过数据库状态判断）
+      if (entry.aiPrelimStatus === 'pending') {
+        return {
+          success: true,
+          status: 'already_queued',
+          message: '文章已在分析队列中',
+        };
+      }
+
+      // 添加到 BullMQ 初评队列
+      const jobId = await addPreliminaryJob({
+        entryId: input.entryId,
+        userId: ctx.userId,
+        priority: 3, // 手动触发优先级较高
+        forceReanalyze: true, // 强制重新分析
       });
 
-      return { success: true, status: 'queued', taskId: task.id };
+      return {
+        success: true,
+        status: 'queued',
+        taskId: jobId,
+        message: 'AI 分析已加入队列',
+      };
     }),
 
   /**
    * 获取 AI 分析队列状态
-   * 数据隔离：只显示用户自己的 Feed 相关任务
+   * 使用 BullMQ 队列状态（初评 + 深度分析）
    */
   aiQueueStatus: protectedProcedure
     .query(async ({ ctx }) => {
       const userId = ctx.userId!;
-      const userFeedIds = await getUserFeedIds(userId);
 
-      // 如果用户没有订阅源，返回空数据
-      if (userFeedIds.length === 0) {
+      try {
+        // 获取 BullMQ 队列状态
+        const [preliminaryStatus, deepAnalysisStatus] = await Promise.all([
+          getPreliminaryQueueStatus(),
+          getDeepAnalysisQueueStatus(),
+        ]);
+
+        // 合并两个队列的状态
+        const totalPending = preliminaryStatus.waiting + deepAnalysisStatus.waiting;
+        const totalActive = preliminaryStatus.active + deepAnalysisStatus.active;
+        const totalCompleted = preliminaryStatus.completed + deepAnalysisStatus.completed;
+        const totalFailed = preliminaryStatus.failed + deepAnalysisStatus.failed;
+
+        // 获取用户待分析的文章数（从数据库查询）
+        const userFeedIds = await getUserFeedIds(userId);
+
+        // 获取用户自己的文章分析状态统计
+        const [userPendingCount, userCompletedCount] = userFeedIds.length > 0
+          ? await Promise.all([
+              db.entry.count({
+                where: {
+                  feedId: { in: userFeedIds },
+                  content: { not: null },
+                  aiPrelimStatus: null, // 未初评
+                },
+              }),
+              db.entry.count({
+                where: {
+                  feedId: { in: userFeedIds },
+                  aiAnalyzedAt: { not: null }, // 已深度分析
+                },
+              }),
+            ])
+          : [0, 0];
+
         return {
+          // BullMQ 队列状态
+          preliminary: {
+            waiting: preliminaryStatus.waiting,
+            active: preliminaryStatus.active,
+            completed: preliminaryStatus.completed,
+            failed: preliminaryStatus.failed,
+            delayed: preliminaryStatus.delayed,
+          },
+          deepAnalysis: {
+            waiting: deepAnalysisStatus.waiting,
+            active: deepAnalysisStatus.active,
+            completed: deepAnalysisStatus.completed,
+            failed: deepAnalysisStatus.failed,
+            delayed: deepAnalysisStatus.delayed,
+          },
+          // 汇总统计
+          pending: totalPending,
+          processing: totalActive,
+          completed: totalCompleted,
+          failed: totalFailed,
+          total: totalPending + totalActive + totalCompleted + totalFailed,
+          // 用户相关统计
+          userStats: {
+            pendingEntries: userPendingCount,
+            completedEntries: userCompletedCount,
+          },
+          timestamp: new Date().toISOString(),
+        };
+      } catch (error) {
+        console.error('获取队列状态失败:', error);
+        return {
+          preliminary: null,
+          deepAnalysis: null,
           pending: 0,
           processing: 0,
           completed: 0,
           failed: 0,
           total: 0,
-          recentTasks: [],
+          userStats: {
+            pendingEntries: 0,
+            completedEntries: 0,
+          },
+          timestamp: new Date().toISOString(),
+          error: '无法连接到 Redis 队列',
         };
       }
-
-      const [pending, processing, completed, failed, recentTasks] = await Promise.all([
-        db.aIAnalysisQueue.count({
-          where: { status: 'pending', entry: { feedId: { in: userFeedIds } } }
-        }),
-        db.aIAnalysisQueue.count({
-          where: { status: 'processing', entry: { feedId: { in: userFeedIds } } }
-        }),
-        db.aIAnalysisQueue.count({
-          where: { status: 'completed', entry: { feedId: { in: userFeedIds } } }
-        }),
-        db.aIAnalysisQueue.count({
-          where: { status: 'failed', entry: { feedId: { in: userFeedIds } } }
-        }),
-        // 获取最近的任务
-        db.aIAnalysisQueue.findMany({
-          where: {
-            status: { in: ['pending', 'processing'] },
-            entry: { feedId: { in: userFeedIds } },
-          },
-          take: 10,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            entry: {
-              select: {
-                id: true,
-                title: true,
-                feed: {
-                  select: {
-                    id: true,
-                    title: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-      ]);
-
-      return {
-        pending,
-        processing,
-        completed,
-        failed,
-        total: pending + processing + completed + failed,
-        recentTasks: recentTasks.map(task => ({
-          id: task.id,
-          entryId: task.entryId,
-          entryTitle: task.entry.title,
-          feedTitle: task.entry.feed.title,
-          status: task.status,
-          analysisType: task.analysisType,
-          priority: task.priority,
-          createdAt: task.createdAt,
-          startedAt: task.startedAt,
-          retryCount: task.retryCount,
-          errorMessage: task.errorMessage,
-        })),
-      };
     }),
 
   /**
@@ -478,7 +520,7 @@ export const queueRouter = router({
         entriesLastDay,
         unreadEntries,
         starredEntries,
-        aiQueueStatus,
+        bullMQStatus,
         feedsToUpdate,
         schedulerStatus,
       ] = await Promise.all([
@@ -487,11 +529,11 @@ export const queueRouter = router({
         db.entry.count({ where: { feedId: { in: userFeedIds }, createdAt: { gte: oneDayAgo } } }),
         db.entry.count({ where: { feedId: { in: userFeedIds }, isRead: false } }),
         db.entry.count({ where: { feedId: { in: userFeedIds }, isStarred: true } }),
-        db.aIAnalysisQueue.groupBy({
-          by: ['status'],
-          where: { entry: { feedId: { in: userFeedIds } } },
-          _count: { id: true },
-        }),
+        // 使用 BullMQ 队列状态替代数据库查询
+        Promise.all([
+          getPreliminaryQueueStatus(),
+          getDeepAnalysisQueueStatus(),
+        ]).catch(() => [null, null]),
         db.feed.count({
           where: {
             userId,
@@ -505,16 +547,14 @@ export const queueRouter = router({
         getScheduler().getStatus(),
       ]);
 
-      // 转换队列状态
+      // 解析 BullMQ 队列状态
+      const [prelimStatus, deepStatus] = bullMQStatus;
       const queueStats = {
-        pending: 0,
-        processing: 0,
-        completed: 0,
-        failed: 0,
+        pending: (prelimStatus?.waiting || 0) + (deepStatus?.waiting || 0),
+        processing: (prelimStatus?.active || 0) + (deepStatus?.active || 0),
+        completed: (prelimStatus?.completed || 0) + (deepStatus?.completed || 0),
+        failed: (prelimStatus?.failed || 0) + (deepStatus?.failed || 0),
       };
-      aiQueueStatus.forEach(item => {
-        queueStats[item.status as keyof typeof queueStats] = item._count.id;
-      });
 
       return {
         entries: {
@@ -535,7 +575,7 @@ export const queueRouter = router({
 
   /**
    * 获取当前正在处理的任务
-   * 数据隔离：只显示用户自己的 Feed 相关任务
+   * 由于 BullMQ 不支持按用户过滤，这里通过数据库状态字段判断
    */
   activeTasks: protectedProcedure
     .query(async ({ ctx }) => {
@@ -547,36 +587,47 @@ export const queueRouter = router({
         return [];
       }
 
-      const tasks = await db.aIAnalysisQueue.findMany({
+      // 通过数据库字段查询正在处理的文章
+      // aiPrelimStatus = 'pending' 表示在初评队列中
+      // aiAnalyzedAt 为 null 但 aiPrelimStatus = 'passed' 表示在深度分析队列中
+      const processingEntries = await db.entry.findMany({
         where: {
-          status: 'processing',
-          entry: { feedId: { in: userFeedIds } },
+          feedId: { in: userFeedIds },
+          OR: [
+            { aiPrelimStatus: 'pending' },
+            {
+              aiPrelimStatus: 'passed',
+              aiAnalyzedAt: null,
+              aiPrelimAnalyzedAt: { not: null },
+            },
+          ],
         },
-        orderBy: { startedAt: 'desc' },
+        orderBy: { aiPrelimAnalyzedAt: 'desc' },
         take: 5,
-        include: {
-          entry: {
+        select: {
+          id: true,
+          title: true,
+          aiPrelimStatus: true,
+          aiPrelimAnalyzedAt: true,
+          feed: {
             select: {
               id: true,
               title: true,
-              feed: {
-                select: {
-                  id: true,
-                  title: true,
-                },
-              },
             },
           },
         },
       });
 
-      return tasks.map(task => ({
-        id: task.id,
-        entryId: task.entryId,
-        entryTitle: task.entry.title,
-        feedTitle: task.entry.feed.title,
-        startedAt: task.startedAt,
-        processingTime: task.startedAt ? Date.now() - task.startedAt.getTime() : 0,
+      return processingEntries.map(entry => ({
+        id: entry.id,
+        entryId: entry.id,
+        entryTitle: entry.title,
+        feedTitle: entry.feed.title,
+        startedAt: entry.aiPrelimAnalyzedAt,
+        processingTime: entry.aiPrelimAnalyzedAt
+          ? Date.now() - entry.aiPrelimAnalyzedAt.getTime()
+          : 0,
+        phase: entry.aiPrelimStatus === 'pending' ? 'preliminary' : 'deep-analysis',
       }));
     }),
 
@@ -775,30 +826,36 @@ export const queueRouter = router({
         db.entry.count({ where: { feedId: { in: userFeedIds }, isRead: false } }),
         db.entry.count({ where: { feedId: { in: userFeedIds }, isStarred: true } }),
 
-        // AI 队列统计（仅用户的）
-        db.aIAnalysisQueue.groupBy({
-          by: ['status'],
-          where: { entry: { feedId: { in: userFeedIds } } },
-          _count: { id: true },
-        }),
-        db.aIAnalysisQueue.findMany({
+        // BullMQ 队列状态
+        Promise.all([
+          getPreliminaryQueueStatus(),
+          getDeepAnalysisQueueStatus(),
+        ]).catch(() => [null, null]),
+
+        // 通过数据库查询正在处理的文章（用于显示任务详情）
+        db.entry.findMany({
           where: {
-            status: 'processing',
-            entry: { feedId: { in: userFeedIds } },
+            feedId: { in: userFeedIds },
+            OR: [
+              { aiPrelimStatus: 'pending' },
+              {
+                aiPrelimStatus: 'passed',
+                aiAnalyzedAt: null,
+                aiPrelimAnalyzedAt: { not: null },
+              },
+            ],
           },
           select: {
             id: true,
-            startedAt: true,
-            entry: {
-              select: {
-                id: true,
-                title: true,
-                feed: { select: { title: true } },
-              },
+            title: true,
+            aiPrelimStatus: true,
+            aiPrelimAnalyzedAt: true,
+            feed: {
+              select: { title: true },
             },
           },
           take: 3,
-          orderBy: { startedAt: 'desc' },
+          orderBy: { aiPrelimAnalyzedAt: 'desc' },
         }),
 
         // 数据库统计（仅用户的）
@@ -807,26 +864,28 @@ export const queueRouter = router({
         db.user.count({ where: { id: userId } }),
       ]);
 
-      // 转换队列状态
+      // 解析 BullMQ 队列状态
+      const [prelimStatus, deepStatus] = aiQueueStats || [null, null];
       const queueStats = {
-        pending: 0,
-        processing: 0,
-        completed: 0,
-        failed: 0,
+        pending: (prelimStatus?.waiting || 0) + (deepStatus?.waiting || 0),
+        processing: (prelimStatus?.active || 0) + (deepStatus?.active || 0),
+        completed: (prelimStatus?.completed || 0) + (deepStatus?.completed || 0),
+        failed: (prelimStatus?.failed || 0) + (deepStatus?.failed || 0),
       };
-      aiQueueStats.forEach(item => {
-        queueStats[item.status as keyof typeof queueStats] = item._count.id;
-      });
 
       // 获取调度器状态
       const schedulerStatus = getScheduler().getStatus();
 
-      // 计算处理中任务的耗时
-      const activeTasks = processingTasks.map(task => ({
-        id: task.id,
-        entryTitle: task.entry.title,
-        feedTitle: task.entry.feed.title,
-        processingTime: task.startedAt ? now.getTime() - task.startedAt.getTime() : 0,
+      // 计算正在处理的文章
+      const activeTasksList = processingTasks.map(entry => ({
+        id: entry.id,
+        entryTitle: entry.title,
+        feedTitle: entry.feed.title,
+        startedAt: entry.aiPrelimAnalyzedAt,
+        processingTime: entry.aiPrelimAnalyzedAt
+          ? now.getTime() - entry.aiPrelimAnalyzedAt.getTime()
+          : 0,
+        phase: entry.aiPrelimStatus === 'pending' ? 'preliminary' : 'deep-analysis',
       }));
 
       return {
@@ -854,7 +913,16 @@ export const queueRouter = router({
         queue: {
           ...queueStats,
           total: queueStats.pending + queueStats.processing + queueStats.completed + queueStats.failed,
-          activeTasks,
+          activeTasks: processingTasks.map(entry => ({
+            id: entry.id,
+            entryTitle: entry.title,
+            feedTitle: entry.feed.title,
+            startedAt: entry.aiPrelimAnalyzedAt,
+            processingTime: entry.aiPrelimAnalyzedAt
+              ? now.getTime() - entry.aiPrelimAnalyzedAt.getTime()
+              : 0,
+            phase: entry.aiPrelimStatus === 'pending' ? 'preliminary' : 'deep-analysis',
+          })),
         },
 
         // 调度器状态

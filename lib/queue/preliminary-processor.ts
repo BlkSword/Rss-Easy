@@ -200,6 +200,8 @@ export function createPreliminaryWorker(): Worker<PreliminaryJobData, Preliminar
     {
       connection: REDIS_CONFIG,
       concurrency: parseInt(process.env.PRELIMINARY_WORKER_CONCURRENCY || '5', 10),
+      lockDuration: 60000, // 锁持续时间 1 分钟（AI 请求可能较慢）
+      lockRenewTime: 10000, // 每 10 秒续期一次
     }
   );
 }

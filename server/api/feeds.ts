@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc/init';
 import { feedManager } from '@/lib/rss/feed-manager';
 import { parseFeed } from '@/lib/rss/parser';
-import { AIAnalysisQueue } from '@/lib/ai/queue';
 import { info, warn, error } from '@/lib/logger';
 import { isUrlSafe } from '@/lib/utils';
 

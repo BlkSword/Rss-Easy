@@ -156,6 +156,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       # 认证
       JWT_SECRET: ${JWT_SECRET}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
@@ -235,12 +236,14 @@ services:
       args:
         RUNTIME_MEMORY: 256
         PNPM_CONCURRENCY: 4
+    image: rss-post-worker:latest
     container_name: rss-post-feed-discovery-worker
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_post}?connection_limit=5&pool_timeout=20
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: ${NODE_ENV:-production}
       SERVICE_TYPE: worker
       WORKER_TYPE: feed-discovery
@@ -274,19 +277,14 @@ services:
   # Preliminary Worker（文章初评 - 过滤低质内容）
   # ===================================================
   preliminary-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker
-      args:
-        RUNTIME_MEMORY: 384
-        PNPM_CONCURRENCY: 4
+    image: rss-post-worker:latest
     container_name: rss-post-preliminary-worker
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_post}?connection_limit=5&pool_timeout=20
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: ${NODE_ENV:-production}
       SERVICE_TYPE: worker
       WORKER_TYPE: preliminary
@@ -333,19 +331,14 @@ services:
   # Deep Analysis Worker（深度 AI 分析）
   # ===================================================
   deep-analysis-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: worker
-      args:
-        RUNTIME_MEMORY: 512
-        PNPM_CONCURRENCY: 4
+    image: rss-post-worker:latest
     container_name: rss-post-deep-analysis-worker
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rss_post}?connection_limit=5&pool_timeout=20
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       NODE_ENV: ${NODE_ENV:-production}
       SERVICE_TYPE: worker
       WORKER_TYPE: deep-analysis
