@@ -40,14 +40,19 @@ function shouldUseSecureCookie(): boolean {
 
 /**
  * 设置会话 Cookie
+ * 安全配置：
+ * - httpOnly: 防止 JavaScript 访问
+ * - secure: 仅通过 HTTPS 传输（生产环境）
+ * - sameSite: 'strict' 防止 CSRF 攻击
  */
 export async function setSessionCookie(token: string): Promise<void> {
   const cookieStore = await cookies();
+  const isProduction = process.env.NODE_ENV === 'production';
 
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: shouldUseSecureCookie(),
-    sameSite: 'lax',
+    sameSite: isProduction ? 'strict' : 'lax', // 生产环境使用 strict，开发环境使用 lax 便于调试
     maxAge: SESSION_COOKIE_MAX_AGE,
     path: '/',
   });

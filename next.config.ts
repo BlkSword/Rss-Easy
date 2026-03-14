@@ -60,13 +60,20 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
+              // 注意：unsafe-inline 和 unsafe-eval 是为了支持 Next.js 和 React 的正常运行
+              // 在生产环境中，应该考虑使用 nonce-based CSP 来替代
               "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com wss://localhost:3001",
+              // 限制外部连接到已知 API 端点
+              "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn wss://localhost:*",
+              // 安全增强
+              "object-src 'none'",
+              "base-uri 'self'",
               "frame-ancestors 'none'",
               "form-action 'self'",
+              "upgrade-insecure-requests",
             ].join('; ')
           },
           {

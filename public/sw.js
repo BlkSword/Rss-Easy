@@ -1,15 +1,29 @@
 /**
  * RSS-Post Service Worker
  * 提供离线缓存和 PWA 支持
+ *
+ * 安全注意事项：
+ * - 登录页面不缓存，确保用户始终获取最新版本
+ * - 认证相关页面不缓存，防止敏感信息泄露
  */
 
 const CACHE_NAME = 'rss-post-v1';
 const STATIC_ASSETS = [
   '/',
-  '/login',
+  // 注意：登录页面不缓存，确保用户始终获取最新版本
   '/manifest.json',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
+];
+
+// 不应该被缓存的路径
+const NO_CACHE_PATHS = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/api/',
+  '/trpc/',
 ];
 
 // 安装时缓存静态资源
@@ -43,13 +57,18 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 跳过 API 请求和非 GET 请求
-  if (request.method !== 'GET' || url.pathname.startsWith('/api/') || url.pathname.startsWith('/trpc/')) {
+  // 跳过非 GET 请求
+  if (request.method !== 'GET') {
     return;
   }
 
   // 跳过 Chrome 扩展请求
   if (url.protocol === 'chrome-extension:') {
+    return;
+  }
+
+  // 跳过不应该缓存的敏感路径（登录、注册、API 等）
+  if (NO_CACHE_PATHS.some(path => url.pathname.startsWith(path))) {
     return;
   }
 

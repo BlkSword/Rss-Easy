@@ -1,12 +1,41 @@
 /**
  * 速率限制器
  * 使用内存存储的简单速率限制实现
+ *
+ * 注意：此模块提供的配置应与 redis-rate-limit.ts 保持一致
  */
 
 interface RateLimitEntry {
   count: number;
   resetTime: number;
 }
+
+/**
+ * 统一的速率限制配置
+ * 与 redis-rate-limit.ts 保持同步
+ */
+export const RATE_LIMIT_CONFIG = {
+  // 登录：每 15 分钟最多 30 次
+  login: {
+    maxRequests: 30,
+    windowMs: 15 * 60 * 1000,
+  },
+  // 注册：每小时最多 20 次
+  register: {
+    maxRequests: 20,
+    windowMs: 60 * 60 * 1000,
+  },
+  // 密码重置：每小时最多 3 次
+  passwordReset: {
+    maxRequests: 3,
+    windowMs: 60 * 60 * 1000,
+  },
+  // 通用 API：每分钟最多 100 次
+  general: {
+    maxRequests: 100,
+    windowMs: 60 * 1000,
+  },
+} as const;
 
 /**
  * 速率限制器类
@@ -105,19 +134,32 @@ export class RateLimiter {
 
 /**
  * 预定义的速率限制器
+ * 使用统一配置
  */
 
-// 登录 API：10 次/10 分钟
-export const loginRateLimiter = new RateLimiter(10, 10 * 60 * 1000);
+// 登录 API：30 次/15 分钟（与 Redis 版本一致）
+export const loginRateLimiter = new RateLimiter(
+  RATE_LIMIT_CONFIG.login.maxRequests,
+  RATE_LIMIT_CONFIG.login.windowMs
+);
 
-// 注册 API：5 次/小时
-export const registerRateLimiter = new RateLimiter(5, 60 * 60 * 1000);
+// 注册 API：20 次/小时（与 Redis 版本一致）
+export const registerRateLimiter = new RateLimiter(
+  RATE_LIMIT_CONFIG.register.maxRequests,
+  RATE_LIMIT_CONFIG.register.windowMs
+);
 
-// 密码重置 API：3 次/小时
-export const passwordResetRateLimiter = new RateLimiter(3, 60 * 60 * 1000);
+// 密码重置 API：3 次/小时（与 Redis 版本一致）
+export const passwordResetRateLimiter = new RateLimiter(
+  RATE_LIMIT_CONFIG.passwordReset.maxRequests,
+  RATE_LIMIT_CONFIG.passwordReset.windowMs
+);
 
-// 通用 API：100 次/分钟
-export const generalApiRateLimiter = new RateLimiter(100, 60 * 1000);
+// 通用 API：100 次/分钟（与 Redis 版本一致）
+export const generalApiRateLimiter = new RateLimiter(
+  RATE_LIMIT_CONFIG.general.maxRequests,
+  RATE_LIMIT_CONFIG.general.windowMs
+);
 
 /**
  * 从请求中获取客户端标识符

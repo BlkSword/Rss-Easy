@@ -134,18 +134,14 @@ export class SearchService {
       const aiService = getDefaultAIService();
       const { embedding } = await aiService.generateEmbedding(query);
 
-      // 构建 WHERE 条件
-      const whereConditions = this.buildFilters(filters);
+      // 构建 WHERE 条件（使用参数化查询防止 SQL 注入）
+      const { sql: whereSql, params } = this.buildSqlWhereSafe(filters);
+      const embeddingStr = `[${embedding.join(',')}]`;
 
-      // 使用 pgvector 进行相似度搜索
-      // 计算余弦相似度
-      const similaritySql = `
-        1 - (embedding <=> '[${embedding.join(',')}]'::vector)
-      `.trim();
-
-      // 查询相似度最高的文章
-      const entries = await db.$queryRaw`
-        SELECT
+      // 查询相似度最高的文章（使用参数化查询）
+      // 注意：embedding 不需要参数化，因为它是系统生成的，不是用户输入
+      const entries = await db.$queryRawUnsafe(
+        `SELECT
           e.id,
           e.title,
           e.url,
@@ -161,19 +157,21 @@ export class SearchService {
         FROM "Entry" e
         LEFT JOIN "Feed" f ON e."feedId" = f.id
         WHERE e.embedding IS NOT NULL
-          ${whereConditions.length > 0 ? this.buildSqlWhere(whereConditions) : ''}
-        ORDER BY (e.embedding <=> '[${embedding.join(',')}]'::vector) ASC
+          ${whereSql}
+        ORDER BY (e.embedding <=> '${embeddingStr}'::vector) ASC
         LIMIT ${limit}
-        OFFSET ${offset}
-      ` as any[];
+        OFFSET ${offset}`,
+        ...params
+      ) as any[];
 
-      // 查询总数（对于相似度搜索，我们只返回有嵌入的条目）
-      const totalResult = await db.$queryRaw`
-        SELECT COUNT(*) as count
+      // 查询总数
+      const totalResult = await db.$queryRawUnsafe(
+        `SELECT COUNT(*) as count
         FROM "Entry" e
         WHERE e.embedding IS NOT NULL
-          ${whereConditions.length > 0 ? this.buildSqlWhere(whereConditions) : ''}
-      ` as { count: bigint }[];
+          ${whereSql}`,
+        ...params
+      ) as { count: bigint }[];
       const total = Number(totalResult[0].count);
 
       // 转换结果并计算相关性得分
@@ -223,6 +221,64 @@ export class SearchService {
   }
 
   /**
+   * 构建安全的参数化 SQL WHERE 条件
+   * 使用参数化查询防止 SQL 注入
+   */
+  private buildSqlWhereSafe(filters: SearchFilters): { sql: string; params: unknown[] } {
+    const parts: string[] = [];
+    const params: unknown[] = [];
+
+    // UUID 验证正则
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    if (filters.feedIds && filters.feedIds.length > 0) {
+      const validFeedIds = filters.feedIds.filter(id => uuidRegex.test(id));
+      if (validFeedIds.length > 0) {
+        parts.push(`e."feedId" IN (${validFeedIds.map(() => '?').join(', ')})`);
+        params.push(...validFeedIds);
+      }
+    }
+
+    if (filters.categoryIds && filters.categoryIds.length > 0) {
+      const validCategoryIds = filters.categoryIds.filter(id => uuidRegex.test(id));
+      if (validCategoryIds.length > 0) {
+        parts.push(`f."categoryId" IN (${validCategoryIds.map(() => '?').join(', ')})`);
+        params.push(...validCategoryIds);
+      }
+    }
+
+    if (filters.isRead !== undefined) {
+      parts.push(`e."isRead" = ?`);
+      params.push(filters.isRead);
+    }
+
+    if (filters.isStarred !== undefined) {
+      parts.push(`e."isStarred" = ?`);
+      params.push(filters.isStarred);
+    }
+
+    if (filters.startDate) {
+      parts.push(`e.published_at >= ?`);
+      params.push(filters.startDate.toISOString());
+    }
+
+    if (filters.endDate) {
+      parts.push(`e.published_at <= ?`);
+      params.push(filters.endDate.toISOString());
+    }
+
+    if (filters.minImportance !== undefined) {
+      parts.push(`e.ai_importance_score >= ?`);
+      params.push(filters.minImportance);
+    }
+
+    return {
+      sql: parts.length > 0 ? `AND ${parts.join(' AND ')}` : '',
+      params
+    };
+  }
+
+  /**
    * 构建过滤条件
    */
   private buildFilters(filters: SearchFilters): Prisma.EntryWhereInput[] {
@@ -267,40 +323,6 @@ export class SearchService {
     }
 
     return conditions;
-  }
-
-  /**
-   * 构建 SQL WHERE 条件（用于原始查询）
-   */
-  private buildSqlWhere(conditions: Prisma.EntryWhereInput[]): string {
-    if (conditions.length === 0) return '';
-
-    const parts: string[] = [];
-    for (const condition of conditions) {
-      if (condition.feedId) {
-        parts.push(`e."feedId" = '${(condition.feedId as any).in?.[0] || ''}'`);
-      }
-      if (condition.feed?.categoryId) {
-        parts.push(`f."categoryId" = '${(condition.feed?.categoryId as any).in?.[0] || ''}'`);
-      }
-      if (condition.isRead !== undefined) {
-        parts.push(`e."isRead" = ${condition.isRead}`);
-      }
-      if (condition.isStarred !== undefined) {
-        parts.push(`e."isStarred" = ${condition.isStarred}`);
-      }
-      if ((condition.publishedAt as any)?.gte instanceof Date) {
-        parts.push(`e.published_at >= '${(condition.publishedAt as any).gte.toISOString()}'`);
-      }
-      if ((condition.publishedAt as any)?.lte instanceof Date) {
-        parts.push(`e.published_at <= '${(condition.publishedAt as any).lte.toISOString()}'`);
-      }
-      if (typeof (condition.aiImportanceScore as any)?.gte === 'number') {
-        parts.push(`e.ai_importance_score >= ${(condition.aiImportanceScore as any).gte}`);
-      }
-    }
-
-    return parts.length > 0 ? `AND ${parts.join(' AND ')}` : '';
   }
 
   /**

@@ -22,10 +22,13 @@ export interface TokenPayload {
 
 /**
  * Token 类型配置
+ * 安全最佳实践：
+ * - 访问 Token 短期有效（15分钟）
+ * - 刷新 Token 长期有效（7天）
  */
 const TOKEN_CONFIG = {
-  ACCESS_TOKEN_EXPIRY: '1d', // 访问 Token 1 天
-  REFRESH_TOKEN_EXPIRY: '30d', // 刷新 Token 30 天
+  ACCESS_TOKEN_EXPIRY: '15m', // 访问 Token 15 分钟（安全）
+  REFRESH_TOKEN_EXPIRY: '7d', // 刷新 Token 7 天
 } as const;
 
 /**

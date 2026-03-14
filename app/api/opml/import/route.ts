@@ -8,6 +8,11 @@ import { getSession } from '@/lib/auth';
 import { smartImportOPML, previewOPML } from '@/lib/opml/importer';
 import { info, error } from '@/lib/logger';
 
+// 安全配置：文件大小限制（5MB）
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+// 安全配置：OPML 内容大小限制（10MB，用于 PUT 请求）
+const MAX_CONTENT_SIZE = 10 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
@@ -21,6 +26,14 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    // 安全检查：文件大小限制
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: 'File size exceeds 5MB limit' },
+        { status: 400 }
+      );
     }
 
     if (!file.name.endsWith('.opml') && !file.type.includes('xml')) {
@@ -95,6 +108,14 @@ export async function PUT(req: NextRequest) {
 
     if (!opmlContent) {
       return NextResponse.json({ error: 'No OPML content provided' }, { status: 400 });
+    }
+
+    // 安全检查：内容大小限制
+    if (typeof opmlContent === 'string' && opmlContent.length > MAX_CONTENT_SIZE) {
+      return NextResponse.json(
+        { error: 'Content size exceeds 10MB limit' },
+        { status: 400 }
+      );
     }
 
     const preview = await previewOPML(opmlContent);

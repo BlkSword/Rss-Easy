@@ -4,7 +4,7 @@
  * 用于防止 API 滥用和暴力破解攻击
  * - 登录/注册速率限制
  * - API 通用速率限制
- * - 支持 Redis 降级（Redis 故障时允许请求通过）
+ * - 支持 Redis 降级到内存限制器
  */
 
 import Redis from 'ioredis';
@@ -14,38 +14,111 @@ interface RateLimitConfig {
   windowMs: number;      // 时间窗口（毫秒）
   maxRequests: number;   // 窗口内最大请求数
   keyPrefix: string;     // Redis 键前缀
-  skipOnFailure: boolean; // Redis 故障时是否允许请求
+  skipOnFailure: boolean; // Redis 故障时是否允许请求（已弃用，使用内存备用）
+}
+
+// 内存备用速率限制器（当 Redis 不可用时使用）
+class InMemoryRateLimiter {
+  private requests: Map<string, number[]> = new Map();
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    // 每 5 分钟清理过期记录
+    this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [key, timestamps] of this.requests.entries()) {
+      // 移除超过 1 小时的记录
+      const validTimestamps = timestamps.filter(t => now - t < 60 * 60 * 1000);
+      if (validTimestamps.length === 0) {
+        this.requests.delete(key);
+      } else if (validTimestamps.length !== timestamps.length) {
+        this.requests.set(key, validTimestamps);
+      }
+    }
+  }
+
+  check(key: string, windowMs: number, maxRequests: number): { allowed: boolean; remaining: number } {
+    const now = Date.now();
+    const windowStart = now - windowMs;
+
+    // 获取或初始化请求时间戳列表
+    let timestamps = this.requests.get(key) || [];
+
+    // 过滤掉窗口外的请求
+    timestamps = timestamps.filter(t => t > windowStart);
+
+    // 检查是否超过限制
+    if (timestamps.length >= maxRequests) {
+      this.requests.set(key, timestamps);
+      return { allowed: false, remaining: 0 };
+    }
+
+    // 添加当前请求
+    timestamps.push(now);
+    this.requests.set(key, timestamps);
+
+    return { allowed: true, remaining: maxRequests - timestamps.length };
+  }
+
+  reset(key: string): void {
+    this.requests.delete(key);
+  }
+
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.requests.clear();
+  }
+}
+
+// 全局内存备用限制器实例
+let memoryLimiter: InMemoryRateLimiter | null = null;
+
+/**
+ * 获取内存备用限制器（懒加载单例）
+ */
+function getMemoryLimiter(): InMemoryRateLimiter {
+  if (!memoryLimiter) {
+    memoryLimiter = new InMemoryRateLimiter();
+  }
+  return memoryLimiter;
 }
 
 // 预定义的速率限制器配置
+// 注意：对于敏感操作（登录、注册、密码重置），skipOnFailure 设为 false，使用内存备用
 const RATE_LIMIT_CONFIGS = {
   // 登录：每 15 分钟最多 30 次
   login: {
     windowMs: 15 * 60 * 1000,
     maxRequests: 30,
     keyPrefix: 'ratelimit:login:',
-    skipOnFailure: true,
+    skipOnFailure: false, // 安全关键：使用内存备用
   },
   // 注册：每小时最多 20 次
   register: {
     windowMs: 60 * 60 * 1000,
     maxRequests: 20,
     keyPrefix: 'ratelimit:register:',
-    skipOnFailure: true,
+    skipOnFailure: false, // 安全关键：使用内存备用
   },
   // 通用 API：每分钟最多 100 次
   general: {
     windowMs: 60 * 1000,
     maxRequests: 100,
     keyPrefix: 'ratelimit:general:',
-    skipOnFailure: true,
+    skipOnFailure: true, // 非关键操作，可以跳过
   },
   // 密码重置：每小时最多 3 次
   passwordReset: {
     windowMs: 60 * 60 * 1000,
     maxRequests: 3,
     keyPrefix: 'ratelimit:pwdreset:',
-    skipOnFailure: true,
+    skipOnFailure: false, // 安全关键：使用内存备用
   },
 } as const;
 
@@ -129,36 +202,39 @@ export interface RateLimitResult {
 
 /**
  * 检查速率限制（滑动窗口算法）
+ * 支持 Redis 降级到内存限制器
  */
 async function checkRateLimit(
   identifier: string,
   config: RateLimitConfig
 ): Promise<RateLimitResult> {
   const client = await getRedisClient();
+  const key = `${config.keyPrefix}${identifier}`;
+  const now = Date.now();
+  const windowStart = now - config.windowMs;
 
   // Redis 不可用时的降级处理
   if (!client) {
     if (config.skipOnFailure) {
-      // 允许请求通过，避免服务完全不可用
-      console.warn('[RateLimiter] Redis unavailable, allowing request');
+      // 非关键操作：允许请求通过，避免服务完全不可用
+      console.warn('[RateLimiter] Redis unavailable, allowing request (skipOnFailure)');
       return {
         allowed: true,
         remaining: config.maxRequests,
         resetAt: new Date(Date.now() + config.windowMs),
       };
     }
-    // 拒绝请求
+
+    // 安全关键操作：使用内存备用限制器
+    console.warn('[RateLimiter] Redis unavailable, using in-memory fallback');
+    const memResult = getMemoryLimiter().check(key, config.windowMs, config.maxRequests);
     return {
-      allowed: false,
-      remaining: 0,
+      allowed: memResult.allowed,
+      remaining: memResult.remaining,
       resetAt: new Date(Date.now() + config.windowMs),
-      retryAfter: Math.ceil(config.windowMs / 1000),
+      retryAfter: memResult.allowed ? undefined : Math.ceil(config.windowMs / 1000),
     };
   }
-
-  const key = `${config.keyPrefix}${identifier}`;
-  const now = Date.now();
-  const windowStart = now - config.windowMs;
 
   try {
     // 使用 Lua 脚本实现原子性操作
@@ -220,11 +296,14 @@ async function checkRateLimit(
       };
     }
 
+    // 安全关键操作：使用内存备用
+    console.warn('[RateLimiter] Redis error, using in-memory fallback');
+    const memResult = getMemoryLimiter().check(key, config.windowMs, config.maxRequests);
     return {
-      allowed: false,
-      remaining: 0,
+      allowed: memResult.allowed,
+      remaining: memResult.remaining,
       resetAt: new Date(Date.now() + config.windowMs),
-      retryAfter: Math.ceil(config.windowMs / 1000),
+      retryAfter: memResult.allowed ? undefined : Math.ceil(config.windowMs / 1000),
     };
   }
 }
@@ -303,12 +382,16 @@ export function getClientIdentifier(
 }
 
 /**
- * 关闭 Redis 连接
+ * 关闭 Redis 连接和内存限制器
  */
 export async function closeRateLimiterConnection(): Promise<void> {
   if (redisClient) {
     await redisClient.quit();
     redisClient = null;
+  }
+  if (memoryLimiter) {
+    memoryLimiter.destroy();
+    memoryLimiter = null;
   }
 }
 

@@ -3,11 +3,15 @@
  * GET /api/auth/csrf
  *
  * 返回一个新的 CSRF Token，用于 mutation 操作
+ * 安全性：CSRF Token 绑定到实际的 session token，而不是 userId
  */
 
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getSession } from '@/lib/auth/session';
 import { getOrCreateCSRFToken } from '@/lib/auth/csrf';
+
+const SESSION_COOKIE_NAME = 'session';
 
 export async function GET() {
   try {
@@ -20,9 +24,19 @@ export async function GET() {
       );
     }
 
-    // 获取或创建 CSRF Token
-    // 使用 session token 作为基础
-    const sessionToken = session.userId; // 简化：使用 userId 作为标识
+    // 从 Cookie 中获取实际的 session token
+    // 这比使用 userId 更安全，因为 Token 是唯一的且可撤销
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+    if (!sessionToken) {
+      return NextResponse.json(
+        { error: '会话无效' },
+        { status: 401 }
+      );
+    }
+
+    // 使用 session token 作为 CSRF Token 的绑定基础
     const csrfToken = await getOrCreateCSRFToken(sessionToken);
 
     return NextResponse.json({

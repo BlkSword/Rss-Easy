@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { CacheService } from "@/lib/cache/redis-cache";
 
+/**
+ * 健康检查 API
+ * 注意：此端点不暴露敏感信息（版本号、环境详情等）
+ */
 export async function GET() {
-  const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
+  const checks: Record<string, { status: string; latency?: number }> = {};
   let overallStatus = "ok";
-
-  // 注意：AI 分析队列现在通过独立的 Docker Worker 容器运行
-  // 不再在主应用中启动队列处理器
 
   // 检查数据库连接
   try {
@@ -17,10 +18,9 @@ export async function GET() {
       status: "ok",
       latency: Date.now() - start
     };
-  } catch (err) {
+  } catch {
     checks.database = {
-      status: "error",
-      error: err instanceof Error ? err.message : "Unknown error"
+      status: "error"
     };
     overallStatus = "degraded";
   }
@@ -36,27 +36,20 @@ export async function GET() {
       };
     } else {
       checks.redis = {
-        status: "disabled",
-        error: "Redis not configured or connection failed"
+        status: "disabled"
       };
     }
-  } catch (err) {
+  } catch {
     checks.redis = {
-      status: "error",
-      error: err instanceof Error ? err.message : "Unknown error"
+      status: "error"
     };
     overallStatus = "degraded";
   }
 
-  // 环境信息
-  checks.environment = {
-    status: process.env.NODE_ENV === "production" ? "production" : "development"
-  };
-
+  // 简化响应，不暴露敏感信息
   return NextResponse.json({
     status: overallStatus,
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || "1.0.0",
     checks,
   }, {
     status: overallStatus === "ok" ? 200 : 503
