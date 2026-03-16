@@ -20,7 +20,7 @@ NC='\033[0m'
 # 配置
 COMPOSE_FILE="docker-compose.prebuilt.yml"
 # 替换为你的 GitHub 用户名或组织名
-GHCR_OWNER="BlkSword"
+GHCR_OWNER="blksword"
 
 # 解析参数
 ACTION="deploy"

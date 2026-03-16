@@ -9,11 +9,8 @@
 #
 # 输出镜像（推送到 GitHub Container Registry）：
 #   - ghcr.io/<owner>/rss-post-app:latest
-#   - ghcr.io/<owner>/rss-post-app:<tag>
 #   - ghcr.io/<owner>/rss-post-worker:latest
-#   - ghcr.io/<owner>/rss-post-worker:<tag>
 #   - ghcr.io/<owner>/rss-post-init:latest
-#   - ghcr.io/<owner>/rss-post-init:<tag>
 #
 # =====================================================
 
@@ -33,12 +30,6 @@ on:
         default: 'true'
         type: boolean
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME_APP: ${{ github.repository_owner }}/rss-post-app
-  IMAGE_NAME_WORKER: ${{ github.repository_owner }}/rss-post-worker
-  IMAGE_NAME_INIT: ${{ github.repository_owner }}/rss-post-init
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -56,23 +47,19 @@ jobs:
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_APP }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WORKER }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_INIT }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+      # 将用户名转换为小写（Docker 镜像名称要求）
+      - name: Set lowercase image names
+        id: images
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          OWNER_LC="${OWNER,,}"
+          echo "app=ghcr.io/${OWNER_LC}/rss-post-app" >> $GITHUB_OUTPUT
+          echo "worker=ghcr.io/${OWNER_LC}/rss-post-worker" >> $GITHUB_OUTPUT
+          echo "init=ghcr.io/${OWNER_LC}/rss-post-init" >> $GITHUB_OUTPUT
 
       - name: Detect system memory
         id: memory
@@ -98,8 +85,8 @@ jobs:
           target: app
           push: ${{ github.event.inputs.push_images != 'false' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_APP }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_APP }}:${{ github.sha }}
+            ${{ steps.images.outputs.app }}:latest
+            ${{ steps.images.outputs.app }}:${{ github.sha }}
           build-args: |
             BUILD_MEMORY=${{ steps.memory.outputs.build_memory }}
             RUNTIME_MEMORY=${{ steps.memory.outputs.runtime_memory }}
@@ -115,8 +102,8 @@ jobs:
           target: worker
           push: ${{ github.event.inputs.push_images != 'false' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WORKER }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WORKER }}:${{ github.sha }}
+            ${{ steps.images.outputs.worker }}:latest
+            ${{ steps.images.outputs.worker }}:${{ github.sha }}
           build-args: |
             RUNTIME_MEMORY=384
           cache-from: type=gha
@@ -131,8 +118,8 @@ jobs:
           target: deps
           push: ${{ github.event.inputs.push_images != 'false' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_INIT }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_INIT }}:${{ github.sha }}
+            ${{ steps.images.outputs.init }}:latest
+            ${{ steps.images.outputs.init }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -148,7 +135,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Pull Commands" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_APP }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WORKER }}:latest" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_INIT }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ steps.images.outputs.app }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ steps.images.outputs.worker }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ steps.images.outputs.init }}:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

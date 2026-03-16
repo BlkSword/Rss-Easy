@@ -59,7 +59,7 @@ services:
   # ===================================================
   init:
     # 替换 BlkSword 为你的 GitHub 用户名
-    image: ghcr.io/BlkSword/rss-post-init:latest
+    image: ghcr.io/blksword/rss-post-init:latest
     container_name: rss-post-init
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD:-rss_post_password}@postgres:5432/${POSTGRES_DB:-rss_post}
@@ -99,7 +99,7 @@ services:
   # ===================================================
   app:
     # 替换 BlkSword 为你的 GitHub 用户名
-    image: ghcr.io/BlkSword/rss-post-app:latest
+    image: ghcr.io/blksword/rss-post-app:latest
     container_name: rss-post-app
     ports:
       - "${APP_PORT:-8915}:3000"
@@ -155,7 +155,7 @@ services:
   # ===================================================
   feed-discovery-worker:
     # 替换 BlkSword 为你的 GitHub 用户名
-    image: ghcr.io/BlkSword/rss-post-worker:latest
+    image: ghcr.io/blksword/rss-post-worker:latest
     container_name: rss-post-feed-discovery-worker
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD:-rss_post_password}@postgres:5432/${POSTGRES_DB:-rss_post}
@@ -183,7 +183,7 @@ services:
   # ===================================================
   deep-analysis-worker:
     # 替换 BlkSword 为你的 GitHub 用户名
-    image: ghcr.io/BlkSword/rss-post-worker:latest
+    image: ghcr.io/blksword/rss-post-worker:latest
     container_name: rss-post-deep-analysis-worker
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD:-rss_post_password}@postgres:5432/${POSTGRES_DB:-rss_post}
