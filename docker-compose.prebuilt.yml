@@ -1,0 +1,224 @@
+# =====================================================
+# RSS-Post Docker Compose 配置（预构建镜像版本）
+# =====================================================
+#
+# 使用方式:
+#   1. 首次部署: 创建 .env 文件（可从 .env.example 复制）
+#   2. 登录 GHCR: echo $GITHUB_TOKEN | docker login ghcr.io -u <username> --password-stdin
+#   3. 启动服务: docker compose -f docker-compose.prebuilt.yml up -d
+#
+# 注意: 将 BlkSword 替换为你的 GitHub 用户名或组织名
+#
+# =====================================================
+
+services:
+  # ===================================================
+  # PostgreSQL 数据库
+  # ===================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: rss-post-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rss_post}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rss_post_password}
+      POSTGRES_DB: ${POSTGRES_DB:-rss_post}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rss_post} -d ${POSTGRES_DB:-rss_post}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - rss-post-network
+
+  # ===================================================
+  # Redis 缓存和队列
+  # ===================================================
+  redis:
+    image: redis:7-alpine
+    container_name: rss-post-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - rss-post-network
+
+  # ===================================================
+  # 数据库初始化服务
+  # ===================================================
+  init:
+    # 替换 BlkSword 为你的 GitHub 用户名
+    image: ghcr.io/BlkSword/rss-post-init:latest
+    container_name: rss-post-init
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD:-rss_post_password}@postgres:5432/${POSTGRES_DB:-rss_post}
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo '=== Database Initialization ===' &&
+        echo 'Waiting for database to be fully ready...' &&
+        sleep 5 &&
+        for i in $$(seq 1 10); do
+          if pnpm exec prisma db pull --force 2>/dev/null; then
+            echo 'Database connection verified!'
+            break
+          fi
+          echo \"Attempt $$i: Waiting for database...\";
+          sleep 2;
+        done &&
+        echo 'Running Prisma generate...' &&
+        pnpm exec prisma generate &&
+        echo 'Running database migrations...' &&
+        pnpm exec prisma db push --accept-data-loss &&
+        echo 'Seeding initial data...' &&
+        pnpm exec tsx prisma/seed.ts &&
+        echo '=== Initialization Complete ==='
+      "
+    volumes:
+      - ./prisma:/app/prisma
+    restart: "no"
+    networks:
+      - rss-post-network
+
+  # ===================================================
+  # 主应用服务
+  # ===================================================
+  app:
+    # 替换 BlkSword 为你的 GitHub 用户名
+    image: ghcr.io/BlkSword/rss-post-app:latest
+    container_name: rss-post-app
+    ports:
+      - "${APP_PORT:-8915}:3000"
+    environment:
+      # 数据库
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD:-rss_post_password}@postgres:5432/${POSTGRES_DB:-rss_post}?connection_limit=10&pool_timeout=20
+      # Redis
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # 应用 URL
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:8915}
+      APP_URL: ${APP_URL:-http://localhost:8915}
+      # Cookie 安全设置
+      SECURE_COOKIE: ${SECURE_COOKIE:-false}
+      # 认证密钥
+      JWT_SECRET: ${JWT_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      # 服务类型
+      SERVICE_TYPE: app
+      # AI 配置
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      CUSTOM_API_BASE_URL: ${CUSTOM_API_BASE_URL:-}
+      CUSTOM_API_KEY: ${CUSTOM_API_KEY:-}
+      CUSTOM_API_MODEL: ${CUSTOM_API_MODEL:-}
+      # 日志
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - rss-post-network
+
+  # ===================================================
+  # Feed Discovery Worker（OPML导入后自动发现和抓取）
+  # ===================================================
+  feed-discovery-worker:
+    # 替换 BlkSword 为你的 GitHub 用户名
+    image: ghcr.io/BlkSword/rss-post-worker:latest
+    container_name: rss-post-feed-discovery-worker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD:-rss_post_password}@postgres:5432/${POSTGRES_DB:-rss_post}
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+      SERVICE_TYPE: worker
+      WORKER_TYPE: feed-discovery
+      FEED_DISCOVERY_CONCURRENCY: "3"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - rss-post-network
+
+  # ===================================================
+  # Deep Analysis Worker（深度分析）
+  # ===================================================
+  deep-analysis-worker:
+    # 替换 BlkSword 为你的 GitHub 用户名
+    image: ghcr.io/BlkSword/rss-post-worker:latest
+    container_name: rss-post-deep-analysis-worker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rss_post}:${POSTGRES_PASSWORD:-rss_post_password}@postgres:5432/${POSTGRES_DB:-rss_post}
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+      SERVICE_TYPE: worker
+      WORKER_TYPE: deep-analysis
+      DEEP_ANALYSIS_WORKER_CONCURRENCY: "2"
+      REFLECTION_ENABLED: ${REFLECTION_ENABLED:-true}
+      # AI 配置
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      CUSTOM_API_BASE_URL: ${CUSTOM_API_BASE_URL:-}
+      CUSTOM_API_KEY: ${CUSTOM_API_KEY:-}
+      CUSTOM_API_MODEL: ${CUSTOM_API_MODEL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - rss-post-network
+
+networks:
+  rss-post-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

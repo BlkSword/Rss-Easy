@@ -8,6 +8,7 @@
 #   ./start.sh              # 交互模式，会询问选项
 #   ./start.sh --prod       # 非交互模式，直接使用生产配置
 #   ./start.sh --dev        # 非交互模式，直接使用开发配置
+#   ./start.sh --prebuilt   # 非交互模式，使用预构建镜像（推荐）
 #
 
 set -e
@@ -23,6 +24,8 @@ NC='\033[0m' # No Color
 # 默认值
 INTERACTIVE=true
 COMPOSE_FILE="docker-compose.yml"
+USE_PREBUILT=false
+GHCR_OWNER="BlkSword"
 
 # 解析命令行参数
 for arg in "$@"; do
@@ -35,13 +38,19 @@ for arg in "$@"; do
             INTERACTIVE=false
             COMPOSE_FILE="docker-compose.yml"
             ;;
+        --prebuilt)
+            INTERACTIVE=false
+            USE_PREBUILT=true
+            COMPOSE_FILE="docker-compose.prebuilt.yml"
+            ;;
         --help)
             echo "RSS-Post 一键部署脚本"
             echo ""
             echo "用法："
             echo "  ./start.sh              # 交互模式"
-            echo "  ./start.sh --prod       # 非交互模式，生产环境"
-            echo "  ./start.sh --dev        # 非交互模式，开发环境"
+            echo "  ./start.sh --prod       # 非交互模式，生产环境（本地构建）"
+            echo "  ./start.sh --dev        # 非交互模式，开发环境（本地构建）"
+            echo "  ./start.sh --prebuilt   # 非交互模式，使用预构建镜像（推荐）"
             exit 0
             ;;
     esac
@@ -247,23 +256,31 @@ echo "[5/7] 选择启动模式..."
 
 if [ "$INTERACTIVE" = true ]; then
     echo "请选择启动模式："
-    echo "  1) 开发环境 (docker-compose.yml) - 快速体验"
-    echo "  2) 生产环境 (docker-compose.prod.yml) - 推荐用于正式部署"
+    echo "  1) 预构建镜像 (docker-compose.prebuilt.yml) - 推荐，快速部署"
+    echo "  2) 开发环境 (docker-compose.yml) - 本地构建"
+    echo "  3) 生产环境 (docker-compose.prod.yml) - 本地构建，完整配置"
     echo ""
-    read -p "请输入选项 (1/2，默认 1): " mode
+    read -p "请输入选项 (1/2/3，默认 1): " mode
 
     case $mode in
         2)
+            COMPOSE_FILE="docker-compose.yml"
+            echo -e "${BLUE}[开发模式] 使用 docker-compose.yml（本地构建）${NC}"
+            ;;
+        3)
             COMPOSE_FILE="docker-compose.prod.yml"
-            echo -e "${BLUE}[生产模式] 使用 docker-compose.prod.yml${NC}"
+            echo -e "${BLUE}[生产模式] 使用 docker-compose.prod.yml（本地构建）${NC}"
             ;;
         *)
-            COMPOSE_FILE="docker-compose.yml"
-            echo -e "${BLUE}[开发模式] 使用 docker-compose.yml${NC}"
+            USE_PREBUILT=true
+            COMPOSE_FILE="docker-compose.prebuilt.yml"
+            echo -e "${BLUE}[预构建模式] 使用 docker-compose.prebuilt.yml${NC}"
             ;;
     esac
 else
-    if [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
+    if [ "$USE_PREBUILT" = true ]; then
+        echo -e "${BLUE}[预构建模式] 使用 docker-compose.prebuilt.yml${NC}"
+    elif [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
         echo -e "${BLUE}[生产模式] 使用 docker-compose.prod.yml${NC}"
     else
         echo -e "${BLUE}[开发模式] 使用 docker-compose.yml${NC}"
@@ -284,32 +301,48 @@ echo "停止现有容器..."
 $COMPOSE_CMD -f $COMPOSE_FILE down 2>/dev/null || true
 
 # ========================================
-# 第七步：启动服务（传递动态构建参数）
+# 第七步：启动服务
 # ========================================
 echo ""
 echo "[7/7] 启动 Docker 服务..."
 echo ""
 
-# 启用 BuildKit
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
-
-# 使用动态参数构建
-$COMPOSE_CMD -f $COMPOSE_FILE build \
-    --build-arg BUILD_MEMORY=$BUILD_MEMORY \
-    --build-arg RUNTIME_MEMORY=$RUNTIME_MEMORY \
-    --build-arg PNPM_CONCURRENCY=$PNPM_CONCURRENCY
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}[错误] Docker 镜像构建失败${NC}"
+if [ "$USE_PREBUILT" = true ]; then
+    # 使用预构建镜像（无需本地构建）
+    echo -e "${CYAN}使用预构建镜像部署...${NC}"
     echo ""
-    echo "故障排查："
-    if [ "$MEMORY_PROFILE" = "minimal" ]; then
-        echo "  1. 增加系统 swap 分区"
-        echo "  2. 关闭其他占用内存的应用"
+
+    # 拉取最新镜像
+    echo "拉取最新镜像..."
+    $COMPOSE_CMD -f $COMPOSE_FILE pull
+
+    if [ $? -ne 0 ]; then
+        echo -e "${YELLOW}⚠ 镜像拉取失败，尝试使用本地缓存...${NC}"
     fi
-    echo "  查看详细日志: $COMPOSE_CMD -f $COMPOSE_FILE logs"
-    exit 1
+else
+    # 本地构建模式
+    # 启用 BuildKit
+    export DOCKER_BUILDKIT=1
+    export COMPOSE_DOCKER_CLI_BUILD=1
+
+    # 使用动态参数构建
+    $COMPOSE_CMD -f $COMPOSE_FILE build \
+        --build-arg BUILD_MEMORY=$BUILD_MEMORY \
+        --build-arg RUNTIME_MEMORY=$RUNTIME_MEMORY \
+        --build-arg PNPM_CONCURRENCY=$PNPM_CONCURRENCY
+
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}[错误] Docker 镜像构建失败${NC}"
+        echo ""
+        echo "故障排查："
+        if [ "$MEMORY_PROFILE" = "minimal" ]; then
+            echo "  1. 增加系统 swap 分区"
+            echo "  2. 关闭其他占用内存的应用"
+        fi
+        echo "  或尝试使用预构建镜像: ./start.sh --prebuilt"
+        echo "  查看详细日志: $COMPOSE_CMD -f $COMPOSE_FILE logs"
+        exit 1
+    fi
 fi
 
 # 启动服务
@@ -341,10 +374,17 @@ echo -e "${GREEN}================================${NC}"
 echo -e "${GREEN}✓ 部署完成！${NC}"
 echo -e "${GREEN}================================${NC}"
 echo ""
-echo -e "${BLUE}系统配置:${NC}"
-echo "  内存配置档: ${MEMORY_PROFILE}"
-echo "  构建内存: ${BUILD_MEMORY}MB"
-echo "  运行时内存: ${RUNTIME_MEMORY}MB"
+
+if [ "$USE_PREBUILT" = true ]; then
+    echo -e "${BLUE}部署模式: 预构建镜像（快速部署）${NC}"
+    echo ""
+else
+    echo -e "${BLUE}系统配置:${NC}"
+    echo "  内存配置档: ${MEMORY_PROFILE}"
+    echo "  构建内存: ${BUILD_MEMORY}MB"
+    echo "  运行时内存: ${RUNTIME_MEMORY}MB"
+    echo ""
+fi
 echo ""
 echo -e "${BLUE}访问信息：${NC}"
 echo "  应用地址: http://localhost:8915"
@@ -355,6 +395,7 @@ echo "  查看日志: $COMPOSE_CMD -f $COMPOSE_FILE logs -f"
 echo "  查看状态: $COMPOSE_CMD -f $COMPOSE_FILE ps"
 echo "  停止服务: $COMPOSE_CMD -f $COMPOSE_FILE down"
 echo "  重启服务: $COMPOSE_CMD -f $COMPOSE_FILE restart"
+echo "  快速更新: ./start.sh --prebuilt"
 echo ""
 
 if [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
