@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   // Turbopack is enabled by default in Next.js 15+
   output: 'standalone',
 
+  // React 19 编译器优化 - 自动 memoization（Next.js 16+ 移至顶层）
+  reactCompiler: true,
+
   // 🆕 实验性优化 - 减少包体积
   experimental: {
     // 优化大型库的导入

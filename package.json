@@ -115,6 +115,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/jest": "^29.5.14",
     "@types/nodemailer": "^7.0.9",
+    "babel-plugin-react-compiler": "^1.0.0",
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.1.6",
     "https-proxy-agent": "^7.0.6",

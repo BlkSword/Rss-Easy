@@ -26,7 +26,7 @@ import { useToast } from '@/components/ui/toast';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Button, Modal } from 'antd';
 import { SidebarSkeleton } from '@/components/ui/skeleton';
-import { useLanguage } from '@/components/providers/language-provider';
+import { useLanguage } from '@/components/providers/app-provider';
 
 export interface AppSidebarProps {
   collapsed?: boolean;

@@ -10,8 +10,7 @@ import { Select, Button, Card, Switch, Slider, Tooltip } from 'antd';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { notifySuccess, notifyError } from '@/lib/feedback';
-import { useTheme } from '@/components/providers/theme-provider';
-import { useLanguage } from '@/components/providers/language-provider';
+import { useTheme, useLanguage } from '@/components/providers/app-provider';
 
 interface PreferencesSettingsProps {
   user: any;

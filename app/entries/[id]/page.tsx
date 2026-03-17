@@ -49,9 +49,36 @@ import { Typewriter } from '@/components/animation/typewriter';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Spinner, LoadingDots } from '@/components/animation/loading';
 import { usePageLoadAnimation, useScrollProgress, useRipple } from '@/hooks/use-animation';
-import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
 import { useIsMobile } from '@/hooks/use-media-query';
-import { AIAnalysisSidebar } from '@/components/entries/ai-analysis-sidebar';
+import dynamic from 'next/dynamic';
+
+// 动态导入大型组件，减少首屏加载时间
+const RichContentRenderer = dynamic(
+  () => import('@/components/entries/rich-content-renderer').then(mod => ({ default: mod.RichContentRenderer })),
+  {
+    loading: () => (
+      <div className="space-y-4">
+        <div className="h-4 bg-muted/50 rounded animate-pulse" />
+        <div className="h-4 bg-muted/50 rounded animate-pulse w-4/5" />
+        <div className="h-4 bg-muted/50 rounded animate-pulse w-3/4" />
+      </div>
+    ),
+    ssr: false,
+  }
+);
+
+const AIAnalysisSidebar = dynamic(
+  () => import('@/components/entries/ai-analysis-sidebar').then(mod => ({ default: mod.AIAnalysisSidebar })),
+  {
+    loading: () => (
+      <div className="w-80 p-4 space-y-4">
+        <div className="h-8 bg-muted/50 rounded animate-pulse" />
+        <div className="h-32 bg-muted/50 rounded animate-pulse" />
+      </div>
+    ),
+    ssr: false,
+  }
+);
 
 const { Title, Text, Paragraph } = Typography;
 

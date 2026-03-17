@@ -12,7 +12,22 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc/client';
 import { Button, Divider, Skeleton, Tag } from 'antd';
 import { useToast } from '@/components/ui/toast';
-import { RichContentRenderer } from '@/components/entries/rich-content-renderer';
+import dynamic from 'next/dynamic';
+
+// 动态导入富文本渲染器
+const RichContentRenderer = dynamic(
+  () => import('@/components/entries/rich-content-renderer').then(mod => ({ default: mod.RichContentRenderer })),
+  {
+    loading: () => (
+      <div className="space-y-4 py-4">
+        <div className="h-4 bg-muted/50 rounded animate-pulse" />
+        <div className="h-4 bg-muted/50 rounded animate-pulse w-4/5" />
+        <div className="h-4 bg-muted/50 rounded animate-pulse w-3/4" />
+      </div>
+    ),
+    ssr: false,
+  }
+);
 
 interface ArticlePreviewPanelProps {
   entryId?: string | null;

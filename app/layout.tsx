@@ -3,9 +3,7 @@ import './globals.css';
 import { TRPCProvider } from '@/lib/trpc/provider';
 import { ToastProvider } from '@/components/ui/toast';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { ThemeProvider } from '@/components/providers/theme-provider';
-import { AntdThemeProvider } from '@/components/providers/antd-theme-provider';
-import { LanguageProvider } from '@/components/providers/language-provider';
+import { AppProvider } from '@/components/providers/app-provider';
 import { PWAProvider } from '@/components/providers/pwa-provider';
 import { MaintenanceGuard } from '@/components/providers/maintenance-guard';
 import { MobileBottomNav } from '@/components/mobile/mobile-bottom-nav';
@@ -68,25 +66,21 @@ export default function RootLayout({
 
         <ErrorBoundary>
           <PWAProvider>
-            <LanguageProvider>
-              <ThemeProvider>
-                <AntdThemeProvider>
-                  <ToastProvider>
-                    <TRPCProvider>
-                      <MaintenanceGuard>
-                        {children}
-                        {/* 移动端底部导航 */}
-                      <MobileBottomNav />
-                      {/* PWA 提示 */}
-                      <NetworkStatusToast />
-                      <InstallPrompt />
-                      <UpdatePrompt />
-                      </MaintenanceGuard>
-                    </TRPCProvider>
-                  </ToastProvider>
-                </AntdThemeProvider>
-              </ThemeProvider>
-            </LanguageProvider>
+            <AppProvider>
+              <ToastProvider>
+                <TRPCProvider>
+                  <MaintenanceGuard>
+                    {children}
+                    {/* 移动端底部导航 */}
+                    <MobileBottomNav />
+                    {/* PWA 提示 */}
+                    <NetworkStatusToast />
+                    <InstallPrompt />
+                    <UpdatePrompt />
+                  </MaintenanceGuard>
+                </TRPCProvider>
+              </ToastProvider>
+            </AppProvider>
           </PWAProvider>
         </ErrorBoundary>
       </body>

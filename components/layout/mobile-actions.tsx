@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-media-query';
-import { useTheme } from '@/components/providers/theme-provider';
+import { useTheme } from '@/components/providers/app-provider';
 import { useToast } from '@/components/ui/toast';
 
 interface MobileActionButton {
