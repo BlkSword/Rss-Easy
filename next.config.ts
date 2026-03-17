@@ -28,6 +28,10 @@ const nextConfig: NextConfig = {
 
   // 🆕 静态资源缓存策略
   async headers() {
+    // 检测是否为 HTTPS 环境（生产环境通常使用 HTTPS）
+    const isHttps = process.env.SECURE_COOKIE === 'true' ||
+                    process.env.NODE_ENV === 'production' && process.env.VERCEL === '1';
+
     const securityHeaders = [
       {
         source: '/:path*',
@@ -36,10 +40,11 @@ const nextConfig: NextConfig = {
             key: 'X-DNS-Prefetch-Control',
             value: 'on'
           },
-          {
+          // HSTS 仅在 HTTPS 环境下启用，避免 HTTP 环境的强制 HTTPS 问题
+          ...(isHttps ? [{
             key: 'Strict-Transport-Security',
             value: 'max-age=63072000; includeSubDomains; preload'
-          },
+          }] : []),
           {
             key: 'X-Frame-Options',
             value: 'SAMEORIGIN'
@@ -73,7 +78,8 @@ const nextConfig: NextConfig = {
               "base-uri 'self'",
               "frame-ancestors 'none'",
               "form-action 'self'",
-              "upgrade-insecure-requests",
+              // upgrade-insecure-requests 仅在 HTTPS 环境下启用
+              ...(isHttps ? ["upgrade-insecure-requests"] : []),
             ].join('; ')
           },
           {
