@@ -1,0 +1,14 @@
+data.db
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+__debug_bin
+rss-post-cli
+rss-post-cli-arm64
+rss-post-cli-amd64
+reference/
+CLAUDE.md
