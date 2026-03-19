@@ -9,6 +9,7 @@ import (
 	"github.com/rss-post/cli/internal/ai"
 	"github.com/rss-post/cli/internal/config"
 	"github.com/rss-post/cli/internal/db"
+	"github.com/rss-post/cli/internal/email"
 )
 
 type Generator struct {
@@ -199,6 +200,103 @@ func (g *Generator) renderMarkdown(report *Report) string {
 
 func (g *Generator) SaveReport(report *Report, filePath string) error {
 	return os.WriteFile(filePath, []byte(report.Content), 0644)
+}
+
+// RenderHTML renders the report as HTML email content.
+func (g *Generator) RenderHTML(report *Report) string {
+	var sb strings.Builder
+
+	sb.WriteString(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; line-height: 1.6;">
+`)
+
+	// Header
+	sb.WriteString(`<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 25px;">`)
+	sb.WriteString(fmt.Sprintf(`<h1 style="margin: 0; font-size: 22px;">%s</h1>`, report.Title))
+	sb.WriteString(fmt.Sprintf(`<p style="margin: 8px 0 0; opacity: 0.9; font-size: 14px;">%s · Generated %s</p>`, report.Period, report.GeneratedAt.Format("2006-01-02 15:04")))
+	sb.WriteString(`</div>`)
+
+	// Stats
+	sb.WriteString(`<div style="background: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px;">`)
+	sb.WriteString(`<p style="margin: 0; font-size: 14px; color: #555;">`)
+	sb.WriteString(fmt.Sprintf(`<strong>%d</strong> 篇文章 · <strong>%d</strong> 篇已分析 · 平均评分 <strong>%.1f</strong>/10`, report.Stats.TotalEntries, report.Stats.AnalyzedEntries, report.Stats.AvgAIScore))
+	sb.WriteString(`</p></div>`)
+
+	// Sections
+	for _, section := range report.Sections {
+		sb.WriteString(fmt.Sprintf(`<h2 style="color: #444; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 30px;">%s</h2>`, section.Title))
+
+		for _, entry := range section.Entries {
+			sb.WriteString(`<div style="margin: 15px 0; padding: 15px; background: white; border-left: 4px solid #667eea; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-radius: 0 8px 8px 0;">`)
+			sb.WriteString(fmt.Sprintf(`<a href="%s" style="color: #667eea; text-decoration: none; font-weight: 600; font-size: 16px;">%s</a>`, entry.URL, entry.Title))
+
+			if entry.AIOneLineSummary != "" {
+				sb.WriteString(fmt.Sprintf(`<p style="margin: 8px 0 0; color: #666; font-style: italic;">%s</p>`, entry.AIOneLineSummary))
+			}
+
+			if entry.AISummary != "" {
+				// Truncate summary for email
+				summary := entry.AISummary
+				if len(summary) > 300 {
+					summary = summary[:300] + "..."
+				}
+				sb.WriteString(fmt.Sprintf(`<p style="margin: 8px 0 0; color: #555; font-size: 14px;">%s</p>`, summary))
+			}
+
+			if entry.AIScore > 0 {
+				scoreColor := "#28a745" // green
+				if entry.AIScore >= 8 {
+					scoreColor = "#dc3545" // red for high
+				} else if entry.AIScore >= 6 {
+					scoreColor = "#ffc107" // yellow
+				}
+				sb.WriteString(fmt.Sprintf(`<span style="display: inline-block; margin-top: 8px; padding: 2px 10px; background: %s; color: white; border-radius: 12px; font-size: 13px; font-weight: 600;">★ %d/10</span>`, scoreColor, entry.AIScore))
+			}
+
+			sb.WriteString(`</div>`)
+		}
+	}
+
+	// Footer
+	sb.WriteString(`<div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #999; font-size: 12px;">`)
+	sb.WriteString(`<p>RSS-Post CLI · AI 驱动的智能 RSS 信息聚合工具</p>`)
+	sb.WriteString(`</div></body></html>`)
+
+	return sb.String()
+}
+
+// SendEmail sends the report via email.
+func (g *Generator) SendEmail(rpt *Report, to []string) error {
+	if !g.cfg.Email.Enabled {
+		return fmt.Errorf("email not enabled in config")
+	}
+
+	smtpCfg := email.SMTPConfig{
+		Host:               g.cfg.Email.SMTP.Host,
+		Port:               g.cfg.Email.SMTP.Port,
+		Username:           g.cfg.Email.SMTP.Username,
+		Password:           g.cfg.Email.SMTP.Password,
+		InsecureSkipVerify: g.cfg.Email.SMTP.InsecureSkipVerify,
+	}
+
+	sender := email.NewSender2(g.cfg.Email.From, smtpCfg)
+
+	htmlContent := g.RenderHTML(rpt)
+
+	subject := g.cfg.Email.Subject
+	if subject == "" {
+		subject = rpt.Title
+	} else {
+		subject = fmt.Sprintf("%s - %s", subject, rpt.GeneratedAt.Format("2006-01-02"))
+	}
+
+	if len(to) == 0 {
+		to = g.cfg.Email.To
+	}
+
+	return sender.Send(to, subject, htmlContent)
 }
 
 func (g *Generator) GenerateAIReport(report *Report) (string, error) {

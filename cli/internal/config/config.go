@@ -14,6 +14,8 @@ type Config struct {
 	Fetch    FetchConfig    `toml:"fetch"`
 	Proxy    ProxyConfig    `toml:"proxy"`
 	Output   OutputConfig   `toml:"output"`
+	Email    EmailConfig    `toml:"email"`
+	Schedule ScheduleConfig `toml:"schedule"`
 }
 
 type DatabaseConfig struct {
@@ -53,6 +55,30 @@ type OutputConfig struct {
 	Color  bool   `toml:"color"`
 }
 
+type SMTPConfig struct {
+	Host               string `toml:"host"`
+	Port               int    `toml:"port"`
+	Username           string `toml:"username"`
+	Password           string `toml:"password"`
+	InsecureSkipVerify bool   `toml:"insecure_skip_verify"`
+}
+
+type EmailConfig struct {
+	Enabled   bool       `toml:"enabled"`
+	From      string     `toml:"from"`
+	To        []string   `toml:"to"`
+	Subject   string     `toml:"subject"`
+	SMTP      SMTPConfig `toml:"smtp"`
+}
+
+type ScheduleConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Type     string `toml:"type"`     // "daily" or "weekly"
+	Hour     int    `toml:"hour"`     // 0-23, e.g. 8 = 8:00 AM
+	Minute   int    `toml:"minute"`   // 0-59
+	SendMail bool   `toml:"send_mail"` // also send via email
+}
+
 func DefaultConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
 	dbPath := filepath.Join(homeDir, ".rss-post", "data.db")
@@ -87,6 +113,24 @@ func DefaultConfig() *Config {
 		Output: OutputConfig{
 			Format: "table",
 			Color:  true,
+		},
+		Email: EmailConfig{
+			Enabled: false,
+			From:    "",
+			To:      []string{},
+			Subject: "RSS-Post 日报",
+			SMTP: SMTPConfig{
+				Host:               "smtp.qq.com",
+				Port:               465,
+				InsecureSkipVerify: false,
+			},
+		},
+		Schedule: ScheduleConfig{
+			Enabled:  false,
+			Type:     "daily",
+			Hour:     8,
+			Minute:   0,
+			SendMail: true,
 		},
 	}
 }

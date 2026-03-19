@@ -72,6 +72,22 @@ var configShowCmd = &cobra.Command{
 			fmt.Printf("  Host:        %s\n", cfg.Proxy.Host)
 			fmt.Printf("  Port:        %s\n", cfg.Proxy.Port)
 		}
+
+		fmt.Printf("\nEmail Settings:\n")
+		fmt.Printf("  Enabled:     %v\n", cfg.Email.Enabled)
+		if cfg.Email.Enabled {
+			fmt.Printf("  From:        %s\n", cfg.Email.From)
+			fmt.Printf("  To:          %v\n", cfg.Email.To)
+			fmt.Printf("  SMTP:        %s:%d\n", cfg.Email.SMTP.Host, cfg.Email.SMTP.Port)
+		}
+
+		fmt.Printf("\nSchedule Settings:\n")
+		fmt.Printf("  Enabled:     %v\n", cfg.Schedule.Enabled)
+		if cfg.Schedule.Enabled {
+			fmt.Printf("  Type:        %s\n", cfg.Schedule.Type)
+			fmt.Printf("  Time:        %02d:%02d\n", cfg.Schedule.Hour, cfg.Schedule.Minute)
+			fmt.Printf("  Send Email:  %v\n", cfg.Schedule.SendMail)
+		}
 	},
 }
 

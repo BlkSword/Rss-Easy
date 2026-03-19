@@ -203,9 +203,95 @@ rss-post report daily --output report.md
 
 # 附带 AI 总结
 rss-post report daily --ai
+
+# 生成并通过邮件发送
+rss-post report daily --email
+
+# 直接发送日报邮件
+rss-post report send
+
+# 测试邮件配置
+rss-post report test-email --to your@email.com
 ```
 
-### 8. 导出订阅源
+### 8. 邮件推送
+
+支持通过 SMTP 发送 HTML 格式的报告邮件。
+
+配置 `~/.rss-post/config.toml`：
+
+```toml
+[email]
+enabled = true
+from = "your@email.com"
+to = ["recipient1@email.com", "recipient2@email.com"]
+subject = "RSS-Post 日报"
+
+  [email.smtp]
+  host = "smtp.qq.com"           # SMTP 服务器
+  port = 465                       # SSL 端口
+  username = "your@email.com"      # SMTP 用户名
+  password = "your-smtp-password"  # SMTP 密码/授权码
+  insecure_skip_verify = false
+```
+
+常用 SMTP 配置：
+
+| 邮箱 | Host | Port |
+|------|------|------|
+| QQ 邮箱 | smtp.qq.com | 465 |
+| 163 邮箱 | smtp.163.com | 465 |
+| Gmail | smtp.gmail.com | 465 |
+| Outlook | smtp.office365.com | 587 |
+
+### 9. 定时报告
+
+支持每天/每周自动生成报告并通过邮件发送。
+
+配置 `~/.rss-post/config.toml`：
+
+```toml
+[schedule]
+enabled = true          # 启用定时任务
+type = "daily"          # "daily" 或 "weekly"
+hour = 8                # 每天几点生成（24h）
+minute = 0              # 几分
+send_mail = true        # 是否同时发送邮件
+```
+
+```bash
+# 查看定时任务配置
+rss-post schedule show
+
+# 启动定时任务守护进程
+rss-post schedule run
+```
+
+> 💡 配合 systemd 或 crontab 可以实现开机自启和后台运行。
+
+systemd 示例（`/etc/systemd/system/rss-post-schedule.service`）：
+
+```ini
+[Unit]
+Description=RSS-Post Schedule Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rss-post-cli schedule run
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable rss-post-schedule
+sudo systemctl start rss-post-schedule
+```
+
+### 10. 导出订阅源
 
 ```bash
 rss-post feed export                    # 导出为 feeds.opml
@@ -224,6 +310,7 @@ Available Commands:
   analyze     AI 智能分析
   search      搜索文章
   report      生成报告
+  schedule    定时报告任务
   config      管理配置
 
 Flags:
@@ -264,8 +351,17 @@ rss-post analyze stats
 ### report 子命令
 
 ```
-rss-post report daily [YYYY-MM-DD] [--output file] [--ai]
-rss-post report weekly [YYYY-MM-DD] [--output file] [--ai]
+rss-post report daily [YYYY-MM-DD] [--output file] [--ai] [--email] [--to email1 --to email2]
+rss-post report weekly [YYYY-MM-DD] [--output file] [--ai] [--email]
+rss-post report send                                  生成日报并发送邮件
+rss-post report test-email [--to email]               发送测试邮件
+```
+
+### schedule 子命令
+
+```
+rss-post schedule show                               查看定时任务配置
+rss-post schedule run                                启动定时守护进程
 ```
 
 ### config 子命令
@@ -343,7 +439,8 @@ cmd/                    # CLI 命令层 (cobra)
   entries.go            文章管理
   analyze.go            AI 分析
   search.go             搜索
-  report.go             报告生成
+  report.go             报告生成 + 邮件发送
+  schedule.go           定时报告任务
   config.go             配置管理
 
 internal/               # 核心业务逻辑
@@ -362,7 +459,8 @@ internal/               # 核心业务逻辑
     analyzer.go         智能分析器 (双路径)
     prompts.go          Prompt 模板
   search/search.go      加权搜索引擎
-  report/report.go      报告生成器
+  report/report.go      报告生成器 + HTML 渲染
+  email/email.go        SMTP 邮件发送
   output/               输出格式化
     table.go            终端表格 (tablewriter)
     markdown.go         Markdown 格式
