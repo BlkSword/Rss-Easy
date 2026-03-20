@@ -214,10 +214,10 @@ func DeleteSavedReport(id int64) error {
 // GetDailyStats returns daily entry counts for the last N days.
 func GetDailyStats(days int) ([]*DailyStat, error) {
 	rows, err := DB.Query(`
-		SELECT DATE(COALESCE(published_at, created_at)) as date, COUNT(*) as count
+		SELECT substr(COALESCE(published_at, created_at), 1, 10) as date, COUNT(*) as count
 		FROM entries
-		WHERE COALESCE(published_at, created_at) >= DATE('now', '-' || ? || ' days')
-		GROUP BY DATE(COALESCE(published_at, created_at))
+		WHERE substr(COALESCE(published_at, created_at), 1, 10) >= substr(DATE('now', '-' || ? || ' days'), 1, 10)
+		GROUP BY substr(COALESCE(published_at, created_at), 1, 10)
 		ORDER BY date DESC
 	`, days)
 	if err != nil {
