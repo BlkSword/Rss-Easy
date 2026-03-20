@@ -146,25 +146,18 @@ func highlightMatches(entry *db.Entry, query string) *db.Entry {
 }
 
 func highlightText(text, query string) string {
+	if query == "" || text == "" {
+		return text
+	}
 	lower := strings.ToLower(text)
 	queryLower := strings.ToLower(query)
-
-	// Find all occurrences and wrap with markers
-	result := text
 	idx := strings.Index(lower, queryLower)
-	for idx >= 0 {
-		end := idx + len(query)
-		if end <= len(result) {
-			result = result[:idx] + ">>>" + result[idx:end] + "<<<" + result[end:]
-			lower = strings.ToLower(result)
-			// Adjust for added markers (6 chars each time)
-			queryLower = strings.ToLower(">>>" + query + "<<<")
-			idx = strings.Index(lower[idx+6+len(queryLower):], queryLower)
-			if idx >= 0 {
-				idx += 6 + idx + 6 // rough adjustment
-			}
-		}
-		break // Just highlight first occurrence
+	if idx < 0 {
+		return text
 	}
-	return result
+	end := idx + len(query)
+	if end > len(text) {
+		return text
+	}
+	return text[:idx] + ">>>" + text[idx:end] + "<<<" + text[end:]
 }
