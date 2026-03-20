@@ -73,12 +73,11 @@ var analyzeEntryCmd = &cobra.Command{
 
 var analyzeBatchCmd = &cobra.Command{
 	Use:   "batch",
-	Short: "Analyze pending entries (rate-limited by default)",
+	Short: "Analyze pending entries",
 	Run: func(cmd *cobra.Command, args []string) {
 		limit, _ := cmd.Flags().GetInt("limit")
 		concurrency, _ := cmd.Flags().GetInt("concurrency")
 		timeoutSec, _ := cmd.Flags().GetInt("timeout")
-		noLimit, _ := cmd.Flags().GetBool("no-limit")
 
 		entries, err := db.GetPendingAnalysisEntries(limit)
 		if err != nil {
@@ -91,16 +90,8 @@ var analyzeBatchCmd = &cobra.Command{
 			return
 		}
 
-		// Configure rate limiter
-		if cfg.AI.RequestsPerMinute > 0 && !noLimit {
-			ai.SetLimiter(cfg.AI.RequestsPerMinute)
-		} else if noLimit {
-			ai.SetLimiter(0) // disable rate limiting
-			fmt.Println("⚠ Rate limiting DISABLED — high concurrency may trigger API bans!")
-		}
-
-		fmt.Printf("Analyzing %d entries (concurrency=%d, timeout=%ds, rate_limit=%d RPM)...\n\n",
-			len(entries), concurrency, timeoutSec, cfg.AI.RequestsPerMinute)
+		fmt.Printf("Analyzing %d entries (concurrency=%d, timeout=%ds)...\n\n",
+			len(entries), concurrency, timeoutSec)
 
 		analyzer := ai.NewAnalyzer(cfg)
 
@@ -128,11 +119,6 @@ var analyzeBatchCmd = &cobra.Command{
 			}
 			fmt.Printf("\nComplete: %d analyzed, %d failed\n", successCount, failCount)
 		} else {
-			// Concurrent mode — warning if rate limiting is on
-			if !noLimit {
-				fmt.Println("⚠ Warning: concurrency > 1 with rate limiting may be slower than serial mode.")
-			}
-
 			var wg sync.WaitGroup
 			sem := make(chan struct{}, concurrency)
 			var mu sync.Mutex
@@ -308,8 +294,7 @@ func init() {
 
 	analyzeEntryCmd.Flags().BoolP("force", "f", false, "Force re-analysis")
 	analyzeBatchCmd.Flags().IntP("limit", "l", 50, "Maximum entries to analyze")
-	analyzeBatchCmd.Flags().IntP("concurrency", "c", 1, "Concurrency (warning: high values may trigger rate limits)")
-	analyzeBatchCmd.Flags().Bool("no-limit", false, "Disable rate limiting (risky, may trigger API bans)")
+	analyzeBatchCmd.Flags().IntP("concurrency", "c", 3, "Number of concurrent analyses")
 	analyzeBatchCmd.Flags().IntP("timeout", "t", 120, "Per-entry timeout in seconds (0 = no limit)")
 	analyzeRetryCmd.Flags().IntP("limit", "l", 20, "Maximum entries to retry")
 	analyzeRetryCmd.Flags().Int("max-retries", 0, "Max retry count (default: from config)")

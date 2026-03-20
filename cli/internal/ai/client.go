@@ -2,7 +2,6 @@ package ai
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -119,11 +118,6 @@ func (c *Client) getHeaders() map[string]string {
 }
 
 func (c *Client) Chat(messages []Message, model string) (string, error) {
-	// Rate limit all AI calls through the global limiter
-	if err := GetLimiter().Wait(context.Background()); err != nil {
-		return "", err
-	}
-
 	if model == "" {
 		model = c.cfg.AI.Model
 	}

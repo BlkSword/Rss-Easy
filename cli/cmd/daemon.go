@@ -75,6 +75,23 @@ feeds whose fetch_interval has elapsed since the last successful fetch.`,
 		}
 		logf("Press Ctrl+C to stop.")
 
+		// Initialize status
+		db.InitStatusPath()
+		status := &db.DaemonStatus{
+			PID:           os.Getpid(),
+			StartedAt:     time.Now(),
+			CheckInterval: interval,
+			Running:       true,
+			CurrentStep:   "idle",
+		}
+		db.SaveDaemonStatus(status)
+		defer func() {
+			status.Running = false
+			status.CurrentStep = "stopped"
+			db.SaveDaemonStatus(status)
+			db.ClearDaemonStatus()
+		}()
+
 		fetcher := rss.NewFetcher(cfg)
 		analyzer := ai.NewAnalyzer(cfg)
 
@@ -102,8 +119,20 @@ feeds whose fetch_interval has elapsed since the last successful fetch.`,
 
 func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Config, logf func(string, ...interface{})) {
 	logf("\n[%s] Pipeline start", time.Now().Format("15:04:05"))
+	now := time.Now()
+
+	// Load current status
+	status, _ := db.LoadDaemonStatus()
+	if status == nil {
+		status = &db.DaemonStatus{}
+	}
+	status.LastRunAt = now
+	status.PipelineCount++
 
 	// 1. Fetch due feeds
+	status.CurrentStep = "fetching"
+	db.SaveDaemonStatus(status)
+
 	results := fetcher.FetchDue()
 	newCount := 0
 	failedCount := 0
@@ -120,11 +149,17 @@ func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Co
 			failedFeeds = append(failedFeeds, r.FeedID)
 		}
 	}
+	status.FetchNewEntries += newCount
+	status.FetchFailures += failedCount
+	status.LastFetchAt = time.Now()
 
 	if newCount > 0 {
 		logf("  Fetched: %d new entries", newCount)
 
 		// 2. Apply rules
+		status.CurrentStep = "rules"
+		db.SaveDaemonStatus(status)
+
 		engine := rules.NewEngine()
 		ruleActions := 0
 		entries, _ := db.ListEntries(&db.EntryFilter{
@@ -136,12 +171,16 @@ func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Co
 			count, _ := engine.ApplyRules(entry)
 			ruleActions += count
 		}
+		status.RulesApplied += ruleActions
 		if ruleActions > 0 {
 			logf("  Rules applied: %d actions", ruleActions)
 		}
 
-		// 3. AI analysis (synchronous, rate-limited)
-		analyzePendingEntries(analyzer, cfg, logf)
+		// 3. AI analysis
+		status.CurrentStep = "analyzing"
+		db.SaveDaemonStatus(status)
+
+		analyzePendingEntries(analyzer, cfg, logf, status)
 	} else {
 		logf("  No new entries to process")
 	}
@@ -151,31 +190,29 @@ func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Co
 	}
 
 	// 4. Check scheduled reports
+	status.CurrentStep = "report"
+	db.SaveDaemonStatus(status)
+
 	checkAndSendScheduledReports(cfg, logf)
+
+	status.CurrentStep = "idle"
+	status.LastPipelineAt = time.Now()
+	db.SaveDaemonStatus(status)
 
 	logf("[%s] Pipeline done", time.Now().Format("15:04:05"))
 }
 
 // analyzePendingEntries processes pending AI analyses with rate limiting and timeouts.
 // Serial execution — no goroutines — to stay safe from provider rate limits.
-func analyzePendingEntries(analyzer *ai.Analyzer, cfg *config.Config, logf func(string, ...interface{})) {
-	// Configure rate limiter from config
-	if cfg.AI.RequestsPerMinute > 0 {
-		ai.SetLimiter(cfg.AI.RequestsPerMinute)
-	}
-
-	// Limit per-round processing to avoid blocking the pipeline too long
+func analyzePendingEntries(analyzer *ai.Analyzer, cfg *config.Config, logf func(string, ...interface{}), status *db.DaemonStatus) {
 	maxPerRound := 10
-	if cfg.AI.RequestsPerMinute > 0 && cfg.AI.RequestsPerMinute < maxPerRound {
-		maxPerRound = cfg.AI.RequestsPerMinute
-	}
 
 	pending, err := db.GetPendingAnalysisEntries(maxPerRound)
 	if err != nil || len(pending) == 0 {
 		return
 	}
 
-	logf("  AI: analyzing %d pending entries (rate limit: %d RPM)...", len(pending), cfg.AI.RequestsPerMinute)
+	logf("  AI: analyzing %d pending entries...", len(pending))
 
 	timeout := 120 * time.Second
 	successCount := 0
@@ -195,6 +232,15 @@ func analyzePendingEntries(analyzer *ai.Analyzer, cfg *config.Config, logf func(
 		}
 		successCount++
 		logf("  AI: ✓ Entry %d scored %d", entry.ID, entry.AIScore)
+		if status != nil {
+			status.AnalyzedSuccess++
+			db.SaveDaemonStatus(status)
+		}
+	}
+	if status != nil {
+		status.AnalyzedFailed += failCount
+		status.LastAnalysisAt = time.Now()
+		db.SaveDaemonStatus(status)
 	}
 
 	logf("  AI: %d analyzed, %d failed", successCount, failCount)
@@ -244,7 +290,71 @@ func checkAndSendScheduledReports(cfg *config.Config, logf func(string, ...inter
 	}
 }
 
+var daemonStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show daemon status and queue info",
+	Run: func(cmd *cobra.Command, args []string) {
+		status, err := db.LoadDaemonStatus()
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Println("Daemon is not running (no status file found)")
+				fmt.Println("\nTo start: rss-post daemon")
+				return
+			}
+			fmt.Fprintf(os.Stderr, "Error loading status: %v\n", err)
+			os.Exit(1)
+		}
+
+		uptime := time.Since(status.StartedAt).Truncate(time.Second)
+		running := "❌ Stopped"
+		if status.Running {
+			running = "✅ Running"
+		}
+
+		fmt.Println("═══ Daemon Status ═══")
+		fmt.Printf("  Status:          %s\n", running)
+		fmt.Printf("  PID:             %d\n", status.PID)
+		fmt.Printf("  Uptime:          %s\n", uptime)
+		fmt.Printf("  Check Interval:  %d min\n", status.CheckInterval)
+		fmt.Printf("  Pipeline Runs:   %d\n", status.PipelineCount)
+		fmt.Printf("  Last Run:        %s\n", status.LastRunAt.Format("2006-01-02 15:04:05"))
+		if !status.LastRunAt.IsZero() {
+			since := time.Since(status.LastRunAt).Truncate(time.Second)
+			fmt.Printf(" (%s ago)\n", since)
+		} else {
+			fmt.Println()
+		}
+		fmt.Printf("  Current Step:    %s\n", status.CurrentStep)
+		fmt.Println()
+
+		// Fetch stats
+		pending, analyzed, failed, abandoned := db.GetAnalysisQueueStats()
+		totalFeeds, dueFeeds, failedFeeds := db.GetFetchQueueStats()
+
+		fmt.Println("═══ Fetch Queue ═══")
+		fmt.Printf("  Total Feeds:     %d\n", totalFeeds)
+		fmt.Printf("  Due Now:         %d\n", dueFeeds)
+		fmt.Printf("  With Errors:     %d\n", failedFeeds)
+		fmt.Println()
+
+		fmt.Println("═══ Analysis Queue ═══")
+		fmt.Printf("  Pending:         %d\n", pending)
+		fmt.Printf("  Analyzed:        %d\n", analyzed)
+		fmt.Printf("  Failed:          %d\n", failed)
+		fmt.Printf("  Abandoned:       %d (retry limit reached)\n", abandoned)
+		fmt.Println()
+
+		fmt.Println("═══ Cumulative Stats ═══")
+		fmt.Printf("  Entries Fetched:  %d\n", status.FetchNewEntries)
+		fmt.Printf("  Fetch Failures:  %d\n", status.FetchFailures)
+		fmt.Printf("  AI Analyzed:     %d success / %d failed\n", status.AnalyzedSuccess, status.AnalyzedFailed)
+		fmt.Printf("  Rules Applied:   %d\n", status.RulesApplied)
+		fmt.Printf("  Reports Sent:    %d\n", status.ReportsSent)
+	},
+}
+
 func init() {
+	daemonCmd.AddCommand(daemonStatusCmd)
 	daemonCmd.Flags().Int("check-interval", 2, "How often to check for due feeds (minutes)")
 	daemonCmd.Flags().String("log", "", "Log file path (default: ~/.rss-post/daemon.log)")
 	daemonCmd.Flags().Bool("no-stdout", false, "Disable console output, write to log file only")
