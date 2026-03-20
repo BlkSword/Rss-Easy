@@ -75,27 +75,41 @@ var feedListCmd = &cobra.Command{
 var feedImportCmd = &cobra.Command{
 	Use:   "import <opml-file>",
 	Short: "Import feeds from OPML file",
-	Args:  cobra.ExactArgs(1),
+	Long:  `Import feeds from an OPML file. Uses concurrent fetching with configurable parallelism.
+Feed metadata is fetched concurrently; content fetching happens later via 'rss-post fetch'.`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		filePath := args[0]
-		fetcher := rss.NewFetcher(cfg)
+		concurrency, _ := cmd.Flags().GetInt("concurrency")
+		quiet, _ := cmd.Flags().GetBool("quiet")
 
-		result, err := rss.ImportOPML(filePath, fetcher)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error importing OPML: %v\n", err)
-			os.Exit(1)
+		if concurrency <= 0 {
+			concurrency = 10
 		}
 
-		fmt.Printf("OPML Import Results:\n")
-		fmt.Printf("  Total: %d\n", result.Total)
-		fmt.Printf("  Added: %d\n", result.Added)
-		fmt.Printf("  Skipped: %d\n", result.Skipped)
+		fetcher := rss.NewFetcher(cfg)
 
-		if len(result.Errors) > 0 {
-			fmt.Printf("\nErrors:\n")
-			for _, e := range result.Errors {
-				fmt.Printf("  - %s\n", e)
+		if quiet {
+			// Silent mode: no progress output
+			result, err := rss.ImportOPML(filePath, fetcher, concurrency)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error importing OPML: %v\n", err)
+				os.Exit(1)
 			}
+			printImportResult(result)
+		} else {
+			// Progress mode: show live progress
+			result, err := rss.ImportOPMLWithProgress(filePath, fetcher, concurrency,
+				func(done, total int) {
+					fmt.Printf("\r  Progress: %d/%d (%d%%)", done, total, done*100/total)
+				},
+			)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\nError importing OPML: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println() // New line after progress bar
+			printImportResult(result)
 		}
 	},
 }
@@ -120,6 +134,20 @@ var feedExportCmd = &cobra.Command{
 	},
 }
 
+func printImportResult(result *rss.ImportResult) {
+	fmt.Printf("OPML Import Results:\n")
+	fmt.Printf("  Total:   %d\n", result.Total)
+	fmt.Printf("  Added:   %d\n", result.Added)
+	fmt.Printf("  Skipped: %d\n", result.Skipped)
+	if len(result.Errors) > 0 {
+		fmt.Printf("  Errors:  %d\n", len(result.Errors))
+		fmt.Printf("\nErrors (showing first %d):\n", min(len(result.Errors), 10))
+		for _, e := range result.Errors {
+			fmt.Printf("  - %s\n", e)
+		}
+	}
+}
+
 func init() {
 	feedCmd.AddCommand(feedAddCmd)
 	feedCmd.AddCommand(feedRemoveCmd)
@@ -128,6 +156,8 @@ func init() {
 	feedCmd.AddCommand(feedExportCmd)
 
 	feedListCmd.Flags().BoolP("active-only", "a", false, "Show only active feeds")
+	feedImportCmd.Flags().IntP("concurrency", "c", 10, "Concurrent feed fetch count")
+	feedImportCmd.Flags().BoolP("quiet", "q", false, "Suppress progress output")
 
 	rootCmd.AddCommand(feedCmd)
 }

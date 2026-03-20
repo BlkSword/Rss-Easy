@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"context"
+
 	"github.com/rss-post/cli/internal/ai"
 	"github.com/rss-post/cli/internal/db"
 	"github.com/spf13/cobra"
@@ -70,6 +72,7 @@ var analyzeBatchCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		limit, _ := cmd.Flags().GetInt("limit")
 		concurrency, _ := cmd.Flags().GetInt("concurrency")
+		timeoutSec, _ := cmd.Flags().GetInt("timeout")
 
 		entries, err := db.GetPendingAnalysisEntries(limit)
 		if err != nil {
@@ -99,11 +102,19 @@ var analyzeBatchCmd = &cobra.Command{
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				err := analyzer.AnalyzeEntry(e)
+				var err error
+				if timeoutSec > 0 {
+					ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+					defer cancel()
+					err = analyzer.AnalyzeEntryWithContext(ctx, e)
+				} else {
+					err = analyzer.AnalyzeEntry(e)
+				}
+
 				mu.Lock()
 				if err != nil {
 					failCount++
-					fmt.Printf("✗ Entry %d: %v\n", e.ID, err)
+					fmt.Printf("✗ Entry %d: %s (Score: %d)\n", e.ID, truncate(e.Title, 40), e.AIScore)
 				} else {
 					successCount++
 					fmt.Printf("✓ Entry %d: %s (Score: %d)\n", e.ID, truncate(e.Title, 40), e.AIScore)
@@ -166,6 +177,7 @@ func init() {
 	analyzeEntryCmd.Flags().BoolP("force", "f", false, "Force re-analysis")
 	analyzeBatchCmd.Flags().IntP("limit", "l", 50, "Maximum entries to analyze")
 	analyzeBatchCmd.Flags().IntP("concurrency", "c", 3, "Number of concurrent analyses")
+	analyzeBatchCmd.Flags().IntP("timeout", "t", 120, "Timeout per entry in seconds (0 = no limit)")
 
 	rootCmd.AddCommand(analyzeCmd)
 }

@@ -20,7 +20,6 @@ var fetchCmd = &cobra.Command{
 		fetcher := rss.NewFetcher(cfg)
 
 		if len(args) > 0 {
-			// Fetch specific feed
 			feedID, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Invalid feed ID: %v\n", err)
@@ -40,32 +39,8 @@ var fetchCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		} else {
-			// Fetch all feeds
-			fmt.Println("Fetching all active feeds...")
-			start := time.Now()
-
-			results := fetcher.FetchAll()
-
-			totalNew := 0
-			successCount := 0
-			failCount := 0
-
-			for _, result := range results {
-				if result.Success {
-					successCount++
-					totalNew += result.NewCount
-					if result.NewCount > 0 {
-						fmt.Printf("✓ Feed %d: %d new entries\n", result.FeedID, result.NewCount)
-					}
-				} else {
-					failCount++
-					fmt.Printf("✗ Feed %d: %v\n", result.FeedID, result.Error)
-				}
-			}
-
-			elapsed := time.Since(start)
-			fmt.Printf("\nSummary: %d feeds fetched, %d new entries, %d failures (took %v)\n",
-				successCount, totalNew, failCount, elapsed.Round(time.Millisecond))
+			quiet, _ := cmd.Flags().GetBool("quiet")
+			fetchAll(fetcher, quiet)
 		}
 	},
 }
@@ -77,7 +52,7 @@ var fetchDaemonCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		interval, _ := cmd.Flags().GetInt("interval")
 		if interval == 0 {
-			interval = 60 // Default 60 minutes
+			interval = 60
 		}
 
 		fmt.Printf("Starting fetch daemon (interval: %d minutes)...\n", interval)
@@ -86,14 +61,51 @@ var fetchDaemonCmd = &cobra.Command{
 		fetcher := rss.NewFetcher(cfg)
 		ticker := time.NewTicker(time.Duration(interval) * time.Minute)
 
-		// Initial fetch
 		runFetch(fetcher)
 
-		// Periodic fetch
 		for range ticker.C {
 			runFetch(fetcher)
 		}
 	},
+}
+
+func fetchAll(fetcher *rss.Fetcher, quiet bool) {
+	fmt.Println("Fetching all active feeds...")
+	start := time.Now()
+
+	var results []*rss.FetchResult
+	if quiet {
+		results = fetcher.FetchAll()
+	} else {
+		results = fetcher.FetchAllWithProgress(func(completed, total int, result *rss.FetchResult) {
+			fmt.Printf("\r  Fetching: %d/%d (%d%%)", completed, total, completed*100/total)
+		})
+		fmt.Println() // Newline after progress
+	}
+
+	totalNew := 0
+	successCount := 0
+	failCount := 0
+
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		if result.Success {
+			successCount++
+			totalNew += result.NewCount
+			if result.NewCount > 0 {
+				fmt.Printf("✓ Feed %d: %d new entries\n", result.FeedID, result.NewCount)
+			}
+		} else {
+			failCount++
+			fmt.Printf("✗ Feed %d: %v\n", result.FeedID, result.Error)
+		}
+	}
+
+	elapsed := time.Since(start)
+	fmt.Printf("\nSummary: %d feeds fetched, %d new entries, %d failures (took %v)\n",
+		successCount, totalNew, failCount, elapsed.Round(time.Millisecond))
 }
 
 func runFetch(fetcher *rss.Fetcher) {
@@ -102,9 +114,9 @@ func runFetch(fetcher *rss.Fetcher) {
 	results := fetcher.FetchAll()
 
 	for _, result := range results {
-		if result.Success && result.NewCount > 0 {
+		if result != nil && result.Success && result.NewCount > 0 {
 			fmt.Printf("  Feed %d: %d new entries\n", result.FeedID, result.NewCount)
-		} else if !result.Success {
+		} else if result != nil && !result.Success {
 			fmt.Printf("  Feed %d: ERROR - %v\n", result.FeedID, result.Error)
 		}
 	}
@@ -113,6 +125,7 @@ func runFetch(fetcher *rss.Fetcher) {
 func init() {
 	fetchCmd.AddCommand(fetchDaemonCmd)
 	fetchDaemonCmd.Flags().IntP("interval", "i", 60, "Fetch interval in minutes")
+	fetchCmd.Flags().BoolP("quiet", "q", false, "Suppress progress output")
 
 	rootCmd.AddCommand(fetchCmd)
 }

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -15,21 +17,38 @@ import (
 	"github.com/rss-post/cli/internal/db"
 )
 
+// Parser handles RSS/Atom/JSON Feed parsing with connection pooling and proxy support.
 type Parser struct {
-	client  *http.Client
-	parser  *gofeed.Parser
-	cfg     *config.Config
+	client *http.Client
+	parser *gofeed.Parser
+	cfg    *config.Config
 }
 
+// sharedParser and parserOnce are used by SharedParser for connection reuse across batch operations.
+var (
+	sharedParser *Parser
+	parserOnce   sync.Once
+)
+
+// NewParser creates a Parser with shared transport (connection pooling) and optional proxy.
 func NewParser(cfg *config.Config) *Parser {
-	client := &http.Client{
-		Timeout: cfg.Fetch.Timeout,
+	transport := &http.Transport{
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		MaxConnsPerHost:     10,
 	}
 
-	// Configure proxy if enabled
-	if cfg.Proxy.Enabled {
-		// Proxy transport would be configured here
-		// For simplicity, using default transport
+	if cfg.Proxy.Enabled && cfg.Proxy.Host != "" {
+		proxyURL := fmt.Sprintf("%s://%s:%s", cfg.Proxy.Type, cfg.Proxy.Host, cfg.Proxy.Port)
+		if pURL, err := url.Parse(proxyURL); err == nil {
+			transport.Proxy = http.ProxyURL(pURL)
+		}
+	}
+
+	client := &http.Client{
+		Timeout:   cfg.Fetch.Timeout,
+		Transport: transport,
 	}
 
 	return &Parser{
@@ -37,6 +56,15 @@ func NewParser(cfg *config.Config) *Parser {
 		parser: gofeed.NewParser(),
 		cfg:    cfg,
 	}
+}
+
+// SharedParser returns a shared parser instance (lazy singleton).
+// Use this for batch operations to reuse connections.
+func SharedParser(cfg *config.Config) *Parser {
+	parserOnce.Do(func() {
+		sharedParser = NewParser(cfg)
+	})
+	return sharedParser
 }
 
 type ParsedFeed struct {
@@ -57,8 +85,14 @@ type ParsedItem struct {
 	ContentHash string
 }
 
+// Parse fetches and parses a feed URL.
 func (p *Parser) Parse(feedURL string) (*ParsedFeed, error) {
-	req, err := http.NewRequestWithContext(context.Background(), "GET", feedURL, nil)
+	return p.ParseWithContext(context.Background(), feedURL)
+}
+
+// ParseWithContext fetches and parses a feed URL with context for cancellation.
+func (p *Parser) ParseWithContext(ctx context.Context, feedURL string) (*ParsedFeed, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -73,10 +107,11 @@ func (p *Parser) Parse(feedURL string) (*ParsedFeed, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch feed: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	// Limit read size to 5MB to prevent memory issues
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
 	if err != nil {
 		return nil, err
 	}
@@ -109,13 +144,54 @@ func (p *Parser) Parse(feedURL string) (*ParsedFeed, error) {
 			parsedItem.PublishedAt = item.UpdatedParsed
 		}
 
-		// Generate content hash for deduplication
 		parsedItem.ContentHash = generateContentHash(parsedItem.Title, parsedItem.URL, parsedItem.Content)
-
 		parsed.Items = append(parsed.Items, parsedItem)
 	}
 
 	return parsed, nil
+}
+
+// ParseFeedOnly fetches just the feed metadata (title, description, etc.) without items.
+// Useful for OPML import where we don't need to fetch content immediately.
+func (p *Parser) ParseFeedOnly(feedURL string) (*ParsedFeed, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", p.cfg.Fetch.UserAgent)
+	req.Header.Set("Accept", "application/rss+xml, application/atom+xml, application/xml, text/xml, */*")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024)) // 512KB enough for metadata
+	if err != nil {
+		return nil, err
+	}
+
+	feed, err := p.parser.ParseString(string(data))
+	if err != nil {
+		return nil, err
+	}
+
+	return &ParsedFeed{
+		Title:       feed.Title,
+		Description: feed.Description,
+		SiteURL:     feed.Link,
+		FeedURL:     feedURL,
+		Items:       nil, // Skip items for lightweight parsing
+	}, nil
 }
 
 func getAuthor(item *gofeed.Item) string {
@@ -135,7 +211,6 @@ func getAuthor(item *gofeed.Item) string {
 }
 
 func generateContentHash(title, url, content string) string {
-	// Use first 500 chars of content for hash to avoid huge strings
 	contentPart := content
 	if len(content) > 500 {
 		contentPart = content[:500]
