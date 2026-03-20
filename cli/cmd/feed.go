@@ -148,16 +148,113 @@ func printImportResult(result *rss.ImportResult) {
 	}
 }
 
+var feedDiscoverCmd = &cobra.Command{
+	Use:   "discover <url>",
+	Short: "Discover RSS feeds from a web page",
+	Long:  `Discover RSS/Atom feeds from a web page by checking <link> tags and common feed paths.`,
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		url := args[0]
+		addAll, _ := cmd.Flags().GetBool("add-all")
+
+		fmt.Printf("Discovering feeds from %s...\n", url)
+		feeds, err := rss.DiscoverFeeds(url)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error discovering feeds: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(feeds) == 0 {
+			fmt.Println("No RSS feeds found.")
+			return
+		}
+
+		fmt.Printf("Found %d feed(s):\n\n", len(feeds))
+		for i, f := range feeds {
+			fmt.Printf("  %d. %s (%s)\n", i+1, f.Title, f.Type)
+			fmt.Printf("     %s\n\n", f.URL)
+		}
+
+		if addAll {
+			fetcher := rss.NewFetcher(cfg)
+			for _, f := range feeds {
+				feed, err := fetcher.AddFeed(f.URL)
+				if err != nil {
+					fmt.Printf("  ✗ Failed to add %s: %v\n", f.Title, err)
+				} else {
+					fmt.Printf("  ✓ Added: %s (ID: %d)\n", feed.Title, feed.ID)
+				}
+			}
+		}
+	},
+}
+
+var feedSuggestCmd = &cobra.Command{
+	Use:   "suggest [keyword]",
+	Short: "Suggest popular RSS feeds",
+	Long:  `Suggest popular RSS feeds. Optionally filter by keyword or category.`,
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		var keyword string
+		if len(args) > 0 {
+			keyword = args[0]
+		}
+
+		var results []struct {
+			Category string
+			Name     string
+			URL      string
+		}
+
+		if keyword != "" {
+			results = rss.SuggestFeeds(keyword)
+		} else {
+			// Show all categories
+			for category, feeds := range rss.PopularFeeds {
+				for _, f := range feeds {
+					results = append(results, struct {
+						Category string
+						Name     string
+						URL      string
+					}{category, f.Name, f.URL})
+				}
+			}
+		}
+
+		if len(results) == 0 {
+			fmt.Printf("No feeds found matching '%s'.\n", keyword)
+			fmt.Println("Try categories: Tech, AI/ML, Security, Development, Science")
+			return
+		}
+
+		lastCategory := ""
+		for _, r := range results {
+			if r.Category != lastCategory {
+				if lastCategory != "" {
+					fmt.Println()
+				}
+				fmt.Printf("📋 %s\n", r.Category)
+				lastCategory = r.Category
+			}
+			fmt.Printf("  • %s\n", r.Name)
+			fmt.Printf("    %s\n", r.URL)
+		}
+	},
+}
+
 func init() {
 	feedCmd.AddCommand(feedAddCmd)
 	feedCmd.AddCommand(feedRemoveCmd)
 	feedCmd.AddCommand(feedListCmd)
 	feedCmd.AddCommand(feedImportCmd)
 	feedCmd.AddCommand(feedExportCmd)
+	feedCmd.AddCommand(feedDiscoverCmd)
+	feedCmd.AddCommand(feedSuggestCmd)
 
 	feedListCmd.Flags().BoolP("active-only", "a", false, "Show only active feeds")
 	feedImportCmd.Flags().IntP("concurrency", "c", 10, "Concurrent feed fetch count")
 	feedImportCmd.Flags().BoolP("quiet", "q", false, "Suppress progress output")
+	feedDiscoverCmd.Flags().Bool("add-all", false, "Automatically add all discovered feeds")
 
 	rootCmd.AddCommand(feedCmd)
 }

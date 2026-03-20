@@ -5,6 +5,7 @@ import (
 
 	"github.com/rss-post/cli/internal/config"
 	"github.com/rss-post/cli/internal/db"
+	"github.com/rss-post/cli/internal/rules"
 	"github.com/spf13/cobra"
 )
 
@@ -27,11 +28,26 @@ articles using various AI providers (OpenAI, Anthropic, DeepSeek, etc.).`,
 		if err != nil {
 			return err
 		}
-		return db.Init(cfg.Database.Path)
+		if err := db.Init(cfg.Database.Path); err != nil {
+			return err
+		}
+
+		// Ensure all feature tables exist (idempotent)
+		_ = rules.EnsureTables()
+		_ = db.EnsureCategoryTables()
+		_ = db.EnsureSearchTables()
+		_ = db.EnsureReportTables()
+
+		return nil
 	},
 }
 
 func Execute() {
+	// Register all subcommands
+	addBulkCommands()
+	addSearchEnhancements()
+	addReportDBSave()
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

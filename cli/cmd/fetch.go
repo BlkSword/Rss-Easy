@@ -8,17 +8,20 @@ import (
 
 	"github.com/rss-post/cli/internal/db"
 	"github.com/rss-post/cli/internal/rss"
+	"github.com/rss-post/cli/internal/rules"
 	"github.com/spf13/cobra"
 )
 
 var fetchCmd = &cobra.Command{
 	Use:   "fetch [feed-id]",
 	Short: "Fetch RSS feeds",
-	Long:  `Fetch RSS feeds to get new articles. If feed-id is specified, only that feed is fetched.`,
+	Long:  `Fetch RSS feeds to get new articles. If feed-id is specified, only that feed is fetched.
+After fetching, rules are automatically applied to new entries.`,
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		fetcher := rss.NewFetcher(cfg)
 		fullContent, _ := cmd.Flags().GetBool("full")
+		skipRules, _ := cmd.Flags().GetBool("skip-rules")
 
 		if len(args) > 0 {
 			feedID, err := strconv.ParseInt(args[0], 10, 64)
@@ -35,13 +38,18 @@ var fetchCmd = &cobra.Command{
 
 			if result.Success {
 				fmt.Printf("Fetched feed %d: %d new entries\n", result.FeedID, result.NewCount)
+
+				// Auto-apply rules to new entries
+				if result.NewCount > 0 && !skipRules {
+					applyRulesToNewEntries(result.FeedID)
+				}
 			} else {
 				fmt.Fprintf(os.Stderr, "Failed to fetch feed %d: %v\n", result.FeedID, result.Error)
 				os.Exit(1)
 			}
 		} else {
 			quiet, _ := cmd.Flags().GetBool("quiet")
-			fetchAll(fetcher, quiet, fullContent)
+			fetchAll(fetcher, quiet, fullContent, skipRules)
 		}
 	},
 }
@@ -71,7 +79,28 @@ var fetchDaemonCmd = &cobra.Command{
 	},
 }
 
-func fetchAll(fetcher *rss.Fetcher, quiet bool, fullContent bool) {
+// applyRulesToNewEntries applies all enabled rules to the latest entries from a feed.
+func applyRulesToNewEntries(feedID int64) int {
+	entries, err := db.ListEntries(&db.EntryFilter{
+		FeedID:    &feedID,
+		Limit:     20,
+		OrderBy:   "created_at",
+		OrderDesc: true,
+	})
+	if err != nil {
+		return 0
+	}
+
+	engine := rules.NewEngine()
+	totalActions := 0
+	for _, entry := range entries {
+		count, _ := engine.ApplyRules(entry)
+		totalActions += count
+	}
+	return totalActions
+}
+
+func fetchAll(fetcher *rss.Fetcher, quiet bool, fullContent bool, skipRules bool) {
 	if fullContent {
 		fmt.Println("Fetching all active feeds (with full content extraction)...")
 	} else {
@@ -92,6 +121,7 @@ func fetchAll(fetcher *rss.Fetcher, quiet bool, fullContent bool) {
 	totalNew := 0
 	successCount := 0
 	failCount := 0
+	feedsWithNew := []int64{}
 
 	for _, result := range results {
 		if result == nil {
@@ -102,10 +132,24 @@ func fetchAll(fetcher *rss.Fetcher, quiet bool, fullContent bool) {
 			totalNew += result.NewCount
 			if result.NewCount > 0 {
 				fmt.Printf("✓ Feed %d: %d new entries\n", result.FeedID, result.NewCount)
+				feedsWithNew = append(feedsWithNew, result.FeedID)
 			}
 		} else {
 			failCount++
 			fmt.Printf("✗ Feed %d: %v\n", result.FeedID, result.Error)
+		}
+	}
+
+	// Auto-apply rules to new entries
+	if totalNew > 0 && !skipRules {
+		fmt.Println("\nApplying rules to new entries...")
+		totalActions := 0
+		for _, feedID := range feedsWithNew {
+			count := applyRulesToNewEntries(feedID)
+			totalActions += count
+		}
+		if totalActions > 0 {
+			fmt.Printf("Rules applied: %d actions executed.\n", totalActions)
 		}
 	}
 
@@ -133,6 +177,7 @@ func init() {
 	fetchDaemonCmd.Flags().IntP("interval", "i", 60, "Fetch interval in minutes")
 	fetchCmd.Flags().BoolP("quiet", "q", false, "Suppress progress output")
 	fetchCmd.Flags().BoolP("full", "f", false, "Enable full content extraction for short entries")
+	fetchCmd.Flags().Bool("skip-rules", false, "Skip automatic rule application after fetch")
 	fetchDaemonCmd.Flags().BoolP("full", "f", false, "Enable full content extraction for short entries")
 
 	rootCmd.AddCommand(fetchCmd)
