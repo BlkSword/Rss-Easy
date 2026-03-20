@@ -20,6 +20,11 @@ func Init(dbPath string) error {
 		return err
 	}
 
+	// Enable WAL mode for better concurrent read/write performance
+	DB.Exec("PRAGMA journal_mode=WAL")
+	// Increase busy timeout to handle concurrent writes
+	DB.Exec("PRAGMA busy_timeout=5000")
+
 	if err := createTables(); err != nil {
 		return err
 	}
