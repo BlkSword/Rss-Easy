@@ -51,6 +51,21 @@ func (f *Fetcher) FetchFeedByURLWithOptions(feedID int64, feedURL string, fullCo
 		FeedURL: feedURL,
 	}
 
+	// Exponential backoff: skip feeds with recent errors
+	feed, _ := db.GetFeed(feedID)
+	if feed != nil && feed.ErrorCount > 0 {
+		backoffMinutes := feed.ErrorCount * 5
+		if backoffMinutes > 50 {
+			backoffMinutes = 50
+		}
+		backoff := time.Duration(backoffMinutes) * time.Minute
+		if feed.LastFetchedAt != nil && time.Since(*feed.LastFetchedAt) < backoff {
+			result.Success = true
+			result.NewCount = 0
+			return result, nil // skip, not ready for retry yet
+		}
+	}
+
 	parsed, err := f.parser.Parse(feedURL)
 	if err != nil {
 		result.Error = err
@@ -58,8 +73,8 @@ func (f *Fetcher) FetchFeedByURLWithOptions(feedID int64, feedURL string, fullCo
 		return result, nil
 	}
 
-	// Update feed metadata
-	feed, _ := db.GetFeed(feedID)
+	// Update feed metadata (reload in case it changed)
+	feed, _ = db.GetFeed(feedID)
 	if feed != nil {
 		feed.Title = parsed.Title
 		feed.Description = parsed.Description
@@ -193,6 +208,52 @@ func (f *Fetcher) FetchAllWithOptions(fullContent bool) []*FetchResult {
 	sem := make(chan struct{}, f.cfg.Fetch.Concurrency)
 
 	for i, feed := range feeds {
+		wg.Add(1)
+		go func(idx int, feedID int64, feedURL string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			result, _ := f.FetchFeedByURLWithOptions(feedID, feedURL, fullContent)
+			results[idx] = result
+		}(i, feed.ID, feed.FeedURL)
+	}
+
+	wg.Wait()
+	return results
+}
+
+// FetchDue fetches only feeds whose fetch_interval has elapsed since last fetch.
+func (f *Fetcher) FetchDue() []*FetchResult {
+	return f.FetchDueWithOptions(f.cfg.Fetch.FullContent)
+}
+
+// FetchDueWithOptions fetches only due feeds with optional full content extraction.
+func (f *Fetcher) FetchDueWithOptions(fullContent bool) []*FetchResult {
+	feeds, err := db.ListFeeds(true)
+	if err != nil {
+		return nil
+	}
+
+	results := make([]*FetchResult, len(feeds))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, f.cfg.Fetch.Concurrency)
+
+	for i, feed := range feeds {
+		// Skip feeds that haven't reached their fetch interval yet
+		if feed.LastFetchedAt != nil && feed.FetchInterval > 0 {
+			nextFetch := feed.LastFetchedAt.Add(time.Duration(feed.FetchInterval) * time.Minute)
+			if time.Now().Before(nextFetch) {
+				results[i] = &FetchResult{
+					FeedID:   feed.ID,
+					FeedURL:  feed.FeedURL,
+					Success:  true,
+					NewCount: 0,
+				}
+				continue
+			}
+		}
+
 		wg.Add(1)
 		go func(idx int, feedID int64, feedURL string) {
 			defer wg.Done()

@@ -176,6 +176,7 @@ func UpdateFeedStats(feedID int64, success bool, errMsg string) error {
 			last_fetched_at = ?,
 			error_count = error_count + 1,
 			last_error = ?,
+			is_active = CASE WHEN error_count >= 9 THEN 0 ELSE is_active END,
 			updated_at = ?
 		WHERE id = ?
 	`, now, errMsg, now, feedID)
@@ -186,4 +187,57 @@ func GetFeedCount() (int, error) {
 	var count int
 	err := DB.QueryRow("SELECT COUNT(*) FROM feeds").Scan(&count)
 	return count, err
+}
+
+// ListFailedFeeds returns feeds with error_count > 0, ordered by error_count desc.
+func ListFailedFeeds() ([]*Feed, error) {
+	query := `
+		SELECT id, title, description, feed_url, site_url, icon_url,
+			   last_fetched_at, last_success_at, fetch_interval, error_count,
+			   COALESCE(last_error, ''), is_active, total_entries, unread_count, COALESCE(tags, ''),
+			   created_at, updated_at
+		FROM feeds
+		WHERE error_count > 0
+		ORDER BY error_count DESC, updated_at DESC
+	`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var feeds []*Feed
+	for rows.Next() {
+		feed := &Feed{}
+		var lastFetchedAt, lastSuccessAt sql.NullTime
+		err := rows.Scan(
+			&feed.ID, &feed.Title, &feed.Description, &feed.FeedURL, &feed.SiteURL,
+			&feed.IconURL, &lastFetchedAt, &lastSuccessAt, &feed.FetchInterval,
+			&feed.ErrorCount, &feed.LastError, &feed.IsActive, &feed.TotalEntries,
+			&feed.UnreadCount, &feed.Tags, &feed.CreatedAt, &feed.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if lastFetchedAt.Valid {
+			feed.LastFetchedAt = &lastFetchedAt.Time
+		}
+		if lastSuccessAt.Valid {
+			feed.LastSuccessAt = &lastSuccessAt.Time
+		}
+		feeds = append(feeds, feed)
+	}
+	return feeds, nil
+}
+
+// ResetFailedFeeds resets error_count to 0 and reactivates all failed feeds.
+func ResetFailedFeeds() (int64, error) {
+	result, err := DB.Exec(`
+		UPDATE feeds SET error_count = 0, last_error = '', is_active = 1
+		WHERE error_count > 0 OR is_active = 0
+	`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

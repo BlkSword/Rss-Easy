@@ -250,6 +250,8 @@ func init() {
 	feedCmd.AddCommand(feedExportCmd)
 	feedCmd.AddCommand(feedDiscoverCmd)
 	feedCmd.AddCommand(feedSuggestCmd)
+	feedCmd.AddCommand(feedFailedCmd)
+	feedCmd.AddCommand(feedRetryCmd)
 
 	feedListCmd.Flags().BoolP("active-only", "a", false, "Show only active feeds")
 	feedImportCmd.Flags().IntP("concurrency", "c", 10, "Concurrent feed fetch count")
@@ -257,4 +259,70 @@ func init() {
 	feedDiscoverCmd.Flags().Bool("add-all", false, "Automatically add all discovered feeds")
 
 	rootCmd.AddCommand(feedCmd)
+}
+
+var feedFailedCmd = &cobra.Command{
+	Use:   "failed",
+	Short: "List feeds with recent failures",
+	Run: func(cmd *cobra.Command, args []string) {
+		feeds, err := db.ListFailedFeeds()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing failed feeds: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(feeds) == 0 {
+			fmt.Println("No failed feeds. All feeds are healthy! ✓")
+			return
+		}
+
+		fmt.Printf("Failed Feeds (%d):\n\n", len(feeds))
+		for _, feed := range feeds {
+			status := "active"
+			if !feed.IsActive {
+				status = "DISABLED"
+			}
+			fmt.Printf("  [%s] #%d %s\n", status, feed.ID, feed.Title)
+			fmt.Printf("    URL: %s\n", feed.FeedURL)
+			fmt.Printf("    Errors: %d | Last error: %s\n", feed.ErrorCount, feed.LastError)
+			if feed.LastFetchedAt != nil {
+				fmt.Printf("    Last fetched: %s\n", feed.LastFetchedAt.Format("2006-01-02 15:04:05"))
+			}
+			fmt.Println()
+		}
+	},
+}
+
+var feedRetryCmd = &cobra.Command{
+	Use:   "retry-failed",
+	Short: "Reset failed feeds and retry fetching them",
+	Run: func(cmd *cobra.Command, args []string) {
+		affected, err := db.ResetFailedFeeds()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error resetting failed feeds: %v\n", err)
+			os.Exit(1)
+		}
+
+		if affected == 0 {
+			fmt.Println("No failed feeds to reset.")
+			return
+		}
+
+		fmt.Printf("Reset %d feed(s). Fetching all feeds now...\n", affected)
+
+		fetcher := rss.NewFetcher(cfg)
+		results := fetcher.FetchAll()
+
+		newTotal := 0
+		for _, r := range results {
+			if r != nil {
+				if r.Success {
+					newTotal += r.NewCount
+				} else {
+					fmt.Fprintf(os.Stderr, "  ✗ Feed %d: %v\n", r.FeedID, r.Error)
+				}
+			}
+		}
+		fmt.Printf("Retry complete: %d new entries fetched.\n", newTotal)
+	},
 }

@@ -57,24 +57,27 @@ After fetching, rules are automatically applied to new entries.`,
 var fetchDaemonCmd = &cobra.Command{
 	Use:   "daemon",
 	Short: "Start daemon mode for continuous fetching",
-	Long:  `Start a daemon that continuously fetches feeds at configured intervals.`,
+	Long:  `Start a daemon that continuously fetches feeds at configured intervals.
+By default, only feeds that have reached their fetch_interval are fetched.
+Use --all to force fetching all feeds every interval.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		interval, _ := cmd.Flags().GetInt("interval")
 		if interval == 0 {
-			interval = 60
+			interval = 5
 		}
+		forceAll, _ := cmd.Flags().GetBool("all")
 		fullContent, _ := cmd.Flags().GetBool("full")
 
-		fmt.Printf("Starting fetch daemon (interval: %d minutes, full content: %v)...\n", interval, fullContent)
+		fmt.Printf("Starting fetch daemon (check interval: %d min, full content: %v, force-all: %v)...\n", interval, fullContent, forceAll)
 		fmt.Println("Press Ctrl+C to stop.")
 
 		fetcher := rss.NewFetcher(cfg)
 		ticker := time.NewTicker(time.Duration(interval) * time.Minute)
 
-		runFetch(fetcher, fullContent)
+		runFetchDue(fetcher, fullContent, forceAll)
 
 		for range ticker.C {
-			runFetch(fetcher, fullContent)
+			runFetchDue(fetcher, fullContent, forceAll)
 		}
 	},
 }
@@ -172,13 +175,33 @@ func runFetch(fetcher *rss.Fetcher, fullContent bool) {
 	}
 }
 
+func runFetchDue(fetcher *rss.Fetcher, fullContent bool, forceAll bool) {
+	fmt.Printf("\n[%s] Starting fetch...\n", time.Now().Format("2006-01-02 15:04:05"))
+
+	var results []*rss.FetchResult
+	if forceAll {
+		results = fetcher.FetchAllWithOptions(fullContent)
+	} else {
+		results = fetcher.FetchDueWithOptions(fullContent)
+	}
+
+	for _, result := range results {
+		if result != nil && result.Success && result.NewCount > 0 {
+			fmt.Printf("  Feed %d: %d new entries\n", result.FeedID, result.NewCount)
+		} else if result != nil && !result.Success {
+			fmt.Printf("  Feed %d: ERROR - %v\n", result.FeedID, result.Error)
+		}
+	}
+}
+
 func init() {
 	fetchCmd.AddCommand(fetchDaemonCmd)
-	fetchDaemonCmd.Flags().IntP("interval", "i", 60, "Fetch interval in minutes")
+	fetchDaemonCmd.Flags().IntP("interval", "i", 5, "Check interval in minutes")
 	fetchCmd.Flags().BoolP("quiet", "q", false, "Suppress progress output")
 	fetchCmd.Flags().BoolP("full", "f", false, "Enable full content extraction for short entries")
 	fetchCmd.Flags().Bool("skip-rules", false, "Skip automatic rule application after fetch")
 	fetchDaemonCmd.Flags().BoolP("full", "f", false, "Enable full content extraction for short entries")
+	fetchDaemonCmd.Flags().Bool("all", false, "Force fetch all feeds regardless of interval")
 
 	rootCmd.AddCommand(fetchCmd)
 }
