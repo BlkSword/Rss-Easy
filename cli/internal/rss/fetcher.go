@@ -3,6 +3,7 @@ package rss
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sync"
 	"time"
 
@@ -40,6 +41,11 @@ func (f *Fetcher) FetchFeed(feedID int64) (*FetchResult, error) {
 }
 
 func (f *Fetcher) FetchFeedByURL(feedID int64, feedURL string) (*FetchResult, error) {
+	return f.FetchFeedByURLWithOptions(feedID, feedURL, false)
+}
+
+// FetchFeedByURLWithOptions fetches a feed with optional full content extraction.
+func (f *Fetcher) FetchFeedByURLWithOptions(feedID int64, feedURL string, fullContent bool) (*FetchResult, error) {
 	result := &FetchResult{
 		FeedID:  feedID,
 		FeedURL: feedURL,
@@ -67,7 +73,7 @@ func (f *Fetcher) FetchFeedByURL(feedID int64, feedURL string) (*FetchResult, er
 	}
 
 	// Process and create entries (with dedup)
-	newCount := f.processEntries(parsed.Items, feedID)
+	newCount := f.processEntries(parsed.Items, feedID, fullContent)
 	result.NewCount = newCount
 
 	db.UpdateFeedStats(feedID, true, "")
@@ -76,7 +82,78 @@ func (f *Fetcher) FetchFeedByURL(feedID int64, feedURL string) (*FetchResult, er
 }
 
 // processEntries creates new entries, skipping duplicates. Returns count of new entries.
-func (f *Fetcher) processEntries(items []*ParsedItem, feedID int64) int {
+func (f *Fetcher) processEntries(items []*ParsedItem, feedID int64, fullContent bool) int {
+	enableFull := fullContent || f.cfg.Fetch.FullContent
+
+	if !enableFull {
+		return f.processEntriesSimple(items, feedID)
+	}
+
+	// Full content mode: fetch full content for short entries concurrently
+	concurrency := f.cfg.Fetch.FullConcurrency
+	if concurrency <= 0 {
+		concurrency = 5
+	}
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for _, item := range items {
+		if item.ContentHash == "" {
+			continue
+		}
+
+		existing, err := db.GetEntryByHash(item.ContentHash)
+		if err == nil && existing != nil {
+			continue // Duplicate
+		}
+
+		// Fetch full content if content is too short
+		if len(item.Content) < 500 && item.URL != "" {
+			wg.Add(1)
+			go func(it *ParsedItem) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				proxyURL := ""
+				if f.cfg.Proxy.Enabled && f.cfg.Proxy.Host != "" {
+					proxyURL = fmt.Sprintf("%s://%s:%s", f.cfg.Proxy.Type, f.cfg.Proxy.Host, f.cfg.Proxy.Port)
+				}
+				fullContent := FetchFullContent(it.URL, f.cfg.Fetch.FullTimeout, f.cfg.Fetch.UserAgent, proxyURL)
+				if fullContent != "" {
+					it.Content = fullContent
+				}
+			}(item)
+		}
+	}
+
+	wg.Wait()
+
+	// Now create entries
+	newCount := 0
+	for _, item := range items {
+		if item.ContentHash == "" {
+			continue
+		}
+
+		existing, err := db.GetEntryByHash(item.ContentHash)
+		if err == nil && existing != nil {
+			continue
+		}
+
+		entry := f.parser.ToDBEntry(item, feedID)
+		entry.WordCount = countWords(entry.Content)
+		entry.ReadingTime = (entry.WordCount / 200) + 1
+
+		if _, err = db.CreateEntry(entry); err == nil {
+			newCount++
+		}
+	}
+	return newCount
+}
+
+// processEntriesSimple creates entries without full content fetching.
+func (f *Fetcher) processEntriesSimple(items []*ParsedItem, feedID int64) int {
 	newCount := 0
 	for _, item := range items {
 		if item.ContentHash == "" {
@@ -101,6 +178,11 @@ func (f *Fetcher) processEntries(items []*ParsedItem, feedID int64) int {
 
 // FetchAll fetches all active feeds concurrently.
 func (f *Fetcher) FetchAll() []*FetchResult {
+	return f.FetchAllWithOptions(f.cfg.Fetch.FullContent)
+}
+
+// FetchAllWithOptions fetches all active feeds with optional full content extraction.
+func (f *Fetcher) FetchAllWithOptions(fullContent bool) []*FetchResult {
 	feeds, err := db.ListFeeds(true)
 	if err != nil {
 		return nil
@@ -117,7 +199,7 @@ func (f *Fetcher) FetchAll() []*FetchResult {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			result, _ := f.FetchFeedByURL(feedID, feedURL)
+			result, _ := f.FetchFeedByURLWithOptions(feedID, feedURL, fullContent)
 			results[idx] = result
 		}(i, feed.ID, feed.FeedURL)
 	}
@@ -128,6 +210,11 @@ func (f *Fetcher) FetchAll() []*FetchResult {
 
 // FetchAllWithProgress fetches all active feeds with progress callback.
 func (f *Fetcher) FetchAllWithProgress(onProgress func(completed, total int, result *FetchResult)) []*FetchResult {
+	return f.FetchAllWithProgressAndOptions(onProgress, f.cfg.Fetch.FullContent)
+}
+
+// FetchAllWithProgressAndOptions fetches all active feeds with progress callback and full content option.
+func (f *Fetcher) FetchAllWithProgressAndOptions(onProgress func(completed, total int, result *FetchResult), fullContent bool) []*FetchResult {
 	feeds, err := db.ListFeeds(true)
 	if err != nil {
 		return nil
@@ -147,7 +234,7 @@ func (f *Fetcher) FetchAllWithProgress(onProgress func(completed, total int, res
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			result, _ := f.FetchFeedByURL(feedID, feedURL)
+			result, _ := f.FetchFeedByURLWithOptions(feedID, feedURL, fullContent)
 			results[idx] = result
 
 			mu.Lock()
@@ -199,7 +286,6 @@ func (f *Fetcher) FetchWithTimeout(feedID int64, timeout time.Duration) (*FetchR
 }
 
 // AddFeed adds a new feed by fetching its metadata and creating a DB record.
-// The initial content fetch happens in a background goroutine.
 func (f *Fetcher) AddFeed(feedURL string) (*db.Feed, error) {
 	existing, err := db.GetFeedByURL(feedURL)
 	if err == nil && existing != nil {
@@ -222,11 +308,10 @@ func (f *Fetcher) AddFeed(feedURL string) (*db.Feed, error) {
 }
 
 // AddFeedQuiet adds a feed by fetching only metadata (lightweight, for OPML import).
-// Returns the feed without triggering a full content fetch.
 func (f *Fetcher) AddFeedQuiet(feedURL string) (*db.Feed, error) {
 	existing, err := db.GetFeedByURL(feedURL)
 	if err == nil && existing != nil {
-		return existing, nil // Already exists, return it
+		return existing, nil
 	}
 
 	parsed, err := f.parser.ParseFeedOnly(feedURL)
@@ -255,3 +340,14 @@ func countWords(content string) int {
 	}
 	return count
 }
+
+// makeProxyURL builds a proxy URL string from config.
+func makeProxyURL(cfg *config.ProxyConfig) string {
+	if !cfg.Enabled || cfg.Host == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s://%s:%s", cfg.Type, cfg.Host, cfg.Port)
+}
+
+// unused import guard
+var _ = url.Parse

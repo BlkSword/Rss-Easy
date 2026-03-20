@@ -18,6 +18,7 @@ var fetchCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		fetcher := rss.NewFetcher(cfg)
+		fullContent, _ := cmd.Flags().GetBool("full")
 
 		if len(args) > 0 {
 			feedID, err := strconv.ParseInt(args[0], 10, 64)
@@ -40,7 +41,7 @@ var fetchCmd = &cobra.Command{
 			}
 		} else {
 			quiet, _ := cmd.Flags().GetBool("quiet")
-			fetchAll(fetcher, quiet)
+			fetchAll(fetcher, quiet, fullContent)
 		}
 	},
 }
@@ -54,32 +55,37 @@ var fetchDaemonCmd = &cobra.Command{
 		if interval == 0 {
 			interval = 60
 		}
+		fullContent, _ := cmd.Flags().GetBool("full")
 
-		fmt.Printf("Starting fetch daemon (interval: %d minutes)...\n", interval)
+		fmt.Printf("Starting fetch daemon (interval: %d minutes, full content: %v)...\n", interval, fullContent)
 		fmt.Println("Press Ctrl+C to stop.")
 
 		fetcher := rss.NewFetcher(cfg)
 		ticker := time.NewTicker(time.Duration(interval) * time.Minute)
 
-		runFetch(fetcher)
+		runFetch(fetcher, fullContent)
 
 		for range ticker.C {
-			runFetch(fetcher)
+			runFetch(fetcher, fullContent)
 		}
 	},
 }
 
-func fetchAll(fetcher *rss.Fetcher, quiet bool) {
-	fmt.Println("Fetching all active feeds...")
+func fetchAll(fetcher *rss.Fetcher, quiet bool, fullContent bool) {
+	if fullContent {
+		fmt.Println("Fetching all active feeds (with full content extraction)...")
+	} else {
+		fmt.Println("Fetching all active feeds...")
+	}
 	start := time.Now()
 
 	var results []*rss.FetchResult
 	if quiet {
-		results = fetcher.FetchAll()
+		results = fetcher.FetchAllWithOptions(fullContent)
 	} else {
-		results = fetcher.FetchAllWithProgress(func(completed, total int, result *rss.FetchResult) {
+		results = fetcher.FetchAllWithProgressAndOptions(func(completed, total int, result *rss.FetchResult) {
 			fmt.Printf("\r  Fetching: %d/%d (%d%%)", completed, total, completed*100/total)
-		})
+		}, fullContent)
 		fmt.Println() // Newline after progress
 	}
 
@@ -108,10 +114,10 @@ func fetchAll(fetcher *rss.Fetcher, quiet bool) {
 		successCount, totalNew, failCount, elapsed.Round(time.Millisecond))
 }
 
-func runFetch(fetcher *rss.Fetcher) {
+func runFetch(fetcher *rss.Fetcher, fullContent bool) {
 	fmt.Printf("\n[%s] Starting fetch...\n", time.Now().Format("2006-01-02 15:04:05"))
 
-	results := fetcher.FetchAll()
+	results := fetcher.FetchAllWithOptions(fullContent)
 
 	for _, result := range results {
 		if result != nil && result.Success && result.NewCount > 0 {
@@ -126,6 +132,8 @@ func init() {
 	fetchCmd.AddCommand(fetchDaemonCmd)
 	fetchDaemonCmd.Flags().IntP("interval", "i", 60, "Fetch interval in minutes")
 	fetchCmd.Flags().BoolP("quiet", "q", false, "Suppress progress output")
+	fetchCmd.Flags().BoolP("full", "f", false, "Enable full content extraction for short entries")
+	fetchDaemonCmd.Flags().BoolP("full", "f", false, "Enable full content extraction for short entries")
 
 	rootCmd.AddCommand(fetchCmd)
 }

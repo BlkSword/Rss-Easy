@@ -38,9 +38,12 @@ type PreliminaryConfig struct {
 }
 
 type FetchConfig struct {
-	Concurrency int           `toml:"concurrency"`
-	Timeout     time.Duration `toml:"timeout"`
-	UserAgent   string        `toml:"user_agent"`
+	Concurrency      int           `toml:"concurrency"`
+	Timeout          time.Duration `toml:"timeout"`
+	UserAgent        string        `toml:"user_agent"`
+	FullContent      bool          `toml:"full_content"`
+	FullConcurrency  int           `toml:"full_concurrency"`
+	FullTimeout      time.Duration `toml:"full_timeout"`
 }
 
 type ProxyConfig struct {
@@ -100,9 +103,12 @@ func DefaultConfig() *Config {
 			},
 		},
 		Fetch: FetchConfig{
-			Concurrency: 10,
-			Timeout:     60 * time.Second,
-			UserAgent:   "Mozilla/5.0 (compatible; RSS-Post/1.0; +https://github.com/rss-post/cli)",
+			Concurrency:     10,
+			Timeout:         60 * time.Second,
+			UserAgent:       "Mozilla/5.0 (compatible; RSS-Post/1.0; +https://github.com/rss-post/cli)",
+			FullContent:     false,
+			FullConcurrency: 5,
+			FullTimeout:     15 * time.Second,
 		},
 		Proxy: ProxyConfig{
 			Enabled: false,
