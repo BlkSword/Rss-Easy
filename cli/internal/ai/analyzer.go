@@ -159,6 +159,7 @@ func (a *Analyzer) AnalyzeEntry(entry *db.Entry) error {
 }
 
 // AnalyzeEntryWithContext is like AnalyzeEntry but respects context cancellation/timeout.
+// On failure, it records the retry count; on success, it resets the counter.
 func (a *Analyzer) AnalyzeEntryWithContext(ctx context.Context, entry *db.Entry) error {
 	startTime := time.Now()
 
@@ -166,9 +167,21 @@ func (a *Analyzer) AnalyzeEntryWithContext(ctx context.Context, entry *db.Entry)
 		return ctx.Err()
 	}
 
+	// Check if entry has exceeded max retries
+	var retryCount int
+	_ = db.DB.QueryRow("SELECT COALESCE(ai_retry_count, 0) FROM entries WHERE id = ?", entry.ID).Scan(&retryCount)
+	maxRetries := 3
+	if a.cfg.AI.MaxRetries > 0 {
+		maxRetries = a.cfg.AI.MaxRetries
+	}
+	if retryCount >= maxRetries {
+		return fmt.Errorf("skipped: exceeded max retries (%d/%d)", retryCount, maxRetries)
+	}
+
+	// Preliminary evaluation
 	prelim, err := a.PreliminaryEvaluate(entry)
 	if err != nil {
-		prelim = &PreliminaryResult{Value: 3}
+		prelim = &PreliminaryResult{Value: 3} // default to medium on error
 	}
 
 	if prelim.Value < 2 {
@@ -176,13 +189,20 @@ func (a *Analyzer) AnalyzeEntryWithContext(ctx context.Context, entry *db.Entry)
 		return db.UpdateEntryAIAnalysis(entry)
 	}
 
+	// Deep analysis
 	result, err := a.Analyze(entry)
 	if err != nil {
 		if ctx.Err() != nil {
+			_ = db.UpdateEntryAIAnalysisRetry(entry.ID, fmt.Sprintf("timeout: %v", ctx.Err()))
 			return fmt.Errorf("timeout: %w", ctx.Err())
 		}
+		// Record failure
+		_ = db.UpdateEntryAIAnalysisRetry(entry.ID, err.Error())
 		return err
 	}
+
+	// Success — reset retry counter
+	_ = db.ResetEntryAIRetry(entry.ID)
 
 	a.saveAnalysis(entry, result, time.Since(startTime).Milliseconds())
 	return nil

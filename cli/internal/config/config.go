@@ -23,13 +23,16 @@ type DatabaseConfig struct {
 }
 
 type AIConfig struct {
-	Provider    string             `toml:"provider"`
-	Model       string             `toml:"model"`
-	APIKey      string             `toml:"api_key"`
-	BaseURL     string             `toml:"base_url"`
-	MaxTokens   int                `toml:"max_tokens"`
-	Temperature float64            `toml:"temperature"`
-	Preliminary PreliminaryConfig  `toml:"preliminary"`
+	Provider           string            `toml:"provider"`
+	Model              string            `toml:"model"`
+	APIKey             string            `toml:"api_key"`
+	BaseURL            string            `toml:"base_url"`
+	MaxTokens          int               `toml:"max_tokens"`
+	Temperature        float64           `toml:"temperature"`
+	Preliminary        PreliminaryConfig `toml:"preliminary"`
+	RequestsPerMinute  int               `toml:"requests_per_minute"`  // API rate limit (default 3)
+	MinRequestDelay    string            `toml:"min_request_delay"`    // Min delay between requests (default "2s")
+	MaxRetries         int               `toml:"max_retries"`         // Max retry count for failed analysis (default 3)
 }
 
 type PreliminaryConfig struct {
@@ -91,12 +94,15 @@ func DefaultConfig() *Config {
 			Path: dbPath,
 		},
 		AI: AIConfig{
-			Provider:    "openai",
-			Model:       "gpt-4o",
-			APIKey:      "",
-			BaseURL:     "",
-			MaxTokens:   4096,
-			Temperature: 0.7,
+			Provider:          "openai",
+			Model:             "gpt-4o",
+			APIKey:            "",
+			BaseURL:           "",
+			MaxTokens:         4096,
+			Temperature:       0.7,
+			RequestsPerMinute: 3,
+			MinRequestDelay:   "2s",
+			MaxRetries:        3,
 			Preliminary: PreliminaryConfig{
 				Enabled: true,
 				Model:   "gpt-4o-mini",

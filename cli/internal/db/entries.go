@@ -241,6 +241,83 @@ func UpdateEntryAIAnalysis(entry *Entry) error {
 	return err
 }
 
+// UpdateEntryAIAnalysisRetry increments the retry counter and records the error message.
+func UpdateEntryAIAnalysisRetry(entryID int64, errMsg string) error {
+	_, err := DB.Exec(`
+		UPDATE entries SET
+			ai_retry_count = ai_retry_count + 1,
+			ai_last_error = ?
+		WHERE id = ?
+	`, errMsg, entryID)
+	return err
+}
+
+// ResetEntryAIRetry clears the retry counter and error for a successfully analyzed entry.
+func ResetEntryAIRetry(entryID int64) error {
+	_, err := DB.Exec(`
+		UPDATE entries SET
+			ai_retry_count = 0,
+			ai_last_error = ''
+		WHERE id = ?
+	`, entryID)
+	return err
+}
+
+// GetRetryAnalysisEntries returns entries that failed analysis and haven't exceeded maxRetries.
+func GetRetryAnalysisEntries(limit, maxRetries int) ([]*Entry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+
+	rows, err := DB.Query(`
+		SELECT id, feed_id, title, url, content, summary, author,
+			   published_at, created_at, content_hash, is_read, is_starred,
+			   COALESCE(ai_summary, ''), COALESCE(ai_keywords, ''), COALESCE(ai_sentiment, ''), COALESCE(ai_category, ''),
+			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
+			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
+			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
+			   COALESCE(open_source_info, '')
+		FROM entries
+		WHERE ai_retry_count > 0 AND ai_retry_count < ? AND (ai_summary IS NULL OR ai_summary = '')
+		ORDER BY ai_retry_count ASC, published_at DESC
+		LIMIT ?
+	`, maxRetries, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*Entry
+	for rows.Next() {
+		entry := &Entry{}
+		var publishedAt sql.NullTime
+		err := rows.Scan(
+			&entry.ID, &entry.FeedID, &entry.Title, &entry.URL, &entry.Content,
+			&entry.Summary, &entry.Author, &publishedAt, &entry.CreatedAt,
+			&entry.ContentHash, &entry.IsRead, &entry.IsStarred, &entry.AISummary,
+			&entry.AIKeywords, &entry.AISentiment, &entry.AICategory,
+			&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
+			&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
+			&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
+			&entry.AIScore, &entry.OpenSourceInfo,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if publishedAt.Valid {
+			entry.PublishedAt = &publishedAt.Time
+		}
+
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
 func GetPendingAnalysisEntries(limit int) ([]*Entry, error) {
 	if limit == 0 {
 		limit = 50

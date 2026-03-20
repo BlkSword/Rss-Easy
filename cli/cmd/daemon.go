@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -139,19 +140,8 @@ func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Co
 			logf("  Rules applied: %d actions", ruleActions)
 		}
 
-		// 3. AI analysis (background, non-blocking)
-		go func() {
-			pending, err := db.GetPendingAnalysisEntries(20)
-			if err != nil || len(pending) == 0 {
-				return
-			}
-			for _, entry := range pending {
-				_, err := analyzer.Analyze(entry)
-				if err != nil {
-					continue
-				}
-			}
-		}()
+		// 3. AI analysis (synchronous, rate-limited)
+		analyzePendingEntries(analyzer, cfg, logf)
 	} else {
 		logf("  No new entries to process")
 	}
@@ -164,6 +154,50 @@ func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Co
 	checkAndSendScheduledReports(cfg, logf)
 
 	logf("[%s] Pipeline done", time.Now().Format("15:04:05"))
+}
+
+// analyzePendingEntries processes pending AI analyses with rate limiting and timeouts.
+// Serial execution — no goroutines — to stay safe from provider rate limits.
+func analyzePendingEntries(analyzer *ai.Analyzer, cfg *config.Config, logf func(string, ...interface{})) {
+	// Configure rate limiter from config
+	if cfg.AI.RequestsPerMinute > 0 {
+		ai.SetLimiter(cfg.AI.RequestsPerMinute)
+	}
+
+	// Limit per-round processing to avoid blocking the pipeline too long
+	maxPerRound := 10
+	if cfg.AI.RequestsPerMinute > 0 && cfg.AI.RequestsPerMinute < maxPerRound {
+		maxPerRound = cfg.AI.RequestsPerMinute
+	}
+
+	pending, err := db.GetPendingAnalysisEntries(maxPerRound)
+	if err != nil || len(pending) == 0 {
+		return
+	}
+
+	logf("  AI: analyzing %d pending entries (rate limit: %d RPM)...", len(pending), cfg.AI.RequestsPerMinute)
+
+	timeout := 120 * time.Second
+	successCount := 0
+	failCount := 0
+
+	for _, entry := range pending {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+		err := analyzer.AnalyzeEntryWithContext(ctx, entry)
+
+		cancel()
+
+		if err != nil {
+			failCount++
+			logf("  AI: ✗ Entry %d failed: %v", entry.ID, err)
+			continue
+		}
+		successCount++
+		logf("  AI: ✓ Entry %d scored %d", entry.ID, entry.AIScore)
+	}
+
+	logf("  AI: %d analyzed, %d failed", successCount, failCount)
 }
 
 func checkAndSendScheduledReports(cfg *config.Config, logf func(string, ...interface{})) {

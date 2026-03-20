@@ -2,14 +2,37 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/rss-post/cli/internal/config"
 )
+
+// Global rate limiter shared across all AI calls (preliminary + deep analysis).
+// Default: 3 requests per minute — conservative to avoid provider rate limits.
+var (
+	defaultLimiter *RateLimiter
+	limiterOnce   sync.Once
+)
+
+// GetLimiter returns the global rate limiter, initializing it on first call.
+func GetLimiter() *RateLimiter {
+	limiterOnce.Do(func() {
+		defaultLimiter = NewRateLimiter(3) // default 3 RPM
+	})
+	return defaultLimiter
+}
+
+// SetLimiter replaces the global rate limiter with a custom RPM.
+func SetLimiter(rpm int) {
+	limiterOnce.Do(func() {}) // ensure once is "done"
+	defaultLimiter = NewRateLimiter(rpm)
+}
 
 type Client struct {
 	cfg    *config.Config
@@ -96,6 +119,11 @@ func (c *Client) getHeaders() map[string]string {
 }
 
 func (c *Client) Chat(messages []Message, model string) (string, error) {
+	// Rate limit all AI calls through the global limiter
+	if err := GetLimiter().Wait(context.Background()); err != nil {
+		return "", err
+	}
+
 	if model == "" {
 		model = c.cfg.AI.Model
 	}
