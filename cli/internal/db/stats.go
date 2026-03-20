@@ -214,10 +214,10 @@ func DeleteSavedReport(id int64) error {
 // GetDailyStats returns daily entry counts for the last N days.
 func GetDailyStats(days int) ([]*DailyStat, error) {
 	rows, err := DB.Query(`
-		SELECT DATE(published_at) as date, COUNT(*) as count
+		SELECT DATE(COALESCE(published_at, created_at)) as date, COUNT(*) as count
 		FROM entries
-		WHERE published_at >= DATE('now', '-' || ? || ' days')
-		GROUP BY DATE(published_at)
+		WHERE COALESCE(published_at, created_at) >= DATE('now', '-' || ? || ' days')
+		GROUP BY DATE(COALESCE(published_at, created_at))
 		ORDER BY date DESC
 	`, days)
 	if err != nil {
@@ -264,16 +264,18 @@ func GetFeedStats() ([]*FeedStat, error) {
 	return stats, nil
 }
 
-// GetTopEntries returns top-scoring entries.
+// GetTopEntries returns top-scoring entries (score > 0).
 func GetTopEntries(limit int) ([]*Entry, error) {
 	if limit == 0 {
 		limit = 10
 	}
 
+	minScore := 1
 	filter := &EntryFilter{
-		Limit:     limit,
-		OrderBy:   "ai_score",
-		OrderDesc: true,
+		Limit:      limit,
+		OrderBy:    "ai_score",
+		OrderDesc:  true,
+		AIScoreMin: &minScore,
 	}
 	return ListEntries(filter)
 }

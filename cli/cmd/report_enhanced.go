@@ -80,8 +80,8 @@ func init() {
 	reportListCmd.Flags().IntP("limit", "l", 20, "Maximum reports to show")
 
 	// Add --save flag to daily and weekly commands
-	reportDailyCmd.Flags().Bool("save", false, "Save report to database")
-	reportWeeklyCmd.Flags().Bool("save", false, "Save report to database")
+	reportDailyCmd.Flags().Bool("save", false, "Save report to database (default: auto-save)")
+	reportWeeklyCmd.Flags().Bool("save", false, "Save report to database (default: auto-save)")
 }
 
 // addReportDBSave enhances the report generation to save to DB.
@@ -91,61 +91,55 @@ func addReportDBSave() {
 }
 
 func enhanceReportSaveCmd(cmd *cobra.Command, reportType string) {
-	origRun := cmd.Run
 	cmd.Run = func(cmd *cobra.Command, args []string) {
-		// Check if --save flag is set
-		saveToDB, _ := cmd.Flags().GetBool("save")
+		// Always save to DB, --save flag is implicit
+		generator := report.NewGenerator(cfg)
+		var rpt *report.Report
+		var err error
 
-		if saveToDB {
-			generator := report.NewGenerator(cfg)
-			var rpt *report.Report
-			var err error
-
-			date := time.Now()
-			if len(args) > 0 {
-				parsed, err2 := time.Parse("2006-01-02", args[0])
-				if err2 == nil {
-					date = parsed
-				}
+		date := time.Now()
+		if len(args) > 0 {
+			parsed, err2 := time.Parse("2006-01-02", args[0])
+			if err2 == nil {
+				date = parsed
 			}
+		}
 
-			if reportType == "daily" {
-				rpt, err = generator.GenerateDaily(date)
-			} else {
-				rpt, err = generator.GenerateWeekly(date)
-			}
-
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error generating report: %v\n", err)
-				os.Exit(1)
-			}
-
-			// Output the report
-			outputPath, _ := cmd.Flags().GetString("output")
-			if outputPath != "" {
-				_ = generator.SaveReport(rpt, outputPath)
-				fmt.Printf("Report saved to %s\n", outputPath)
-			} else {
-				fmt.Println(rpt.Content)
-			}
-
-			// Save to DB
-			_, err = db.SaveReportToDB(
-				reportType,
-				rpt.Period,
-				rpt.Content,
-				generator.RenderHTML(rpt),
-				rpt.Stats.TotalEntries,
-				rpt.Stats.AvgAIScore,
-			)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to save report to DB: %v\n", err)
-			} else {
-				fmt.Println("✓ Report saved to database.")
-			}
+		if reportType == "daily" {
+			rpt, err = generator.GenerateDaily(date)
 		} else {
-			// Run original command
-			origRun(cmd, args)
+			rpt, err = generator.GenerateWeekly(date)
+		}
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating report: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Output the report
+		outputPath, _ := cmd.Flags().GetString("output")
+		if outputPath != "" {
+			_ = generator.SaveReport(rpt, outputPath)
+			fmt.Printf("Report saved to %s\n", outputPath)
+		} else {
+			fmt.Println(rpt.Content)
+		}
+
+		// Save to DB
+		htmlContent := ""
+		if generator != nil {
+			htmlContent = generator.RenderHTML(rpt)
+		}
+		_, err = db.SaveReportToDB(
+			reportType,
+			rpt.Period,
+			rpt.Content,
+			htmlContent,
+			rpt.Stats.TotalEntries,
+			rpt.Stats.AvgAIScore,
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save report to DB: %v\n", err)
 		}
 	}
 }
