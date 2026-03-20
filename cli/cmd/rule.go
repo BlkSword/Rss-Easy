@@ -221,7 +221,7 @@ var ruleApplyCmd = &cobra.Command{
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 		if dryRun {
-			fmt.Println("Dry run mode — no changes will be made.\n")
+			fmt.Println("Dry run mode — no changes will be made.")
 		}
 
 		if len(args) > 0 {
