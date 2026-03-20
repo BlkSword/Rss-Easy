@@ -4,7 +4,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
