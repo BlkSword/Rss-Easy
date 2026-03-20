@@ -59,6 +59,7 @@ var configShowCmd = &cobra.Command{
 		fmt.Printf("  Max Tokens:  %d\n", cfg.AI.MaxTokens)
 		fmt.Printf("  Temperature: %.1f\n", cfg.AI.Temperature)
 		fmt.Printf("  Preliminary: enabled=%v, model=%s\n", cfg.AI.Preliminary.Enabled, cfg.AI.Preliminary.Model)
+		fmt.Printf("  Auto Analyze:%v\n", cfg.AI.AutoAnalyze)
 		fmt.Printf("\nFetch Settings:\n")
 		fmt.Printf("  Concurrency: %d\n", cfg.Fetch.Concurrency)
 		fmt.Printf("  Timeout:     %v\n", cfg.Fetch.Timeout)

@@ -176,11 +176,15 @@ func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Co
 			logf("  Rules applied: %d actions", ruleActions)
 		}
 
-		// 3. AI analysis
-		status.CurrentStep = "analyzing"
-		db.SaveDaemonStatus(status)
+		// 3. AI analysis (if enabled)
+		if cfg.AI.AutoAnalyze {
+			status.CurrentStep = "analyzing"
+			db.SaveDaemonStatus(status)
 
-		analyzePendingEntries(analyzer, cfg, logf, status)
+			analyzePendingEntries(analyzer, cfg, logf, status)
+		} else {
+			logf("  AI: auto-analyze disabled (set ai.auto_analyze = true to enable)")
+		}
 	} else {
 		logf("  No new entries to process")
 	}

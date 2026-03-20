@@ -30,8 +30,7 @@ type AIConfig struct {
 	MaxTokens          int               `toml:"max_tokens"`
 	Temperature        float64           `toml:"temperature"`
 	Preliminary        PreliminaryConfig `toml:"preliminary"`
-	RequestsPerMinute  int               `toml:"requests_per_minute"`  // API rate limit (default 3)
-	MinRequestDelay    string            `toml:"min_request_delay"`    // Min delay between requests (default "2s")
+	AutoAnalyze        bool              `toml:"auto_analyze"`          // Auto-analyze new entries in daemon (default true)
 	MaxRetries         int               `toml:"max_retries"`         // Max retry count for failed analysis (default 3)
 }
 
@@ -100,8 +99,7 @@ func DefaultConfig() *Config {
 			BaseURL:           "",
 			MaxTokens:         4096,
 			Temperature:       0.7,
-			RequestsPerMinute: 3,
-			MinRequestDelay:   "2s",
+			AutoAnalyze:       true,
 			MaxRetries:        3,
 			Preliminary: PreliminaryConfig{
 				Enabled: true,
