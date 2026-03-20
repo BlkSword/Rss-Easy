@@ -510,6 +510,3 @@ go build -o rss-post-cli .
 go run .
 ```
 
-## License
-
-MIT
