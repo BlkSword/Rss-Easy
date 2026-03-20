@@ -46,11 +46,6 @@ var analyzeEntryCmd = &cobra.Command{
 
 		analyzer := ai.NewAnalyzer(cfg)
 
-		// Apply config rate limit
-		if cfg.AI.RequestsPerMinute > 0 {
-			ai.SetLimiter(cfg.AI.RequestsPerMinute)
-		}
-
 		fmt.Printf("Analyzing entry %d: %s\n", entry.ID, entry.Title)
 
 		start := time.Now()
@@ -95,11 +90,16 @@ var analyzeBatchCmd = &cobra.Command{
 
 		analyzer := ai.NewAnalyzer(cfg)
 
+		total := len(entries)
+
 		if concurrency <= 1 {
-			// Serial mode — safe, rate-limited
+			// Serial mode
 			successCount := 0
 			failCount := 0
-			for _, entry := range entries {
+			for i, entry := range entries {
+				done := i + 1
+				pct := done * 100 / total
+
 				var err error
 				if timeoutSec > 0 {
 					ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
@@ -111,19 +111,20 @@ var analyzeBatchCmd = &cobra.Command{
 
 				if err != nil {
 					failCount++
-					fmt.Printf("✗ Entry %d: %s — %v\n", entry.ID, truncate(entry.Title, 40), err)
+					fmt.Printf("\r  [%3d%%] ✗ %d/%d  %s — %v   ", pct, done, total, truncate(entry.Title, 50), err)
 				} else {
 					successCount++
-					fmt.Printf("✓ Entry %d: %s (Score: %d)\n", entry.ID, truncate(entry.Title, 40), entry.AIScore)
+					fmt.Printf("\r  [%3d%%] ✓ %d/%d  %s (Score: %d)   ", pct, done, total, truncate(entry.Title, 50), entry.AIScore)
 				}
 			}
-			fmt.Printf("\nComplete: %d analyzed, %d failed\n", successCount, failCount)
+			fmt.Printf("\n\nComplete: %d analyzed, %d failed\n", successCount, failCount)
 		} else {
 			var wg sync.WaitGroup
 			sem := make(chan struct{}, concurrency)
 			var mu sync.Mutex
 			successCount := 0
 			failCount := 0
+			var doneCount int
 
 			for _, entry := range entries {
 				wg.Add(1)
@@ -142,19 +143,22 @@ var analyzeBatchCmd = &cobra.Command{
 					}
 
 					mu.Lock()
+					doneCount++
+					done := doneCount
+					pct := done * 100 / total
 					if err != nil {
 						failCount++
-						fmt.Printf("✗ Entry %d: %s (Score: %d)\n", e.ID, truncate(e.Title, 40), e.AIScore)
+						fmt.Printf("\r  [%3d%%] ✗ %d/%d  %s   ", pct, done, total, truncate(e.Title, 50))
 					} else {
 						successCount++
-						fmt.Printf("✓ Entry %d: %s (Score: %d)\n", e.ID, truncate(e.Title, 40), e.AIScore)
+						fmt.Printf("\r  [%3d%%] ✓ %d/%d  %s (Score: %d)   ", pct, done, total, truncate(e.Title, 50), e.AIScore)
 					}
 					mu.Unlock()
 				}(entry)
 			}
 
 			wg.Wait()
-			fmt.Printf("\nComplete: %d analyzed, %d failed\n", successCount, failCount)
+			fmt.Printf("\n\nComplete: %d analyzed, %d failed\n", successCount, failCount)
 		}
 	},
 }
@@ -186,13 +190,8 @@ var analyzeRetryCmd = &cobra.Command{
 			return
 		}
 
-		// Apply rate limiting
-		if cfg.AI.RequestsPerMinute > 0 {
-			ai.SetLimiter(cfg.AI.RequestsPerMinute)
-		}
-
-		fmt.Printf("Retrying %d failed entries (max_retries=%d, rate_limit=%d RPM)...\n\n",
-			len(entries), maxRetries, cfg.AI.RequestsPerMinute)
+		fmt.Printf("Retrying %d failed entries (max_retries=%d)...\n\n",
+			len(entries), maxRetries)
 
 		analyzer := ai.NewAnalyzer(cfg)
 		successCount := 0
@@ -275,7 +274,6 @@ var analyzeStatsCmd = &cobra.Command{
 		if analyzedCount > 0 {
 			fmt.Printf("Avg AI Score:     %.1f\n", avgScore)
 		}
-		fmt.Printf("Rate Limit:       %d RPM\n", cfg.AI.RequestsPerMinute)
 	},
 }
 
