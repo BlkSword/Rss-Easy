@@ -74,6 +74,7 @@ type Entry struct {
 	ReadingTime        int            `json:"reading_time"` // minutes
 	AIScore            int            `json:"ai_score"`
 	OpenSourceInfo     string         `json:"open_source_info"` // JSON object
+	FeedName           string         `json:"-"` // runtime only, populated from feeds table
 }
 
 func (e *Entry) GetMainPoints() ([]MainPoint, error) {

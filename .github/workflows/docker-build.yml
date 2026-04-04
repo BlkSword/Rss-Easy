@@ -22,6 +22,25 @@ on:
       - main
     tags:
       - 'v*'
+    paths:
+      # Web 平台相关文件变更时才触发 Docker 构建
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "prisma/**"
+      - "public/**"
+      - "server/**"
+      - "scripts/**"
+      - "Dockerfile*"
+      - "docker-compose*.yml"
+      - "next.config.*"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig.json"
+      - "postcss.config.*"
+      - "tailwind.config.*"
+      # Workflow 自身变更也要触发
+      - ".github/workflows/docker-build.yml"
   workflow_dispatch:
     inputs:
       push_images:
