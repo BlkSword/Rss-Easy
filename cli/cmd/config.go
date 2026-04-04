@@ -58,6 +58,7 @@ var configShowCmd = &cobra.Command{
 		}
 		fmt.Printf("  Max Tokens:  %d\n", cfg.AI.MaxTokens)
 		fmt.Printf("  Temperature: %.1f\n", cfg.AI.Temperature)
+		fmt.Printf("  Language:    %s\n", cfg.AI.Language)
 		fmt.Printf("  Preliminary: enabled=%v, model=%s\n", cfg.AI.Preliminary.Enabled, cfg.AI.Preliminary.Model)
 		fmt.Printf("  Auto Analyze:%v\n", cfg.AI.AutoAnalyze)
 		fmt.Printf("\nFetch Settings:\n")
@@ -133,6 +134,8 @@ Examples:
 			var temp float64
 			fmt.Sscanf(value, "%f", &temp)
 			cfg.AI.Temperature = temp
+		case "ai.language":
+			cfg.AI.Language = value
 		case "fetch.concurrency":
 			var conc int
 			fmt.Sscanf(value, "%d", &conc)

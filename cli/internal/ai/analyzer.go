@@ -88,7 +88,7 @@ func (a *Analyzer) Analyze(entry *db.Entry) (*AnalysisResult, error) {
 
 func (a *Analyzer) analyzeDirect(title, content string) (*AnalysisResult, error) {
 	userMessage := fmt.Sprintf("Title: %s\n\nContent:\n%s", title, content)
-	response, err := a.client.ChatWithSystem(AnalysisPrompt, userMessage, a.cfg.AI.Model)
+	response, err := a.client.ChatWithSystem(GetAnalysisPrompt(a.cfg.AI.Language), userMessage, a.cfg.AI.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (a *Analyzer) analyzeSegmented(title, content string) (*AnalysisResult, err
 	var summaries []string
 	for i, chunk := range chunks {
 		userMessage := fmt.Sprintf("Title: %s\n\nContent Part %d:\n%s", title, i+1, chunk)
-		response, err := a.client.ChatWithSystem(AnalysisPrompt, userMessage, a.cfg.AI.Model)
+		response, err := a.client.ChatWithSystem(GetAnalysisPrompt(a.cfg.AI.Language), userMessage, a.cfg.AI.Model)
 		if err != nil {
 			continue
 		}

@@ -317,5 +317,5 @@ func (g *Generator) GenerateAIReport(report *Report) (string, error) {
 	}
 
 	client := ai.NewClient(g.cfg)
-	return client.ChatWithSystem(ai.ReportPrompt, context.String(), g.cfg.AI.Model)
+	return client.ChatWithSystem(ai.GetReportPrompt(g.cfg.AI.Language), context.String(), g.cfg.AI.Model)
 }

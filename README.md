@@ -8,7 +8,7 @@
 
 将碎片化的信息流转化为结构化的知识资产 -- 双层 AI 引擎自动筛选、分析、评分，帮你从海量信息中高效捕获真正有价值的内容。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
 [![Go](https://img.shields.io/badge/Go-1.24-00ADD8)](https://go.dev/)
@@ -31,7 +31,6 @@
 - [项目结构](#项目结构)
 - [技术栈](#技术栈)
 - [部署](#部署)
-- [贡献指南](#贡献指南)
 - [License](#license)
 
 ---
@@ -442,21 +441,11 @@ rss-post-cli report install
 
 ---
 
-## 贡献指南
-
-欢迎贡献！请遵循以下流程：
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
 
 ---
-
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)
 
 ---
 

@@ -32,6 +32,7 @@ type AIConfig struct {
 	Preliminary        PreliminaryConfig `toml:"preliminary"`
 	AutoAnalyze        bool              `toml:"auto_analyze"`          // Auto-analyze new entries in daemon (default true)
 	MaxRetries         int               `toml:"max_retries"`         // Max retry count for failed analysis (default 3)
+	Language           string            `toml:"language"`            // Output language: zh, en, auto (default: auto)
 }
 
 type PreliminaryConfig struct {
@@ -101,6 +102,7 @@ func DefaultConfig() *Config {
 			Temperature:       0.7,
 			AutoAnalyze:       true,
 			MaxRetries:        3,
+			Language:           "auto",
 			Preliminary: PreliminaryConfig{
 				Enabled: true,
 				Model:   "gpt-4o-mini",
