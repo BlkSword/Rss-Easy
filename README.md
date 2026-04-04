@@ -1,18 +1,18 @@
 <div align="center">
 
+<img src="public/logo.png" alt="RSS-Post" width="64" height="64">
+
 # RSS-Post
 
 **AI 驱动的智能 RSS 信息聚合平台**
 
-将碎片化的信息流转化为结构化的知识资产 — 双层 AI 引擎自动筛选、分析、评分，帮你从海量信息中高效捕获真正有价值的内容。
+将碎片化的信息流转化为结构化的知识资产 -- 双层 AI 引擎自动筛选、分析、评分，帮你从海量信息中高效捕获真正有价值的内容。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
 [![Go](https://img.shields.io/badge/Go-1.24-00ADD8)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Supported-2496ED)](https://www.docker.com/)
-
-[English](#) · 简体中文
 
 </div>
 
@@ -40,7 +40,7 @@
 
 RSS-Post 包含两个产品形态，满足不同使用场景：
 
-| | 🌐 Web 平台 | 🖥️ CLI 工具 |
+| | Web 平台 | CLI 工具 |
 |---|---|---|
 | **定位** | 全功能信息聚合平台 | 精简终端工具 |
 | **技术** | Next.js 16 + React 19 + PostgreSQL | Go 单二进制 |
@@ -54,15 +54,15 @@ RSS-Post 包含两个产品形态，满足不同使用场景：
 
 ### Web 平台
 
-> 沉浸式阅读体验，AI 分析结果一目了然
+沉浸式阅读体验，AI 分析结果一目了然。支持深色模式、移动端适配、PWA 离线访问。
 
 <div align="center">
-  <img src="docs/images/overview.png" alt="RSS-Post Web Overview" width="800">
+  <img src="public/icons/icon-512x512.png" alt="RSS-Post" width="120">
 </div>
 
 ### CLI 工具
 
-> 终端原生体验，编译即用，适合服务器自动化部署
+终端原生体验，编译即用，适合服务器自动化部署。
 
 ```bash
 $ rss-post-cli feed add https://www.freebuf.com/feed
@@ -96,29 +96,29 @@ $ rss-post-cli report daily
 
 ## 核心特性
 
-### 🧠 AI 双层分析引擎
+### AI 双层分析引擎
 
 ```
 文章内容
     │
-    ├─ 🔍 预筛选 (低成本模型, ~1s)
+    ├─ 预筛选 (低成本模型, ~1s)
     │   ├─ 评分 < 2 → 跳过（低价值，节省 API 费用）
-    │   └─ 评分 ≥ 2 → 进入深度分析
+    │   └─ 评分 >= 2 → 进入深度分析
     │
-    ├─ 📏 内容长度判断
-    │   ├─ ≤ 6000 字符 → 直接分析
-    │   ├─ ≤ 12000 字符 → 分段分析 + 合并
+    ├─ 内容长度判断
+    │   ├─ <= 6000 字符 → 直接分析
+    │   ├- <= 12000 字符 → 分段分析 + 合并
     │   └─ > 12000 字符 → 截取前 6000 字符
     │
-    └─ 📊 深度分析 → 摘要 / 要点 / 标签 / 四维评分 / 开源信息提取
+    └─ 深度分析 → 摘要 / 要点 / 标签 / 四维评分 / 开源信息提取
 ```
 
-- **多模型支持** — OpenAI / Anthropic / DeepSeek / Gemini / 智谱 GLM / Ollama / 自定义 API
-- **语言分支** — 根据文章语言自动选择最优模型组合
-- **反思引擎**（Web）— 对分析结果二次校验，提升准确度
-- **四维评分** — 深度 / 质量 / 实用性 / 新颖性，综合评分 1-10
+- **多模型支持** -- OpenAI / Anthropic / DeepSeek / Gemini / 智谱 GLM / Ollama / 自定义 API
+- **语言分支** -- 根据文章语言自动选择最优模型组合
+- **反思引擎**（Web）-- 对分析结果二次校验，提升准确度
+- **四维评分** -- 深度 / 质量 / 实用性 / 新颖性，综合评分 1-10
 
-### 📡 RSS 引擎
+### RSS 引擎
 
 - 多格式支持：RSS 2.0 / Atom / JSON Feed
 - OPML 批量导入导出
@@ -126,21 +126,21 @@ $ rss-post-cli report daily
 - 并发抓取 + 定时调度
 - 站点特定内容提取（CSS 选择器适配）
 
-### 🔍 智能搜索
+### 智能搜索
 
 - 关键词搜索 + AI 标签语义搜索
 - 加权排序：标题(10) > 标签(8) > 摘要(5) > 内容(3)
 - 搜索历史记录
 - 高级过滤：按订阅源、分类、状态、AI 评分
 
-### 📊 智能报告
+### 智能报告
 
 - 自动生成日报 / 周报
 - AI 生成趋势总结
 - HTML 格式邮件推送
 - 定时自动发送（systemd / crontab）
 
-### ⚡ 自动化规则
+### 自动化规则
 
 - 基于关键词、标签、AI 评分等条件匹配
 - 自动标记已读、收藏、归档、打标签
@@ -378,6 +378,7 @@ port = "7890"
 │   ├── reports/                # 报告生成
 │   └── trpc/                   # tRPC Router
 ├── prisma/                     # 数据库 Schema
+├── public/                     # 静态资源 (logo, favicon)
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 └── docs/                       # 额外文档
@@ -417,7 +418,7 @@ port = "7890"
 
 | 系统内存 | 构建内存 | 运行时内存 |
 |---------|---------|----------|
-| ≥8GB | 3072MB | 768MB |
+| >=8GB | 3072MB | 768MB |
 | 4-8GB | 2048MB | 512MB |
 | 2-4GB | 1024MB | 384MB |
 | <2GB | 768MB | 256MB |
@@ -461,6 +462,6 @@ rss-post-cli report install
 
 <div align="center">
 
-**Built with ❤️ by [BlkSword](https://github.com/BlkSword)**
+**Built by [BlkSword](https://github.com/BlkSword)**
 
 </div>
