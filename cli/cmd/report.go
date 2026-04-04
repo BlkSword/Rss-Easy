@@ -76,7 +76,7 @@ var reportSendCmd = &cobra.Command{
 		}
 
 		generator := report.NewGenerator(cfg)
-		rpt, err := generator.GenerateDaily(time.Now())
+		rpt, err := generator.GenerateDaily(time.Now().AddDate(0, 0, -1))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating report: %v\n", err)
 			os.Exit(1)

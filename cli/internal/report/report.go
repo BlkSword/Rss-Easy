@@ -54,7 +54,7 @@ func (g *Generator) GenerateDaily(date time.Time) (*Report, error) {
 	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	endOfDay := startOfDay.Add(24 * time.Hour)
 
-	return g.generateReport(fmt.Sprintf("Daily Report - %s", startOfDay.Format("2006-01-02")), startOfDay, endOfDay)
+	return g.generateReport(fmt.Sprintf("Daily Report - %s", startOfDay.Format("2006-01-02")), startOfDay.Format("2006-01-02"), endOfDay.Format("2006-01-02"))
 }
 
 func (g *Generator) GenerateWeekly(startDate time.Time) (*Report, error) {
@@ -65,18 +65,18 @@ func (g *Generator) GenerateWeekly(startDate time.Time) (*Report, error) {
 
 	endDate := startDate.AddDate(0, 0, 7)
 
-	return g.generateReport(fmt.Sprintf("Weekly Report - Week of %s", startDate.Format("2006-01-02")), startDate, endDate)
+	return g.generateReport(fmt.Sprintf("Weekly Report - Week of %s", startDate.Format("2006-01-02")), startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 }
 
-func (g *Generator) generateReport(title string, startDate, endDate time.Time) (*Report, error) {
-	entries, err := db.GetEntriesForReport(startDate, endDate)
+func (g *Generator) generateReport(title string, startDateStr, endDateStr string) (*Report, error) {
+	entries, err := db.GetEntriesForReport(startDateStr, endDateStr)
 	if err != nil {
 		return nil, err
 	}
 
 	report := &Report{
 		Title:       title,
-		Period:      fmt.Sprintf("%s to %s", startDate.Format("2006-01-02"), endDate.Format("2006-01-02")),
+		Period:      fmt.Sprintf("%s to %s", startDateStr, endDateStr),
 		GeneratedAt: time.Now(),
 		Stats:       g.calculateStats(entries),
 		Sections:    g.organizeSections(entries),

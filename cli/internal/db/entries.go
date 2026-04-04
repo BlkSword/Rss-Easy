@@ -427,7 +427,7 @@ func SearchEntries(query string, limit int) ([]*Entry, error) {
 	return entries, nil
 }
 
-func GetEntriesForReport(startDate, endDate time.Time) ([]*Entry, error) {
+func GetEntriesForReport(startDateStr, endDateStr string) ([]*Entry, error) {
 	rows, err := DB.Query(`
 		SELECT id, feed_id, title, url, content, summary, author,
 			   published_at, created_at, content_hash, is_read, is_starred,
@@ -437,9 +437,9 @@ func GetEntriesForReport(startDate, endDate time.Time) ([]*Entry, error) {
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
 			   COALESCE(open_source_info, '')
 		FROM entries
-		WHERE published_at >= ? AND published_at <= ? AND ai_summary IS NOT NULL AND ai_summary != ''
+		WHERE substr(published_at, 1, 10) >= ? AND substr(published_at, 1, 10) < ? AND ai_summary IS NOT NULL AND ai_summary != ''
 		ORDER BY ai_score DESC, published_at DESC
-	`, startDate, endDate)
+	`, startDateStr, endDateStr)
 	if err != nil {
 		return nil, err
 	}
