@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -121,13 +122,12 @@ func (g *Generator) generateAISummary(report *Report) (string, error) {
 		return "", nil
 	}
 
-	// Build context from top-scoring entries (limit to avoid token overflow)
 	var context strings.Builder
 	context.WriteString(fmt.Sprintf("Report: %s\n", report.Title))
 	context.WriteString(fmt.Sprintf("Period: %s\n", report.Period))
 	context.WriteString(fmt.Sprintf("Total articles: %d, Analyzed: %d, Average score: %.1f\n\n", report.Stats.TotalEntries, report.Stats.AnalyzedEntries, report.Stats.AvgAIScore))
 
-	maxEntries := 60 // limit context size
+	maxEntries := 60
 	count := 0
 	for _, section := range report.Sections {
 		for _, entry := range section.Entries {
@@ -135,11 +135,11 @@ func (g *Generator) generateAISummary(report *Report) (string, error) {
 				break
 			}
 			lang := entry.ProgrammingLanguage
-		if lang != "" {
-			context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s, Language: %s)\n", entry.Title, entry.AIScore, entry.FeedName, lang))
-		} else {
-			context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s)\n", entry.Title, entry.AIScore, entry.FeedName))
-		}
+			if lang != "" {
+				context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s, Language: %s)\n", entry.Title, entry.AIScore, entry.FeedName, lang))
+			} else {
+				context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s)\n", entry.Title, entry.AIScore, entry.FeedName))
+			}
 			if entry.AIOneLineSummary != "" {
 				context.WriteString(fmt.Sprintf("  %s\n", entry.AIOneLineSummary))
 			}
@@ -235,14 +235,12 @@ func (g *Generator) renderMarkdown(report *Report) string {
 	sb.WriteString(fmt.Sprintf("**Period:** %s\n\n", report.Period))
 	sb.WriteString(fmt.Sprintf("**Generated:** %s\n\n", report.GeneratedAt.Format("2006-01-02 15:04:05")))
 
-	// AI Summary (key points)
 	if report.AISummary != "" {
 		sb.WriteString("## Key Highlights\n\n")
 		sb.WriteString(report.AISummary)
 		sb.WriteString("\n\n---\n\n")
 	}
 
-	// Stats
 	sb.WriteString("## Statistics\n\n")
 	sb.WriteString(fmt.Sprintf("- Total Articles: %d\n", report.Stats.TotalEntries))
 	sb.WriteString(fmt.Sprintf("- Analyzed: %d\n", report.Stats.AnalyzedEntries))
@@ -256,10 +254,8 @@ func (g *Generator) renderMarkdown(report *Report) string {
 	}
 	sb.WriteString("\n")
 
-	// Sections (only top picks + worth reading, skip "Other" to reduce noise)
 	for _, section := range report.Sections {
 		if section.Title == "Other Articles" {
-			// Show count only
 			sb.WriteString(fmt.Sprintf("## %s\n\n", section.Title))
 			sb.WriteString(fmt.Sprintf("_%d articles with score below 6, omitted for brevity._\n\n", len(section.Entries)))
 			continue
@@ -299,112 +295,209 @@ func (g *Generator) RenderHTML(report *Report) string {
 	var sb strings.Builder
 
 	sb.WriteString(`<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #333; line-height: 1.6;">
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RSS-Post Report</title>
+<style>
+body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+body { margin: 0; padding: 0; background-color: #f6f8fa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #1a1a1a; line-height: 1.6; }
+@media screen and (max-width: 600px) {
+.container { width: 100% !important; }
+.article-title { font-size: 16px !important; }
+.score-badge { font-size: 18px !important; width: 40px !important; height: 40px !important; line-height: 40px !important; }
+.card-inner { padding: 18px !important; }
+}
+</style>
+</head>
+<body style="margin:0; padding:20px 0; background-color:#f6f8fa;">
 `)
 
+	// Main container
+	sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px; margin:0 auto;" class="container">`)
+
 	// Header
-	sb.WriteString(`<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 25px;">`)
-	sb.WriteString(fmt.Sprintf(`<h1 style="margin: 0; font-size: 22px;">%s</h1>`, report.Title))
-	sb.WriteString(fmt.Sprintf(`<p style="margin: 8px 0 0; opacity: 0.9; font-size: 14px;">%s · Generated %s</p>`, report.Period, report.GeneratedAt.Format("2006-01-02 15:04")))
-	sb.WriteString(`</div>`)
+	sb.WriteString(`<tr><td style="padding:30px 40px; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius:12px 12px 0 0; text-align:center;">`)
+	sb.WriteString(`<div style="display:inline-block; background:linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); width:50px; height:50px; border-radius:12px; line-height:50px; text-align:center; color:white; font-size:24px; font-weight:bold; margin-bottom:10px;">R</div>`)
+	sb.WriteString(fmt.Sprintf(`<div style="color:#ffffff; font-size:24px; font-weight:700; letter-spacing:-0.5px;">%s</div>`, report.Title))
+	sb.WriteString(fmt.Sprintf(`<div style="color:#94a3b8; font-size:13px; margin-top:5px;">%s</div>`, report.Period))
+	sb.WriteString(`</td></tr>`)
 
-	// AI Summary (key highlights)
+	// Stats bar
+	sb.WriteString(`<tr><td style="background-color:#ffffff; padding:0; border-bottom:1px solid #e8ecf1;">`)
+	sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" width="100%"><tr>`)
+	sb.WriteString(fmt.Sprintf(`<td style="padding:25px 20px; text-align:center; border-right:1px solid #e8ecf1; width:33.33%%;"><div style="color:#3b82f6; font-size:28px; font-weight:700;">%d</div><div style="color:#64748b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">收录文章</div></td>`, report.Stats.TotalEntries))
+	sb.WriteString(fmt.Sprintf(`<td style="padding:25px 20px; text-align:center; border-right:1px solid #e8ecf1; width:33.33%%;"><div style="color:#8b5cf6; font-size:28px; font-weight:700;">%d</div><div style="color:#64748b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">AI 分析</div></td>`, report.Stats.AnalyzedEntries))
+	sb.WriteString(fmt.Sprintf(`<td style="padding:25px 20px; text-align:center; width:33.33%%;"><div style="color:#10b981; font-size:28px; font-weight:700;">%.1f</div><div style="color:#64748b; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; margin-top:4px;">平均评分</div></td>`, report.Stats.AvgAIScore))
+	sb.WriteString(`</tr></table></td></tr>`)
+
+	// AI Summary (Key Highlights)
 	if report.AISummary != "" {
-		sb.WriteString(`<div style="background: #eef2ff; border-left: 4px solid #667eea; padding: 20px; border-radius: 0 8px 8px 0; margin-bottom: 25px;">`)
-		sb.WriteString(`<h2 style="margin: 0 0 10px; color: #4338ca; font-size: 16px;">Key Highlights</h2>`)
-		// Convert markdown to simple HTML (preserve paragraphs and bold)
+		sb.WriteString(`<tr><td style="background-color:#ffffff; padding:30px 40px; border-bottom:1px solid #e8ecf1;">`)
+		sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" width="100%"><tr>`)
+		sb.WriteString(`<td style="background:linear-gradient(135deg, rgba(59,130,246,0.05) 0%%, rgba(139,92,246,0.05) 100%%); border-left:4px solid #3b82f6; padding:20px; border-radius:0 8px 8px 0;">`)
+		sb.WriteString(`<div style="color:#3b82f6; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">&#129302; AI 洞察</div>`)
 		summaryHTML := markdownToSimpleHTML(report.AISummary)
-		sb.WriteString(fmt.Sprintf(`<div style="font-size: 14px; color: #374151; line-height: 1.7;">%s</div>`, summaryHTML))
-		sb.WriteString(`</div>`)
+		sb.WriteString(fmt.Sprintf(`<div style="color:#334155; font-size:15px; line-height:1.8;">%s</div>`, summaryHTML))
+		sb.WriteString(`</td></tr></table></td></tr>`)
 	}
 
-	// Stats
-	sb.WriteString(`<div style="background: #f8f9fa; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px;">`)
-	sb.WriteString(`<p style="margin: 0; font-size: 14px; color: #555;">`)
-	sb.WriteString(fmt.Sprintf(`<strong>%d</strong> articles · <strong>%d</strong> analyzed · avg score <strong>%.1f</strong>/10`, report.Stats.TotalEntries, report.Stats.AnalyzedEntries, report.Stats.AvgAIScore))
-	sb.WriteString(`</p>`)
-	if len(report.Stats.TopFeeds) > 0 {
-		sb.WriteString(`<p style="margin: 8px 0 0; font-size: 13px; color: #888;">Top sources: `)
-		for i, feed := range report.Stats.TopFeeds {
-			if i > 0 {
-				sb.WriteString(` · `)
-			}
-			sb.WriteString(fmt.Sprintf(`%s (%d)`, feed.Name, feed.Count))
-		}
-		sb.WriteString(`</p>`)
-	}
-	sb.WriteString(`</div>`)
-
-	// Sections
+	// Sections with article cards
 	for _, section := range report.Sections {
 		if section.Title == "Other Articles" {
-			sb.WriteString(fmt.Sprintf(`<div style="margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px; text-align: center; color: #9ca3af; font-size: 14px;">%d more articles with score below 6</div>`, len(section.Entries)))
+			sb.WriteString(fmt.Sprintf(`<tr><td style="background-color:#ffffff; padding:20px 40px 30px; text-align:center; color:#9ca3af; font-size:14px; border-top:1px solid #e8ecf1;">%d more articles with score below 6</td></tr>`, len(section.Entries)))
 			continue
 		}
 
-		sb.WriteString(fmt.Sprintf(`<h2 style="color: #444; border-bottom: 2px solid #667eea; padding-bottom: 8px; margin-top: 30px;">%s</h2>`, section.Title))
+		// Section header
+		tagBg := "#f59e0b"
+		if strings.Contains(section.Title, "Worth") {
+			tagBg = "#3b82f6"
+			tagBg = "#3b82f6"
+		}
+		tagLabel := "精选"
+		if strings.Contains(section.Title, "Worth") {
+			tagLabel = "推荐"
+		}
 
+		sb.WriteString(`<tr><td style="background-color:#ffffff; padding:30px 40px 20px;">`)
+		sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" width="100%"><tr>`)
+		sb.WriteString(`<td style="border-bottom:2px solid #f1f5f9; padding-bottom:15px;">`)
+		sb.WriteString(fmt.Sprintf(`<span style="display:inline-block; background:%s; color:white; font-size:11px; font-weight:700; padding:4px 10px; border-radius:20px; margin-right:10px; vertical-align:middle;">%s</span>`, tagBg, tagLabel))
+		sb.WriteString(fmt.Sprintf(`<span style="color:#0f172a; font-size:20px; font-weight:700; vertical-align:middle;">%s</span>`, section.Title))
+		sb.WriteString(fmt.Sprintf(`<span style="color:#94a3b8; font-size:13px; float:right; margin-top:5px;">共 %d 篇</span>`, len(section.Entries)))
+		sb.WriteString(`</td></tr></table></td></tr>`)
+
+		// Article cards
 		for _, entry := range section.Entries {
-			sb.WriteString(`<div style="margin: 15px 0; padding: 15px; background: white; border-left: 4px solid #667eea; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-radius: 0 8px 8px 0;">`)
-			sb.WriteString(fmt.Sprintf(`<a href="%s" style="color: #667eea; text-decoration: none; font-weight: 600; font-size: 16px;">%s</a>`, entry.URL, entry.Title))
-
-			if entry.FeedName != "" {
-				sb.WriteString(fmt.Sprintf(`<span style="color: #9ca3af; font-size: 13px; margin-left: 8px;">%s</span>`, entry.FeedName))
-			}
-
-			if entry.AIOneLineSummary != "" {
-				sb.WriteString(fmt.Sprintf(`<p style="margin: 8px 0 0; color: #666; font-style: italic;">%s</p>`, entry.AIOneLineSummary))
-			}
-
-			if entry.AISummary != "" {
-				summary := entry.AISummary
-				if len(summary) > 300 {
-					summary = summary[:300] + "..."
-				}
-				sb.WriteString(fmt.Sprintf(`<p style="margin: 8px 0 0; color: #555; font-size: 14px;">%s</p>`, summary))
-			}
-
-			if entry.AIScore > 0 {
-				scoreColor := "#28a745"
-				if entry.AIScore >= 8 {
-					scoreColor = "#dc3545"
-				} else if entry.AIScore >= 6 {
-					scoreColor = "#ffc107"
-				}
-				sb.WriteString(fmt.Sprintf(`<span style="display: inline-block; margin-top: 8px; padding: 2px 10px; background: %s; color: white; border-radius: 12px; font-size: 13px; font-weight: 600;">★ %d/10</span>`, scoreColor, entry.AIScore))
-			}
-
-			sb.WriteString(`</div>`)
+			sb.WriteString(renderArticleCard(entry))
 		}
 	}
 
 	// Footer
-	sb.WriteString(`<div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #999; font-size: 12px;">`)
-	sb.WriteString(`<p>RSS-Post CLI · AI-driven RSS intelligence aggregator</p>`)
-	sb.WriteString(`</div></body></html>`)
+	sb.WriteString(`<tr><td style="background-color:#ffffff; padding:25px 40px; border-radius:0 0 12px 12px; border-top:1px solid #e8ecf1; text-align:center;">`)
+	sb.WriteString(`<div style="color:#94a3b8; font-size:12px;">RSS-Post CLI · AI 驱动的智能 RSS 信息聚合工具</div>`)
+	sb.WriteString(`</td></tr>`)
+
+	sb.WriteString(`</table></body></html>`)
 
 	return sb.String()
+}
+
+// renderArticleCard renders a single article entry as a styled HTML card.
+func renderArticleCard(entry *db.Entry) string {
+	var sb strings.Builder
+
+	isHighScore := entry.AIScore >= 8
+
+	// Card border & background based on score
+	var borderColor, cardBg string
+	if isHighScore {
+		borderColor = "#fbbf24"
+		cardBg = "linear-gradient(135deg, #fffbeb 0%, #ffffff 100%)"
+	} else {
+		borderColor = "#e2e8f0"
+		cardBg = "linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)"
+	}
+
+	// Score badge color
+	var scoreBg, scoreTextColor string
+	if isHighScore {
+		scoreBg = "linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)"
+		scoreTextColor = "white"
+	} else {
+		scoreBg = "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)"
+		scoreTextColor = "white"
+	}
+
+	// Source badge color
+	sourceBg := "#f1f5f9"
+	sourceColor := "#475569"
+	if entry.ProgrammingLanguage != "" {
+		sourceBg = "#ede9fe"
+		sourceColor = "#6d28d9"
+	}
+
+	// Parse score dimensions
+	dims := parseScoreDimensions(entry.AIScoreDimensions)
+
+	sb.WriteString(`<tr><td style="background-color:#ffffff; padding:0 40px 20px;">`)
+	sb.WriteString(fmt.Sprintf(`<table border="0" cellpadding="0" cellspacing="0" width="100%%" style="border:2px solid %s; border-radius:12px; overflow:hidden;">`, borderColor))
+	sb.WriteString(fmt.Sprintf(`<tr><td style="padding:25px; background:%s;" class="card-inner">`, cardBg))
+	sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td style="vertical-align:top;">`)
+
+	// Score badge (right-aligned)
+	sb.WriteString(fmt.Sprintf(`<div style="float:right; text-align:center; margin-left:15px;">`))
+	sb.WriteString(fmt.Sprintf(`<div class="score-badge" style="width:50px; height:50px; background:%s; border-radius:50%%; line-height:50px; color:%s; font-size:20px; font-weight:800; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">%d</div>`, scoreBg, scoreTextColor, entry.AIScore))
+	sb.WriteString(`<div style="color:#94a3b8; font-size:10px; margin-top:5px; font-weight:600;">综合评分</div>`)
+	sb.WriteString(`</div>`)
+
+	// Source & language badge
+	sb.WriteString(`<div style="margin-bottom:10px;">`)
+	if entry.FeedName != "" {
+		sb.WriteString(fmt.Sprintf(`<span style="display:inline-block; background-color:%s; color:%s; font-size:11px; padding:3px 8px; border-radius:4px; font-weight:600;">%s</span>`, sourceBg, sourceColor, entry.FeedName))
+	}
+	if entry.ProgrammingLanguage != "" {
+		sb.WriteString(fmt.Sprintf(` <span style="display:inline-block; background-color:#dbeafe; color:#1d4ed8; font-size:11px; padding:3px 8px; border-radius:4px; font-weight:600;">%s</span>`, entry.ProgrammingLanguage))
+	}
+	sb.WriteString(`</div>`)
+
+	// Title
+	sb.WriteString(fmt.Sprintf(`<h3 class="article-title" style="margin:0 0 12px 0; font-size:18px; line-height:1.4; font-weight:700; color:#0f172a;"><a href="%s" style="color:#0f172a; text-decoration:none;">%s</a></h3>`, entry.URL, entry.Title))
+
+	// AI one-line summary
+	if entry.AIOneLineSummary != "" {
+		sb.WriteString(fmt.Sprintf(`<p style="margin:0 0 12px 0; color:#475569; font-size:14px; line-height:1.7;">%s</p>`, entry.AIOneLineSummary))
+	}
+
+	// AI summary (truncated)
+	if entry.AISummary != "" {
+		summary := entry.AISummary
+		if len(summary) > 400 {
+			summary = summary[:400] + "..."
+		}
+		sb.WriteString(fmt.Sprintf(`<p style="margin:0 0 15px 0; color:#64748b; font-size:13px; line-height:1.7;">%s</p>`, summary))
+	}
+
+	// Score dimensions bar
+	if dims != nil {
+		sb.WriteString(`<table border="0" cellpadding="0" cellspacing="0" style="margin-bottom:0;"><tr>`)
+		sb.WriteString(fmt.Sprintf(`<td style="padding-right:12px; font-size:12px; color:#64748b;"><span style="color:#3b82f6; font-weight:600;">深度 %d</span> · <span style="color:#8b5cf6; font-weight:600;">质量 %d</span> · <span style="color:#10b981; font-weight:600;">实用 %d</span> · <span style="color:#f59e0b; font-weight:600;">新颖 %d</span></td>`, dims.Depth, dims.Quality, dims.Practicality, dims.Novelty))
+		sb.WriteString(`</tr></table>`)
+	}
+
+	sb.WriteString(`</td></tr></table>`)
+	sb.WriteString(`</td></tr></table>`)
+	sb.WriteString(`</td></tr>`)
+
+	return sb.String()
+}
+
+// parseScoreDimensions safely parses score dimensions JSON.
+func parseScoreDimensions(jsonStr string) *db.ScoreDimensions {
+	if jsonStr == "" {
+		return nil
+	}
+	var dims db.ScoreDimensions
+	if err := json.Unmarshal([]byte(jsonStr), &dims); err != nil {
+		return nil
+	}
+	return &dims
 }
 
 // markdownToSimpleHTML converts basic markdown to HTML for email rendering.
 func markdownToSimpleHTML(md string) string {
 	html := md
-	// Headers
-	html = strings.ReplaceAll(html, "### ", `<h4 style="margin: 12px 0 6px; font-size: 14px; color: #333;">`)
-	html = strings.ReplaceAll(html, "## ", `<h3 style="margin: 12px 0 6px; font-size: 15px; color: #333;">`)
-	html = strings.ReplaceAll(html, "# ", `<h2 style="margin: 12px 0 6px; font-size: 16px; color: #333;">`)
-	// Bold
+	html = strings.ReplaceAll(html, "### ", `<h4 style="margin:12px 0 6px; font-size:14px; color:#333;">`)
+	html = strings.ReplaceAll(html, "## ", `<h3 style="margin:12px 0 6px; font-size:15px; color:#333;">`)
+	html = strings.ReplaceAll(html, "# ", `<h2 style="margin:12px 0 6px; font-size:16px; color:#333;">`)
 	html = strings.ReplaceAll(html, "**", `<strong>`)
-	// Italic
-	html = strings.ReplaceAll(html, "*", `<em>`)
-	html = strings.ReplaceAll(html, `<em>`, ``) // remove leftover from bold
-	// Lists
 	html = strings.ReplaceAll(html, "\n- ", `<br>• `)
 	html = strings.ReplaceAll(html, "\n1. ", `<br>1. `)
-	// Line breaks
-	html = strings.ReplaceAll(html, "\n\n", `</p><p style="margin: 6px 0;">`)
+	html = strings.ReplaceAll(html, "\n\n", `</p><p style="margin:6px 0;">`)
 	html = strings.ReplaceAll(html, "\n", `<br>`)
 	return html
 }
