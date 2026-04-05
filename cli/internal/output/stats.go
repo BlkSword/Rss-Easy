@@ -136,6 +136,34 @@ func (f *Formatter) FormatReportList(reports []*db.SavedReport) string {
 	return buf.String()
 }
 
+
+// FormatLanguageStats formats programming language statistics.
+func (f *Formatter) FormatLanguageStats(stats []*db.LanguageStat) string {
+	if len(stats) == 0 {
+		return "No language statistics available."
+	}
+
+	var buf strings.Builder
+	table := tablewriter.NewTable(&buf,
+		tablewriter.WithHeaderAlignment(tw.AlignCenter),
+		tablewriter.WithRowAlignment(tw.AlignLeft),
+	)
+	table.Header("Language", "Articles", "Avg Score", "Max Score", "Top Article")
+
+	for _, s := range stats {
+		table.Append(
+			s.Language,
+			fmt.Sprintf("%d", s.EntryCount),
+			fmt.Sprintf("%.1f", s.AvgScore),
+			fmt.Sprintf("%d", s.MaxScore),
+			truncate(s.TopScoreEntry, 40),
+		)
+	}
+
+	table.Render()
+	return buf.String()
+}
+
 func intMin(a, b int) int {
 	if a < b {
 		return a

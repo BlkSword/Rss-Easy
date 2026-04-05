@@ -26,6 +26,7 @@ func GetAnalysisPrompt(lang string) string {
     }
   ],
   "tags": ["tag1", "tag2", "tag3"],
+  "programmingLanguage": "Rust",
   "aiScore": 8,
   "scoreDimensions": {
     "depth": 8,
@@ -42,6 +43,13 @@ Scoring guidelines:
 - quality (1-10): Writing quality and accuracy
 - practicality (1-10): How actionable/practical is the content?
 - novelty (1-10): How novel/unique is the content?
+
+Programming language detection:
+- "programmingLanguage": Identify the PRIMARY programming language discussed in the article.
+- Set to null if the article is not about any programming language (e.g., general tech news, management, design).
+- Use the official language name (e.g., "Rust", not "rust" or "RUST"; "JavaScript", not "JS").
+- If multiple languages are discussed, pick the one that is the MAIN subject of the article.
+- Examples: "Python", "TypeScript", "Rust", "Go", "Java", "C++", "Kotlin", "Swift", "Ruby", "PHP", "C#", "Dart", "Move", "Zig"
 
 If the article is about an open source project, include:
 {
@@ -63,6 +71,7 @@ Your response must be a valid JSON object:
   "value": 4,
   "language": "en",
   "category": "technology",
+  "programmingLanguage": "Python",
   "confidence": "high"
 }
 
@@ -73,10 +82,11 @@ Value scoring (1-5):
 4: Good quality, relevant
 5: Excellent, highly valuable
 
+"programmingLanguage": The main programming language discussed (use official name, null if not applicable).
+
 Only output the JSON, no other text.`
 
 // GetReportPrompt returns the report prompt with the specified output language.
-
 func GetReportPrompt(lang string) string {
 	langInstruction := "Write the report in the same language as the articles."
 	switch lang {
@@ -104,6 +114,14 @@ Extract the 5-8 most important takeaways from today's articles. Focus on:
 - Security incidents or vulnerabilities (if applicable)
 
 Format each highlight as a concise bullet point with brief context. Do NOT simply list article titles — synthesize and summarize the key information.
+
+## Programming Language Trends
+For each programming language that appears in 2+ articles:
+- List the language name
+- Summarize what's happening with that language (new releases, notable projects, ecosystem changes)
+- Cite the relevant articles as evidence
+
+If no language has 2+ articles, list notable single-article language mentions.
 
 ## Notable Mentions
 List 3-5 individual articles that stand out the most, with a one-line reason why each is worth reading.
@@ -139,8 +157,17 @@ Extract the 8-12 most significant takeaways from this week's articles. Synthesiz
 - Notable product launches or updates
 - Industry shifts and analysis
 
+## Programming Language Trends
+This is a KEY section. Analyze the articles by programming language:
+- For each language with 2+ articles: summarize the overall trend, key developments, and noteworthy projects
+- Compare activity levels between languages this week
+- Highlight any language gaining or losing momentum
+- For languages with only 1 article: briefly mention in a "Other Languages" subsection
+
+This section should help the reader quickly understand what's happening across different language ecosystems.
+
 ## Trend Analysis
-Identify 3-5 key trends observed this week. For each trend:
+Identify 3-5 key trends observed this week (beyond programming languages). For each trend:
 - Describe the trend and what's driving it
 - Cite specific articles as evidence
 - Assess potential impact (high/medium/low)

@@ -17,13 +17,14 @@ type Analyzer struct {
 }
 
 type AnalysisResult struct {
-	OneLineSummary  string          `json:"oneLineSummary"`
-	Summary         string          `json:"summary"`
-	MainPoints      []MainPoint     `json:"mainPoints"`
-	Tags            []string        `json:"tags"`
-	AIScore         int             `json:"aiScore"`
-	ScoreDimensions ScoreDimensions `json:"scoreDimensions"`
-	OpenSource      *OpenSourceInfo `json:"openSource"`
+	OneLineSummary      string          `json:"oneLineSummary"`
+	Summary             string          `json:"summary"`
+	MainPoints          []MainPoint     `json:"mainPoints"`
+	Tags                []string        `json:"tags"`
+	ProgrammingLanguage string          `json:"programmingLanguage"`
+	AIScore             int             `json:"aiScore"`
+	ScoreDimensions     ScoreDimensions `json:"scoreDimensions"`
+	OpenSource          *OpenSourceInfo `json:"openSource"`
 }
 
 type MainPoint struct {
@@ -47,10 +48,11 @@ type OpenSourceInfo struct {
 }
 
 type PreliminaryResult struct {
-	Value      int    `json:"value"`
-	Language   string `json:"language"`
-	Category   string `json:"category"`
-	Confidence string `json:"confidence"`
+	Value               int    `json:"value"`
+	Language            string `json:"language"`
+	Category            string `json:"category"`
+	ProgrammingLanguage string `json:"programmingLanguage"`
+	Confidence          string `json:"confidence"`
 }
 
 func NewAnalyzer(cfg *config.Config) *Analyzer {
@@ -99,6 +101,7 @@ func (a *Analyzer) analyzeSegmented(title, content string) (*AnalysisResult, err
 	chunks := splitContent(content, 4000)
 
 	var summaries []string
+	var lastResult *AnalysisResult
 	for i, chunk := range chunks {
 		userMessage := fmt.Sprintf("Title: %s\n\nContent Part %d:\n%s", title, i+1, chunk)
 		response, err := a.client.ChatWithSystem(GetAnalysisPrompt(a.cfg.AI.Language), userMessage, a.cfg.AI.Model)
@@ -108,6 +111,9 @@ func (a *Analyzer) analyzeSegmented(title, content string) (*AnalysisResult, err
 		result, err := parseAnalysisResult(response)
 		if err == nil {
 			summaries = append(summaries, result.Summary)
+			if lastResult == nil {
+				lastResult = result
+			}
 		}
 	}
 
@@ -116,7 +122,12 @@ func (a *Analyzer) analyzeSegmented(title, content string) (*AnalysisResult, err
 	}
 
 	combinedSummary := strings.Join(summaries, "\n\n")
-	return a.analyzeDirect(title, combinedSummary)
+	final, err := a.analyzeDirect(title, combinedSummary)
+	if err != nil && lastResult != nil {
+		// Fallback to first successful segment result
+		return lastResult, nil
+	}
+	return final, err
 }
 
 func (a *Analyzer) analyzeLong(title, content string) (*AnalysisResult, error) {
@@ -213,6 +224,7 @@ func (a *Analyzer) saveAnalysis(entry *db.Entry, result *AnalysisResult, process
 	entry.AIOneLineSummary = result.OneLineSummary
 	entry.AISummary = result.Summary
 	entry.AIScore = result.AIScore
+	entry.ProgrammingLanguage = result.ProgrammingLanguage
 
 	if len(result.MainPoints) > 0 {
 		b, _ := json.Marshal(result.MainPoints)

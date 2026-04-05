@@ -173,6 +173,7 @@ func createTables() error {
 		`ALTER TABLE entries ADD COLUMN deleted BOOLEAN DEFAULT 0`,
 		`ALTER TABLE entries ADD COLUMN ai_retry_count INTEGER DEFAULT 0`,
 		`ALTER TABLE entries ADD COLUMN ai_last_error TEXT DEFAULT ''`,
+		`ALTER TABLE entries ADD COLUMN programming_language TEXT`,
 	}
 	for _, m := range migrations {
 		DB.Exec(m) // Ignore errors (column may already exist)

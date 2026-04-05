@@ -105,14 +105,62 @@ var statsTopCmd = &cobra.Command{
 	},
 }
 
+var statsLangCmd = &cobra.Command{
+	Use:   "lang",
+	Short: "Show programming language statistics",
+	Long:  `Show statistics grouped by programming language detected in articles.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		days, _ := cmd.Flags().GetInt("days")
+		trendLang, _ := cmd.Flags().GetString("trend")
+
+		if trendLang != "" {
+			// Show daily trend for a specific language
+			stats, err := db.GetLanguageTrend(trendLang, days)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error getting language trend: %v\n", err)
+				os.Exit(1)
+			}
+			if len(stats) == 0 {
+				fmt.Printf("No articles found for language '%s' in the specified period.\n", trendLang)
+				return
+			}
+			fmt.Printf("Daily Trend for %s (last %d days)\n\n", trendLang, days)
+			formatter := output.NewFormatter(cfg.Output.Color)
+			fmt.Println(formatter.FormatDailyStats(stats))
+			return
+		}
+
+		stats, err := db.GetLanguageStats(days)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting language stats: %v\n", err)
+			os.Exit(1)
+		}
+		if len(stats) == 0 {
+			fmt.Println("No language-tagged articles found.")
+			return
+		}
+
+		fmt.Printf("Programming Language Statistics")
+		if days > 0 {
+			fmt.Printf(" (last %d days)", days)
+		}
+		fmt.Println("\n")
+		formatter := output.NewFormatter(cfg.Output.Color)
+		fmt.Println(formatter.FormatLanguageStats(stats))
+	},
+}
+
 func init() {
 	statsCmd.AddCommand(statsOverviewCmd)
 	statsCmd.AddCommand(statsFeedCmd)
 	statsCmd.AddCommand(statsDailyCmd)
 	statsCmd.AddCommand(statsTopCmd)
+	statsCmd.AddCommand(statsLangCmd)
 
 	statsDailyCmd.Flags().IntP("days", "d", 30, "Number of days to show")
 	statsTopCmd.Flags().IntP("limit", "l", 10, "Number of top entries to show")
+	statsLangCmd.Flags().IntP("days", "d", 30, "Number of days to show")
+	statsLangCmd.Flags().String("trend", "", "Show daily trend for a specific language")
 
 	rootCmd.AddCommand(statsCmd)
 }

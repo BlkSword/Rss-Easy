@@ -279,3 +279,90 @@ func GetTopEntries(limit int) ([]*Entry, error) {
 	}
 	return ListEntries(filter)
 }
+
+// LanguageStat represents statistics for a programming language.
+type LanguageStat struct {
+	Language      string  `json:"language"`
+	EntryCount    int     `json:"entry_count"`
+	AvgScore      float64 `json:"avg_score"`
+	MaxScore      int     `json:"max_score"`
+	TopScoreEntry string  `json:"top_score_entry"`
+}
+
+// GetLanguageStats returns statistics grouped by programming language.
+func GetLanguageStats(days int) ([]*LanguageStat, error) {
+	query := `
+		SELECT programming_language, COUNT(*) as cnt,
+		       COALESCE(AVG(ai_score), 0) as avg_score,
+		       COALESCE(MAX(ai_score), 0) as max_score,
+		       (SELECT title FROM entries e2 WHERE e2.programming_language = entries.programming_language AND e2.ai_score > 0 ORDER BY e2.ai_score DESC LIMIT 1) as top_title
+		FROM entries
+		WHERE programming_language IS NOT NULL AND programming_language != ''
+	`
+	var args []interface{}
+	if days > 0 {
+		query += ` AND substr(COALESCE(published_at, created_at), 1, 10) >= substr(DATE('now', '-' || ? || ' days'), 1, 10)`
+		args = append(args, days)
+	}
+	query += ` GROUP BY programming_language ORDER BY cnt DESC`
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*LanguageStat
+	for rows.Next() {
+		s := &LanguageStat{}
+		if err := rows.Scan(&s.Language, &s.EntryCount, &s.AvgScore, &s.MaxScore, &s.TopScoreEntry); err != nil {
+			continue
+		}
+		stats = append(stats, s)
+	}
+	return stats, nil
+}
+
+// GetLanguageTrend returns daily counts for a specific programming language.
+func GetLanguageTrend(language string, days int) ([]*DailyStat, error) {
+	rows, err := DB.Query(`
+		SELECT substr(COALESCE(published_at, created_at), 1, 10) as date, COUNT(*) as count
+		FROM entries
+		WHERE programming_language = ?
+		  AND substr(COALESCE(published_at, created_at), 1, 10) >= substr(DATE('now', '-' || ? || ' days'), 1, 10)
+		GROUP BY substr(COALESCE(published_at, created_at), 1, 10)
+		ORDER BY date DESC
+	`, language, days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*DailyStat
+	for rows.Next() {
+		s := &DailyStat{}
+		if err := rows.Scan(&s.Date, &s.Count); err != nil {
+			continue
+		}
+		stats = append(stats, s)
+	}
+	return stats, nil
+}
+
+// GetEntriesForReportByLanguage returns entries grouped by programming language for a report.
+func GetEntriesForReportByLanguage(startDateStr, endDateStr string) (map[string][]*Entry, error) {
+	entries, err := GetEntriesForReport(startDateStr, endDateStr)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string][]*Entry)
+	for _, entry := range entries {
+		lang := entry.ProgrammingLanguage
+		if lang == "" {
+			lang = "Other"
+		}
+		result[lang] = append(result[lang], entry)
+	}
+	return result, nil
+}

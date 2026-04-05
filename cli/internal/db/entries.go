@@ -52,7 +52,8 @@ func GetEntry(id int64) (*Entry, error) {
 			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
 			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
-			   COALESCE(open_source_info, '')
+			   COALESCE(open_source_info, ''),
+			   COALESCE(programming_language, '')
 		FROM entries WHERE id = ?
 	`, id).Scan(
 		&entry.ID, &entry.FeedID, &entry.Title, &entry.URL, &entry.Content,
@@ -62,7 +63,7 @@ func GetEntry(id int64) (*Entry, error) {
 		&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
 		&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
 		&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
-		&entry.AIScore, &entry.OpenSourceInfo,
+		&entry.AIScore, &entry.OpenSourceInfo, &entry.ProgrammingLanguage,
 	)
 	if err != nil {
 		return nil, err
@@ -85,7 +86,8 @@ func GetEntryByHash(contentHash string) (*Entry, error) {
 			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
 			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
-			   COALESCE(open_source_info, '')
+			   COALESCE(open_source_info, ''),
+			   COALESCE(programming_language, '')
 		FROM entries WHERE content_hash = ?
 	`, contentHash).Scan(
 		&entry.ID, &entry.FeedID, &entry.Title, &entry.URL, &entry.Content,
@@ -95,7 +97,7 @@ func GetEntryByHash(contentHash string) (*Entry, error) {
 		&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
 		&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
 		&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
-		&entry.AIScore, &entry.OpenSourceInfo,
+		&entry.AIScore, &entry.OpenSourceInfo, &entry.ProgrammingLanguage,
 	)
 	if err != nil {
 		return nil, err
@@ -113,6 +115,7 @@ type EntryFilter struct {
 	Starred     *bool
 	Unread      *bool
 	AIScoreMin  *int
+	Lang        *string
 	Limit       int
 	Offset      int
 	OrderBy     string
@@ -149,6 +152,10 @@ func ListEntries(filter *EntryFilter) ([]*Entry, error) {
 		conditions = append(conditions, "ai_score >= ?")
 		args = append(args, *filter.AIScoreMin)
 	}
+	if filter.Lang != nil && *filter.Lang != "" {
+		conditions = append(conditions, "programming_language = ?")
+		args = append(args, strings.ToUpper(*filter.Lang))
+	}
 
 	query := `
 		SELECT id, feed_id, title, url, content, summary, author,
@@ -157,7 +164,8 @@ func ListEntries(filter *EntryFilter) ([]*Entry, error) {
 			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
 			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
-			   COALESCE(open_source_info, '')
+			   COALESCE(open_source_info, ''),
+			   COALESCE(programming_language, '')
 		FROM entries
 	`
 	if len(conditions) > 0 {
@@ -190,7 +198,7 @@ func ListEntries(filter *EntryFilter) ([]*Entry, error) {
 			&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
 			&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
 			&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
-			&entry.AIScore, &entry.OpenSourceInfo,
+			&entry.AIScore, &entry.OpenSourceInfo, &entry.ProgrammingLanguage,
 		)
 		if err != nil {
 			return nil, err
@@ -232,12 +240,14 @@ func UpdateEntryAIAnalysis(entry *Entry) error {
 			ai_summary = ?, ai_keywords = ?, ai_sentiment = ?, ai_category = ?,
 			ai_importance_score = ?, ai_one_line_summary = ?, ai_main_points = ?,
 			ai_key_quotes = ?, ai_score_dimensions = ?, ai_analysis_model = ?,
-			ai_processing_time = ?, ai_score = ?, open_source_info = ?
+			ai_processing_time = ?, ai_score = ?, open_source_info = ?,
+			programming_language = ?
 		WHERE id = ?
 	`, entry.AISummary, entry.AIKeywords, entry.AISentiment, entry.AICategory,
 		entry.AIImportanceScore, entry.AIOneLineSummary, entry.AIMainPoints,
 		entry.AIKeyQuotes, entry.AIScoreDimensions, entry.AIAnalysisModel,
-		entry.AIProcessingTime, entry.AIScore, entry.OpenSourceInfo, entry.ID)
+		entry.AIProcessingTime, entry.AIScore, entry.OpenSourceInfo,
+		entry.ProgrammingLanguage, entry.ID)
 	return err
 }
 
@@ -279,7 +289,8 @@ func GetRetryAnalysisEntries(limit, maxRetries int) ([]*Entry, error) {
 			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
 			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
-			   COALESCE(open_source_info, '')
+			   COALESCE(open_source_info, ''),
+			   COALESCE(programming_language, '')
 		FROM entries
 		WHERE ai_retry_count > 0 AND ai_retry_count < ? AND (ai_summary IS NULL OR ai_summary = '')
 		ORDER BY ai_retry_count ASC, published_at DESC
@@ -302,7 +313,7 @@ func GetRetryAnalysisEntries(limit, maxRetries int) ([]*Entry, error) {
 			&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
 			&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
 			&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
-			&entry.AIScore, &entry.OpenSourceInfo,
+			&entry.AIScore, &entry.OpenSourceInfo, &entry.ProgrammingLanguage,
 		)
 		if err != nil {
 			return nil, err
@@ -330,7 +341,8 @@ func GetPendingAnalysisEntries(limit int) ([]*Entry, error) {
 			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
 			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
-			   COALESCE(open_source_info, '')
+			   COALESCE(open_source_info, ''),
+			   COALESCE(programming_language, '')
 		FROM entries
 		WHERE ai_summary IS NULL OR ai_summary = ''
 		ORDER BY published_at DESC
@@ -353,7 +365,7 @@ func GetPendingAnalysisEntries(limit int) ([]*Entry, error) {
 			&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
 			&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
 			&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
-			&entry.AIScore, &entry.OpenSourceInfo,
+			&entry.AIScore, &entry.OpenSourceInfo, &entry.ProgrammingLanguage,
 		)
 		if err != nil {
 			return nil, err
@@ -388,7 +400,8 @@ func SearchEntries(query string, limit int) ([]*Entry, error) {
 			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
 			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
-			   COALESCE(open_source_info, '')
+			   COALESCE(open_source_info, ''),
+			   COALESCE(programming_language, '')
 		FROM entries
 		WHERE title LIKE ? OR content LIKE ? OR summary LIKE ?
 		ORDER BY published_at DESC
@@ -411,7 +424,7 @@ func SearchEntries(query string, limit int) ([]*Entry, error) {
 			&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
 			&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
 			&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
-			&entry.AIScore, &entry.OpenSourceInfo,
+			&entry.AIScore, &entry.OpenSourceInfo, &entry.ProgrammingLanguage,
 		)
 		if err != nil {
 			return nil, err
@@ -435,7 +448,8 @@ func GetEntriesForReport(startDateStr, endDateStr string) ([]*Entry, error) {
 			   COALESCE(ai_importance_score, 0), COALESCE(ai_one_line_summary, ''), COALESCE(ai_main_points, ''),
 			   COALESCE(ai_key_quotes, ''), COALESCE(ai_score_dimensions, ''), COALESCE(ai_analysis_model, ''),
 			   COALESCE(ai_processing_time, 0), word_count, reading_time, COALESCE(ai_score, 0),
-			   COALESCE(open_source_info, '')
+			   COALESCE(open_source_info, ''),
+			   COALESCE(programming_language, '')
 		FROM entries
 		WHERE substr(published_at, 1, 10) >= ? AND substr(published_at, 1, 10) < ? AND ai_summary IS NOT NULL AND ai_summary != ''
 		ORDER BY ai_score DESC, published_at DESC
@@ -457,7 +471,7 @@ func GetEntriesForReport(startDateStr, endDateStr string) ([]*Entry, error) {
 			&entry.AIImportanceScore, &entry.AIOneLineSummary, &entry.AIMainPoints,
 			&entry.AIKeyQuotes, &entry.AIScoreDimensions, &entry.AIAnalysisModel,
 			&entry.AIProcessingTime, &entry.WordCount, &entry.ReadingTime,
-			&entry.AIScore, &entry.OpenSourceInfo,
+			&entry.AIScore, &entry.OpenSourceInfo, &entry.ProgrammingLanguage,
 		)
 		if err != nil {
 			return nil, err

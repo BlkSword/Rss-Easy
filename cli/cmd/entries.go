@@ -25,6 +25,7 @@ var entriesListCmd = &cobra.Command{
 		starred, _ := cmd.Flags().GetBool("starred")
 		unread, _ := cmd.Flags().GetBool("unread")
 		aiScoreMin, _ := cmd.Flags().GetInt("min-score")
+		lang, _ := cmd.Flags().GetString("lang")
 		limit, _ := cmd.Flags().GetInt("limit")
 
 		filter := &db.EntryFilter{
@@ -45,6 +46,9 @@ var entriesListCmd = &cobra.Command{
 		}
 		if aiScoreMin > 0 {
 			filter.AIScoreMin = &aiScoreMin
+		}
+		if lang != "" {
+			filter.Lang = &lang
 		}
 
 		entries, err := db.ListEntries(filter)
@@ -200,6 +204,7 @@ func init() {
 	entriesListCmd.Flags().BoolP("unread", "u", false, "Show only unread entries")
 	entriesListCmd.Flags().IntP("min-score", "m", 0, "Minimum AI score")
 	entriesListCmd.Flags().IntP("limit", "l", 50, "Maximum number of entries to show")
+	entriesListCmd.Flags().StringP("lang", "", "", "Filter by programming language (e.g. Rust, Python)")
 
 	rootCmd.AddCommand(entriesCmd)
 }

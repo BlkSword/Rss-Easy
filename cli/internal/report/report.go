@@ -134,7 +134,12 @@ func (g *Generator) generateAISummary(report *Report) (string, error) {
 			if count >= maxEntries {
 				break
 			}
+			lang := entry.ProgrammingLanguage
+		if lang != "" {
+			context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s, Language: %s)\n", entry.Title, entry.AIScore, entry.FeedName, lang))
+		} else {
 			context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s)\n", entry.Title, entry.AIScore, entry.FeedName))
+		}
 			if entry.AIOneLineSummary != "" {
 				context.WriteString(fmt.Sprintf("  %s\n", entry.AIOneLineSummary))
 			}
