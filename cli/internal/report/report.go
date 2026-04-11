@@ -531,7 +531,15 @@ func (g *Generator) SendEmail(rpt *Report, to []string) error {
 		to = g.cfg.Email.To
 	}
 
-	return sender.Send(to, subject, htmlContent)
+	// Attach markdown version of the report
+	attachName := fmt.Sprintf("%s.md", rpt.ReportType)
+	if rpt.ReportType == "daily" {
+		attachName = fmt.Sprintf("daily-report-%s.md", rpt.GeneratedAt.Format("2006-01-02"))
+	} else if rpt.ReportType == "weekly" {
+		attachName = fmt.Sprintf("weekly-report-%s.md", rpt.GeneratedAt.Format("2006-01-02"))
+	}
+
+	return sender.SendWithAttachment(to, subject, htmlContent, attachName, rpt.Content)
 }
 
 func (g *Generator) GenerateAIReport(report *Report) (string, error) {

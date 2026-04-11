@@ -1,7 +1,9 @@
 package email
 
 import (
+	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net/smtp"
 	"strings"
@@ -28,6 +30,12 @@ func NewSender2(from string, smtp SMTPConfig) *Sender {
 
 // Send sends an HTML email to the specified recipients.
 func (s *Sender) Send(to []string, subject, htmlBody string) error {
+	return s.SendWithAttachment(to, subject, htmlBody, "", "")
+}
+
+// SendWithAttachment sends an HTML email with an optional attachment.
+// If attachName and attachContent are non-empty, the file is attached.
+func (s *Sender) SendWithAttachment(to []string, subject, htmlBody, attachName, attachContent string) error {
 	if len(to) == 0 {
 		return fmt.Errorf("no recipients specified")
 	}
@@ -36,7 +44,10 @@ func (s *Sender) Send(to []string, subject, htmlBody string) error {
 		return fmt.Errorf("sender (from) not configured")
 	}
 
-	msg := buildMIMEMessage(s.from, to, subject, htmlBody, s.smtp.Username)
+	msg, err := s.buildMIME(to, subject, htmlBody, attachName, attachContent)
+	if err != nil {
+		return fmt.Errorf("build MIME message failed: %w", err)
+	}
 
 	auth := smtp.PlainAuth("", s.smtp.Username, s.smtp.Password, s.smtp.Host)
 	addr := fmt.Sprintf("%s:%d", s.smtp.Host, s.smtp.Port)
@@ -107,61 +118,74 @@ func (s *Sender) SendTest(to string) error {
 	return s.Send([]string{to}, subject, body)
 }
 
-func buildMIMEMessage(from string, to []string, subject, htmlBody, username string) string {
-	var sb strings.Builder
+// buildMIME builds the full MIME message. When an attachment is provided,
+// it uses multipart/mixed with the HTML body as the first part and the
+// attachment as the second part.
+func (s *Sender) buildMIME(to []string, subject, htmlBody, attachName, attachContent string) (string, error) {
+	var buf bytes.Buffer
+	now := time.Now().Format(time.RFC1123Z)
 
-	sb.WriteString("From: " + from + "\r\n")
-	sb.WriteString("To: " + strings.Join(to, ", ") + "\r\n")
-	sb.WriteString("Subject: =?UTF-8?B?")
-	sb.WriteString(base64Encode(subject))
-	sb.WriteString("?=\r\n")
-	sb.WriteString("MIME-Version: 1.0\r\n")
-	sb.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
-	sb.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
-	if username != "" {
-		sb.WriteString("Reply-To: " + username + "\r\n")
+	// Headers
+	buf.WriteString("From: " + s.from + "\r\n")
+	buf.WriteString("To: " + strings.Join(to, ", ") + "\r\n")
+	buf.WriteString("Subject: =?UTF-8?B?" + base64Encode(subject) + "?=\r\n")
+	buf.WriteString("Date: " + now + "\r\n")
+	if s.smtp.Username != "" {
+		buf.WriteString("Reply-To: " + s.smtp.Username + "\r\n")
 	}
-	sb.WriteString("\r\n")
-	sb.WriteString(htmlBody)
 
-	return sb.String()
+	if attachName == "" {
+		// Simple HTML-only message (backward compatible)
+		buf.WriteString("MIME-Version: 1.0\r\n")
+		buf.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
+		buf.WriteString("\r\n")
+		buf.WriteString(htmlBody)
+	} else {
+		// multipart/mixed: HTML body + attachment
+		boundary := "----=_Part_" + fmt.Sprintf("%d", time.Now().UnixNano())
+		buf.WriteString("MIME-Version: 1.0\r\n")
+		buf.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary))
+		buf.WriteString("\r\n")
+
+		// HTML body part
+		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		buf.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
+		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
+		buf.WriteString("\r\n")
+		buf.WriteString(encodeBase64Lines(htmlBody))
+		buf.WriteString("\r\n")
+
+		// Attachment part
+		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		buf.WriteString(fmt.Sprintf("Content-Type: text/markdown; charset=UTF-8; name=\"%s\"\r\n", attachName))
+		buf.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", attachName))
+		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
+		buf.WriteString("\r\n")
+		buf.WriteString(encodeBase64Lines(attachContent))
+		buf.WriteString("\r\n")
+
+		// End boundary
+		buf.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
+	}
+
+	return buf.String(), nil
+}
+
+// encodeBase64Lines encodes data to base64 with 76-char line wrapping (RFC 2045).
+func encodeBase64Lines(s string) string {
+	encoded := base64.StdEncoding.EncodeToString([]byte(s))
+	var buf bytes.Buffer
+	for i := 0; i < len(encoded); i += 76 {
+		end := i + 76
+		if end > len(encoded) {
+			end = len(encoded)
+		}
+		buf.WriteString(encoded[i:end])
+		buf.WriteString("\r\n")
+	}
+	return buf.String()
 }
 
 func base64Encode(s string) string {
-	const base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-	src := []byte(s)
-	encoded := make([]byte, ((len(src)+2)/3)*4)
-
-	for i := 0; i < len(src); i += 3 {
-		n := len(src) - i
-		if n > 3 {
-			n = 3
-		}
-
-		val := uint(src[i]) << 16
-		if n > 1 {
-			val |= uint(src[i+1]) << 8
-		}
-		if n > 2 {
-			val |= uint(src[i+2])
-		}
-
-		encoded[i/3*4] = base64Chars[val>>18&0x3F]
-		encoded[i/3*4+1] = base64Chars[val>>12&0x3F]
-
-		if n > 1 {
-			encoded[i/3*4+2] = base64Chars[val>>6&0x3F]
-		} else {
-			encoded[i/3*4+2] = '='
-		}
-
-		if n > 2 {
-			encoded[i/3*4+3] = base64Chars[val&0x3F]
-		} else {
-			encoded[i/3*4+3] = '='
-		}
-	}
-
-	return string(encoded)
+	return base64.StdEncoding.EncodeToString([]byte(s))
 }
