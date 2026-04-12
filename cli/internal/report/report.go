@@ -179,7 +179,7 @@ func (g *Generator) generateAISummary(report *Report) (string, error) {
 		}
 
 		// Tags
-		keywords := entry.GetKeywords()
+		keywords, _ := entry.GetKeywords()
 		if len(keywords) > 0 {
 			context.WriteString(fmt.Sprintf("  Tags: %s\n", strings.Join(keywords, ", ")))
 		}
