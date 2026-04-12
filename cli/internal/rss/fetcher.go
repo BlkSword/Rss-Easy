@@ -157,7 +157,11 @@ func (f *Fetcher) processEntries(items []*ParsedItem, feedID int64, fullContent 
 		}
 
 		entry := f.parser.ToDBEntry(item, feedID)
-		entry.WordCount = countWords(entry.Content)
+		rawContent := entry.Content
+		if rawContent == "" {
+			rawContent = entry.Summary
+		}
+		entry.WordCount = countWords(rawContent)
 		entry.ReadingTime = (entry.WordCount / 200) + 1
 
 		if _, err = db.CreateEntry(entry); err == nil {
@@ -181,7 +185,11 @@ func (f *Fetcher) processEntriesSimple(items []*ParsedItem, feedID int64) int {
 		}
 
 		entry := f.parser.ToDBEntry(item, feedID)
-		entry.WordCount = countWords(entry.Content)
+		rawContent := entry.Content
+		if rawContent == "" {
+			rawContent = entry.Summary
+		}
+		entry.WordCount = countWords(rawContent)
 		entry.ReadingTime = (entry.WordCount / 200) + 1
 
 		if _, err = db.CreateEntry(entry); err == nil {

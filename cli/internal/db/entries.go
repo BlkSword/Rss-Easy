@@ -329,9 +329,12 @@ func GetRetryAnalysisEntries(limit, maxRetries int) ([]*Entry, error) {
 	return entries, nil
 }
 
-func GetPendingAnalysisEntries(limit int) ([]*Entry, error) {
+func GetPendingAnalysisEntries(limit int, perFeed int) ([]*Entry, error) {
 	if limit == 0 {
 		limit = 50
+	}
+	if perFeed <= 0 {
+		perFeed = 2
 	}
 
 	rows, err := DB.Query(`
@@ -344,10 +347,19 @@ func GetPendingAnalysisEntries(limit int) ([]*Entry, error) {
 			   COALESCE(open_source_info, ''),
 			   COALESCE(programming_language, '')
 		FROM entries
-		WHERE ai_summary IS NULL OR ai_summary = ''
-		ORDER BY published_at DESC
+		WHERE (ai_summary IS NULL OR ai_summary = '')
+		  AND deleted = 0
+		  AND id IN (
+		    SELECT id FROM (
+		      SELECT id, feed_id,
+		        ROW_NUMBER() OVER (PARTITION BY feed_id ORDER BY created_at ASC) as rn
+		      FROM entries
+		      WHERE (ai_summary IS NULL OR ai_summary = '') AND deleted = 0
+		    ) WHERE rn <= ?
+		  )
+		ORDER BY created_at ASC
 		LIMIT ?
-	`, limit)
+	`, perFeed, limit)
 	if err != nil {
 		return nil, err
 	}

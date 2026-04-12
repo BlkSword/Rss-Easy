@@ -73,8 +73,9 @@ var analyzeBatchCmd = &cobra.Command{
 		limit, _ := cmd.Flags().GetInt("limit")
 		concurrency, _ := cmd.Flags().GetInt("concurrency")
 		timeoutSec, _ := cmd.Flags().GetInt("timeout")
+		perFeed, _ := cmd.Flags().GetInt("per-feed")
 
-		entries, err := db.GetPendingAnalysisEntries(limit)
+		entries, err := db.GetPendingAnalysisEntries(limit, perFeed)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error getting pending entries: %v\n", err)
 			os.Exit(1)
@@ -242,7 +243,7 @@ var analyzeStatsCmd = &cobra.Command{
 		}
 
 		// Get pending count
-		pending, _ := db.GetPendingAnalysisEntries(0)
+		pending, _ := db.GetPendingAnalysisEntries(0, 0)
 
 		// Count failed (retried but still no summary)
 		var failedCount int
@@ -294,6 +295,7 @@ func init() {
 	analyzeBatchCmd.Flags().IntP("limit", "l", 50, "Maximum entries to analyze")
 	analyzeBatchCmd.Flags().IntP("concurrency", "c", 3, "Number of concurrent analyses")
 	analyzeBatchCmd.Flags().IntP("timeout", "t", 120, "Per-entry timeout in seconds (0 = no limit)")
+	analyzeBatchCmd.Flags().IntP("per-feed", "p", 2, "Max entries per feed (0 = no limit)")
 	analyzeRetryCmd.Flags().IntP("limit", "l", 20, "Maximum entries to retry")
 	analyzeRetryCmd.Flags().Int("max-retries", 0, "Max retry count (default: from config)")
 	analyzeRetryCmd.Flags().IntP("timeout", "t", 120, "Per-entry timeout in seconds (0 = no limit)")

@@ -209,9 +209,10 @@ func runFullPipeline(fetcher *rss.Fetcher, analyzer *ai.Analyzer, cfg *config.Co
 // analyzePendingEntries processes pending AI analyses with rate limiting and timeouts.
 // Serial execution — no goroutines — to stay safe from provider rate limits.
 func analyzePendingEntries(analyzer *ai.Analyzer, cfg *config.Config, logf func(string, ...interface{}), status *db.DaemonStatus) {
-	maxPerRound := 10
+	maxPerRound := 30
+	perFeed := 2
 
-	pending, err := db.GetPendingAnalysisEntries(maxPerRound)
+	pending, err := db.GetPendingAnalysisEntries(maxPerRound, perFeed)
 	if err != nil || len(pending) == 0 {
 		return
 	}

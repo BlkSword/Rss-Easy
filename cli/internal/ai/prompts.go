@@ -43,6 +43,7 @@ Scoring guidelines:
 - quality (1-10): Writing quality and accuracy
 - practicality (1-10): How actionable/practical is the content?
 - novelty (1-10): How novel/unique is the content?
+- IMPORTANT: If the content is very short (under 500 characters) or appears to be only a summary/excerpt without the full article body, cap aiScore at 5 and reduce all scoreDimensions by at least 2. These articles lack sufficient depth for a fair high score.
 
 Programming language detection:
 - "programmingLanguage": Identify the PRIMARY programming language discussed in the article.

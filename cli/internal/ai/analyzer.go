@@ -215,6 +215,29 @@ func (a *Analyzer) AnalyzeEntryWithContext(ctx context.Context, entry *db.Entry)
 	// Success — reset retry counter
 	_ = db.ResetEntryAIRetry(entry.ID)
 
+	// Cap scores for short content (insufficient depth for fair evaluation)
+	content := entry.Content
+	if content == "" {
+		content = entry.Summary
+	}
+	if len(content) < 500 {
+		if result.AIScore > 5 {
+			result.AIScore = 5
+		}
+		if result.ScoreDimensions.Depth > 5 {
+			result.ScoreDimensions.Depth = 5
+		}
+		if result.ScoreDimensions.Quality > 5 {
+			result.ScoreDimensions.Quality = 5
+		}
+		if result.ScoreDimensions.Practicality > 5 {
+			result.ScoreDimensions.Practicality = 5
+		}
+		if result.ScoreDimensions.Novelty > 5 {
+			result.ScoreDimensions.Novelty = 5
+		}
+	}
+
 	a.saveAnalysis(entry, result, time.Since(startTime).Milliseconds())
 	return nil
 }
