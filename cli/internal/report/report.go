@@ -122,32 +122,101 @@ func (g *Generator) generateAISummary(report *Report) (string, error) {
 		return "", nil
 	}
 
+	// Collect all entries from sections
+	var allEntries []*db.Entry
+	for _, section := range report.Sections {
+		allEntries = append(allEntries, section.Entries...)
+	}
+
+	// Score-based layered sampling: ensure diversity across score ranges
+	var sampled []*db.Entry
+	for _, entry := range allEntries {
+		if entry.AIScore >= 8 {
+			sampled = append(sampled, entry)
+		}
+	}
+	// Medium score: cap at 40
+	mediumCount := 0
+	for _, entry := range allEntries {
+		if entry.AIScore >= 6 && entry.AIScore < 8 && mediumCount < 40 {
+			sampled = append(sampled, entry)
+			mediumCount++
+		}
+	}
+	// Low score: cap at 20
+	lowCount := 0
+	for _, entry := range allEntries {
+		if entry.AIScore < 6 && lowCount < 20 {
+			sampled = append(sampled, entry)
+			lowCount++
+		}
+	}
+	// Hard cap at 100 total
+	if len(sampled) > 100 {
+		sampled = sampled[:100]
+	}
+
 	var context strings.Builder
 	context.WriteString(fmt.Sprintf("Report: %s\n", report.Title))
 	context.WriteString(fmt.Sprintf("Period: %s\n", report.Period))
 	context.WriteString(fmt.Sprintf("Total articles: %d, Analyzed: %d, Average score: %.1f\n\n", report.Stats.TotalEntries, report.Stats.AnalyzedEntries, report.Stats.AvgAIScore))
 
-	maxEntries := 60
-	count := 0
-	for _, section := range report.Sections {
-		for _, entry := range section.Entries {
-			if count >= maxEntries {
-				break
-			}
-			lang := entry.ProgrammingLanguage
-			if lang != "" {
-				context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s, Language: %s)\n", entry.Title, entry.AIScore, entry.FeedName, lang))
-			} else {
-				context.WriteString(fmt.Sprintf("- [%s] (Score: %d, Source: %s)\n", entry.Title, entry.AIScore, entry.FeedName))
-			}
-			if entry.AIOneLineSummary != "" {
-				context.WriteString(fmt.Sprintf("  %s\n", entry.AIOneLineSummary))
-			}
-			count++
+	for _, entry := range sampled {
+		// Header line: title, score, source, language, category
+		meta := fmt.Sprintf("- [%s] (Score: %d, Source: %s", entry.Title, entry.AIScore, entry.FeedName)
+		if entry.ProgrammingLanguage != "" {
+			meta += fmt.Sprintf(", Language: %s", entry.ProgrammingLanguage)
 		}
-		if count >= maxEntries {
-			break
+		if entry.AICategory != "" {
+			meta += fmt.Sprintf(", Category: %s", entry.AICategory)
 		}
+		meta += ")"
+		context.WriteString(meta + "\n")
+
+		// One-line summary
+		if entry.AIOneLineSummary != "" {
+			context.WriteString(fmt.Sprintf("  Summary: %s\n", entry.AIOneLineSummary))
+		}
+
+		// Tags
+		keywords := entry.GetKeywords()
+		if len(keywords) > 0 {
+			context.WriteString(fmt.Sprintf("  Tags: %s\n", strings.Join(keywords, ", ")))
+		}
+
+		// Key points (top 3 by importance)
+		points, _ := entry.GetMainPoints()
+		if len(points) > 0 {
+			// Sort by importance desc
+			sorted := make([]db.MainPoint, len(points))
+			copy(sorted, points)
+			for i := 0; i < len(sorted)-1; i++ {
+				for j := i + 1; j < len(sorted); j++ {
+					if sorted[j].Importance > sorted[i].Importance {
+						sorted[i], sorted[j] = sorted[j], sorted[i]
+					}
+				}
+			}
+			limit := len(sorted)
+			if limit > 3 {
+				limit = 3
+			}
+			context.WriteString("  Key points:\n")
+			for k := 0; k < limit; k++ {
+				context.WriteString(fmt.Sprintf("    - %s\n", sorted[k].Point))
+			}
+		}
+
+		// Full AI summary (truncated to 300 chars to save context)
+		if entry.AISummary != "" {
+			summary := entry.AISummary
+			if len(summary) > 300 {
+				summary = summary[:300] + "..."
+			}
+			context.WriteString(fmt.Sprintf("  Detail: %s\n", summary))
+		}
+
+		context.WriteString("\n")
 	}
 
 	client := ai.NewClient(g.cfg)

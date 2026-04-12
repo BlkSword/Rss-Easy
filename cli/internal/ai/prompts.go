@@ -87,7 +87,7 @@ Value scoring (1-5):
 
 Only output the JSON, no other text.`
 
-// GetReportPrompt returns the report prompt with the specified output language.
+// GetReportPrompt returns the analysis prompt with the specified output language.
 func GetReportPrompt(lang string) string {
 	langInstruction := "Write the report in the same language as the articles."
 	switch lang {
@@ -99,35 +99,54 @@ func GetReportPrompt(lang string) string {
 		langInstruction = "Write the report in the same language as the majority of the articles."
 	}
 
-	return `You are a content curator creating a digest of interesting articles.
+	return `You are a senior content analyst creating a daily intelligence digest for a cybersecurity engineer and full-stack developer.
 
 ` + langInstruction + `
 
-Based on the articles provided, create a structured summary report in Markdown format.
+Based on the articles provided, create a structured daily report in Markdown format. Each article entry includes: title, score, source, category, tags, one-line summary, full summary, and key points. Use ALL available information to provide deep, analytical insights.
 
 Structure your report as follows:
 
-## Key Highlights
-Extract the 5-8 most important takeaways from today's articles. Focus on:
-- Major news or breakthroughs
-- Actionable insights or recommendations
-- Notable trends or patterns across multiple articles
-- Security incidents or vulnerabilities (if applicable)
+## 🔥 Key Highlights
+Extract the 6-10 most significant takeaways. Synthesize across multiple sources when they cover the same topic. Focus on:
+- Critical security incidents (vulnerabilities, breaches, zero-days, exploits)
+- Major product releases or framework updates
+- AI/ML breakthroughs or notable tool launches
+- Industry trends and ecosystem shifts
+- Actionable insights for a developer/security practitioner
 
-Format each highlight as a concise bullet point with brief context. Do NOT simply list article titles — synthesize and summarize the key information.
+Format as concise bullet points. Each highlight MUST include brief context explaining WHY it matters. Do NOT simply list article titles — synthesize and provide added analytical value.
 
-## Programming Language Trends
-For each programming language that appears in 2+ articles:
-- List the language name
-- Summarize what's happening with that language (new releases, notable projects, ecosystem changes)
-- Cite the relevant articles as evidence
+## 🛡️ Security Watch
+If any articles relate to cybersecurity (vulnerabilities, attacks, data breaches, threat intelligence, defensive tools, CTF):
+- List each security event/incident separately with severity assessment (Critical/High/Medium/Low)
+- For vulnerabilities: include CVE if mentioned, affected product, and exploit status
+- For breaches: include scale, data type, and known impact
+- Provide actionable recommendations where applicable
 
-If no language has 2+ articles, list notable single-article language mentions.
+If no security-related articles exist, output "本期无重大安全事件" and skip this section.
 
-## Notable Mentions
-List 3-5 individual articles that stand out the most, with a one-line reason why each is worth reading.
+## 💻 Programming Language & Framework Trends
+For each programming language or framework that appears in 2+ articles:
+- Summarize what's happening with that language/framework (releases, projects, ecosystem)
+- Identify emerging patterns or shifts
+- Cite relevant articles as evidence
 
-Be concise but informative. Prioritize substance over completeness. Focus on what the reader actually needs to know.`
+For languages with only 1 mention: list in a brief "Other Languages" subsection.
+
+## 📊 Industry & Ecosystem Observations
+Identify 2-4 broader trends or observations:
+- Market movements (funding, acquisitions, company strategies)
+- Technology adoption patterns
+- Emerging topics gaining momentum
+- Cross-domain convergences (e.g., AI + security, edge computing + IoT)
+
+## ⭐ Notable Mentions
+List 5-8 articles most worth reading, grouped by relevance:
+- For each: title, one-line explanation of why it's worth reading
+- Prioritize articles with high practical value for a security-focused full-stack developer
+
+Be analytical and insightful. This is a curated intelligence brief, not a news feed. Every point should add value beyond what the source articles already say.`
 }
 
 // GetWeeklyReportPrompt returns a weekly report prompt with trend analysis.
@@ -142,42 +161,52 @@ func GetWeeklyReportPrompt(lang string) string {
 		langInstruction = "Write the report in the same language as the majority of the articles."
 	}
 
-	return `You are a senior content analyst creating a weekly intelligence digest.
+	return `You are a senior content analyst creating a weekly intelligence digest for a cybersecurity engineer and full-stack developer.
 
 ` + langInstruction + `
 
-Based on the articles from this week, create a comprehensive weekly report in Markdown format.
+Based on the articles from this week, create a comprehensive weekly report in Markdown format. Each article entry includes: title, score, source, category, tags, one-line summary, full summary, and key points. Use ALL available information to provide deep, analytical insights.
 
 Structure your report as follows:
 
-## Weekly Highlights
-Extract the 8-12 most significant takeaways from this week's articles. Synthesize information across multiple sources when possible. Focus on:
-- Major developments and breaking news
+## 🔥 Weekly Highlights
+Extract the 8-12 most significant takeaways. Synthesize information across multiple sources when possible. Focus on:
+- Critical security incidents and vulnerability disclosures
+- Major product releases, framework updates, or tool launches
+- AI/ML ecosystem developments and breakthroughs
 - Recurring themes and emerging trends
-- Security incidents, vulnerabilities, or threats
-- Notable product launches or updates
-- Industry shifts and analysis
+- Industry shifts, funding, and strategic moves
 
-## Programming Language Trends
-This is a KEY section. Analyze the articles by programming language:
-- For each language with 2+ articles: summarize the overall trend, key developments, and noteworthy projects
-- Compare activity levels between languages this week
-- Highlight any language gaining or losing momentum
-- For languages with only 1 article: briefly mention in a "Other Languages" subsection
+## 🛡️ Security Threat Landscape
+This is a KEY section. Provide a comprehensive security overview:
+- List all security incidents/vulnerabilities with severity (Critical/High/Medium/Low)
+- For each: affected product/service, attack vector, impact, and recommended actions
+- Identify any attack campaigns or threat actors mentioned
+- Summarize the overall threat landscape for the week
+- Highlight any defensive tools or techniques discussed
 
-This section should help the reader quickly understand what's happening across different language ecosystems.
+If no security articles exist, output "本周无重大安全事件" and skip.
 
-## Trend Analysis
-Identify 3-5 key trends observed this week (beyond programming languages). For each trend:
+## 💻 Programming Language & Framework Trends
+Analyze articles by programming language/framework:
+- For each with 2+ articles: summarize trend, key developments, noteworthy projects
+- Compare activity levels between languages
+- Highlight languages gaining or losing momentum
+- For single-mention languages: brief "Other Languages" subsection
+
+## 📊 Trend Analysis
+Identify 3-5 key trends this week (beyond programming languages):
 - Describe the trend and what's driving it
 - Cite specific articles as evidence
 - Assess potential impact (high/medium/low)
+- Note any convergences across domains (e.g., AI + security, cloud + edge)
 
-## Standout Articles
-List 5-8 articles that are most worth reading, with a one-line explanation of why.
+## 📈 Topics to Watch
+Identify 2-4 topics or areas that readers should pay attention to in the coming week, based on this week's coverage trajectory.
 
-## Topics to Watch
-Identify 2-3 topics or areas that readers should pay attention to in the coming week, based on this week's coverage.
+## ⭐ Standout Articles
+List 6-10 articles most worth reading, with a one-line explanation of why.
+Prioritize articles with high practical value for a security-focused full-stack developer.
 
-Be analytical and insightful. This is a strategic summary, not a news feed.`
+Be analytical and insightful. This is a strategic intelligence summary, not a news feed. Every insight should demonstrate synthesis and add value beyond the source material.`
 }
