@@ -210,8 +210,8 @@ func (g *Generator) generateAISummary(report *Report) (string, error) {
 		// Full AI summary (truncated to 300 chars to save context)
 		if entry.AISummary != "" {
 			summary := entry.AISummary
-			if len(summary) > 300 {
-				summary = summary[:300] + "..."
+			if len([]rune(summary)) > 300 {
+				summary = string([]rune(summary)[:300]) + "..."
 			}
 			context.WriteString(fmt.Sprintf("  Detail: %s\n", summary))
 		}
@@ -525,8 +525,8 @@ func renderArticleCard(entry *db.Entry) string {
 	// AI summary (truncated)
 	if entry.AISummary != "" {
 		summary := entry.AISummary
-		if len(summary) > 400 {
-			summary = summary[:400] + "..."
+		if len([]rune(summary)) > 400 {
+			summary = string([]rune(summary)[:400]) + "..."
 		}
 		sb.WriteString(fmt.Sprintf(`<p style="margin:0 0 15px 0; color:#64748b; font-size:13px; line-height:1.7;">%s</p>`, summary))
 	}
