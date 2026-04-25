@@ -349,12 +349,14 @@ func GetPendingAnalysisEntries(limit int, perFeed int) ([]*Entry, error) {
 		FROM entries
 		WHERE (ai_summary IS NULL OR ai_summary = '')
 		  AND deleted = 0
+		  AND COALESCE(ai_retry_count, 0) < 3
 		  AND id IN (
 		    SELECT id FROM (
 		      SELECT id, feed_id,
 		        ROW_NUMBER() OVER (PARTITION BY feed_id ORDER BY created_at ASC) as rn
 		      FROM entries
 		      WHERE (ai_summary IS NULL OR ai_summary = '') AND deleted = 0
+		        AND COALESCE(ai_retry_count, 0) < 3
 		    ) WHERE rn <= ?
 		  )
 		ORDER BY created_at ASC
